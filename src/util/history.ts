@@ -23,7 +23,7 @@ export interface TrimmedHistory {
 
 // 러프한 토큰 추정: 한글 1자≈1토큰, 영어는 4자≈1토큰 (두 추정 평균)
 export function estimateTokens(text: string): number {
-  const korean = (text.match(/[ㄱ-힝]/g) ?? []).length
+  const korean = (text.match(/[가-힣]/g) ?? []).length
   const other = text.length - korean
   return Math.ceil(korean + other / 4)
 }

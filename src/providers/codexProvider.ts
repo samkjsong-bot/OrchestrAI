@@ -100,7 +100,7 @@ export async function callCodex(
   }
 
   if (!res) {
-    throw new Error(`Codex ?붿껌 ?ㅽ뙣 (${lastErr?.status}): ${lastErr?.text.slice(0, 200)}`)
+    throw new Error(`Codex 요청 실패 (${lastErr?.status}): ${lastErr?.text.slice(0, 200)}`)
   }
   if (!res.body) {
     throw new Error('Codex 응답에 body가 없습니다')

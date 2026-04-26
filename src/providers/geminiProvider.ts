@@ -96,15 +96,34 @@ async function runOnce(
         log.error('gemini', 'stream error chunk:', p.error)
         continue
       }
-      if (typeof p.text === 'string' && p.text) {
-        fullContent += p.text
-        onChunk(p.text)
-      } else if (typeof p.textDelta === 'string' && p.textDelta) {
-        fullContent += p.textDelta
-        onChunk(p.textDelta)
-      } else if (typeof p.delta === 'string' && p.delta) {
-        fullContent += p.delta
-        onChunk(p.delta)
+      // Vercel AI SDK 5.x — text는 다양한 위치에 올 수 있음. 모든 후보 자리에서 추출
+      const candidates: any[] = [
+        p.text, p.textDelta, p.delta,
+        p?.delta?.text, p?.delta?.textDelta,
+        p?.content, p?.value,
+      ]
+      let extracted: string | null = null
+      for (const c of candidates) {
+        if (typeof c === 'string' && c) { extracted = c; break }
+      }
+      if (extracted) {
+        fullContent += extracted
+        onChunk(extracted)
+        continue
+      }
+      // 알려진 필드에서 못 찾으면 raw JSON에서 한 번 더 시도 (SDK 버전 따라 nested 위치 다름)
+      if (/text|delta/i.test(p.type ?? '')) {
+        try {
+          const raw = JSON.stringify(p)
+          const m = raw.match(/"(?:text|textDelta|delta)"\s*:\s*"((?:[^"\\]|\\.)*)"/)
+          if (m && m[1]) {
+            const decoded = JSON.parse(`"${m[1]}"`)
+            if (typeof decoded === 'string' && decoded) {
+              fullContent += decoded
+              onChunk(decoded)
+            }
+          }
+        } catch {}
       }
     }
   } catch (err) {
@@ -166,7 +185,7 @@ export async function callGemini(
 
   if (res.error) {
     const m = res.error instanceof Error ? res.error.message : JSON.stringify(res.error)
-    throw new Error(`Gemini ?묐떟 ?ㅽ뙣: ${m}`)
+    throw new Error(`Gemini 응답 실패: ${m}`)
   }
   if (!res.content) {
     throw new Error(

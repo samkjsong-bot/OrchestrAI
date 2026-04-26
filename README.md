@@ -19,7 +19,7 @@ VSCode 익스텐션 — **Claude(Max 구독) + Codex(ChatGPT Pro) + Gemini(OAuth
 ## 📦 설치
 
 ### VSIX로 설치 (권장)
-1. [Releases](../../releases) 에서 최신 `.vsix` 다운로드 또는 직접 빌드
+1. [Releases](https://github.com/samkjsong-bot/OrchestrAI/releases) 에서 최신 `.vsix` 다운로드 또는 직접 빌드
 2. VSCode → 확장 → `…` → "VSIX에서 설치..." → 파일 선택
 
 또는 터미널:

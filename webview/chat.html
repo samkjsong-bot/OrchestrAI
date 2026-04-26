@@ -1914,7 +1914,7 @@
           <circle cx="11" cy="6" r="1" fill="currentColor"/>
         </svg>
       </button>
-      <button class="mode-btn auto-edit" id="mode-btn" onclick="toggleModePopup(event)" title="Mode 쨌 Effort (Shift+Tab)">
+      <button class="mode-btn auto-edit" id="mode-btn" onclick="toggleModePopup(event)" title="Mode · Effort (Shift+Tab)">
         <span id="mode-btn-icon">&lt;/&gt;</span>
         <span id="mode-btn-label">Edit automatically</span>
       </button>
@@ -2635,7 +2635,7 @@
     if (!msgEl) return
     const v = document.createElement('div')
     v.className = 'judge-verdict'
-    v.innerHTML = `<b>?ы뙋:</b> ${verdict.score}/10 쨌 ${verdict.reason}`
+    v.innerHTML = `<b>판정:</b> ${verdict.score}/10 · ${verdict.reason}`
     msgEl.appendChild(v)
   }
 
@@ -2708,7 +2708,7 @@
           <div class="msg-header">
             <span class="model-tag">${modelLabel}</span>
             ${actualName}
-            <span class="effort-tag">effort쨌${m.effort || 'medium'}</span>
+            <span class="effort-tag">effort·${m.effort || 'medium'}</span>
             <span class="tokens-tag">${(m.tokens ?? 0).toLocaleString()} tok</span>
           </div>
           <div class="bubble-actions">
@@ -2891,7 +2891,7 @@
     btn.className = hasSelection ? 'ctx-btn has-selection' : 'ctx-btn active'
     label.textContent = hasSelection ? `짠 ${fileName}` : fileName
     btn.title = hasSelection
-      ? `?좏깮 ?곸뿭 ?ы븿 쨌 ${fileName}`
+      ? `선택 영역 포함 · ${fileName}`
       : `현재 파일: ${fileName} (${language})
 클릭해서 컨텍스트 끄기`
   }
@@ -2912,7 +2912,7 @@
     const el = document.createElement('div')
     el.className = 'routing-event'
     const label = hasSelection
-      ? `짠 ?좏깮 ?곸뿭 쨌 ${fileName}`
+      ? `📎 선택 영역 · ${fileName}`
       : isTruncated
         ? `✓ ${fileName} (수정됨)`
         : `+ ${fileName}`
@@ -2942,7 +2942,7 @@
       <div class="msg-header">
         <span class="model-tag">${modelLabel}</span>
         ${actualName}
-        <span class="effort-tag">effort쨌${decision.effort}</span>
+        <span class="effort-tag">effort·${decision.effort}</span>
         <span class="tokens-tag" id="tok-${id}">...</span>
       </div>
       <div class="bubble-actions">
@@ -3026,9 +3026,9 @@
       llm: 'llm routed',
       fallback: 'fallback',
       attachment: 'image',
-      'collab-first': 'argue 쨌 ?좉났',
+      'collab-first': 'argue · 선공',
       'collab-reply': 'argue · 반박',
-      'argue-open': 'argue 쨌 ?좉났',
+      'argue-open': 'argue · 선공',
       'argue-reply': 'argue · 반박',
     }
     const reasonText = reasonMap[decision.reason] ?? decision.reason
@@ -3040,7 +3040,7 @@
       <div class="routing-line"></div>
       <div class="routing-badge ${decision.model}" title="reason: ${decision.reason}${decision.ruleMatched ? '\nrule: '+decision.ruleMatched : ''}\nconfidence: ${conf}%">
         <div class="dot"></div>
-        ${decision.model} 쨌 ${decision.effort}
+        ${decision.model} · ${decision.effort}
         <div class="effort-pip">${pips}</div>
         <span style="opacity:0.6;margin-left:6px;font-size:9px">${reasonText}</span>
       </div>

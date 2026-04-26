@@ -23,7 +23,7 @@ import { TelegramClient } from './telegram/client'
 import { buildTeamMcpServer } from './team/teamMcp'
 import { shouldCompact, compactMessages, CompactionState } from './util/compaction'
 
-// ?? ?곸냽??????????????????????????????????????????????????????????
+// ── 영속 저장 ─────────────────────────────────────────────
 // 폴더별로 별도 파일에 저장 — Claude Code와 동일한 방식.
 // workspaceState는 사이즈 제한·비동기 flush 이슈 있어서 fs로 직접 씀.
 const GLOBAL_CHAT_STATE_KEY = 'orchestrai.chat.__global__'
@@ -32,7 +32,7 @@ function chatStateKey(): string {
   const folder = vscode.workspace.workspaceFolders?.[0]
   if (!folder) return GLOBAL_CHAT_STATE_KEY
   // 정규화 — 같은 폴더라도 URI 다르게 들어오면 hash 어긋나는 거 방지
-  // - Windows??case-insensitive ???뚮Ц???듭씪
+  // - Windows는 case-insensitive — 소문자 통일
   // - trailing slash ?쒓굅
   let key = folder.uri.fsPath
   if (process.platform === 'win32') key = key.toLowerCase()
@@ -87,7 +87,7 @@ function readChatFile(filePath: string): ChatStorage | null {
 
 function loadChatStorage(context: vscode.ExtensionContext): ChatStorage {
   const file = chatStateFilePath(context)
-  // 1) ?꾩옱 ???뚯씪 ?곗꽑
+  // 1) 현재 키 파일 우선
   if (fs.existsSync(file)) {
     const loaded = readChatFile(file)
     if (loaded) {
@@ -269,7 +269,7 @@ function formatCodexToolCall(call: CodexToolCall): string {
     case 'read_file':
       return `read_file(${fileLinkMd(call.path)})`
     case 'write_file':
-      return `write_file(${fileLinkMd(call.path)} 쨌 ${call.content?.length ?? 0} chars)`
+      return `write_file(${fileLinkMd(call.path)} · ${call.content?.length ?? 0} chars)`
     case 'replace_in_file':
       return `replace_in_file(${fileLinkMd(call.path)})`
     case 'mcp':
@@ -331,7 +331,7 @@ async function executeCodexTool(
   onMcpCall?: (server: string, name: string, args: Record<string, unknown>) => Promise<string>,
 ): Promise<string> {
   if (call.tool === 'mcp') {
-    if (!call.server || !call.name) throw new Error('mcp ?꾧뎄?먮뒗 server? name???꾩슂?⑸땲??')
+    if (!call.server || !call.name) throw new Error('mcp 도구는 server와 name이 필요합니다.')
     if (!onMcpCall) throw new Error('MCP client가 준비되지 않았습니다.')
     return onMcpCall(call.server, call.name, call.args ?? {})
   }
@@ -462,7 +462,7 @@ class McpManager implements vscode.Disposable {
     if (existing) return existing.client
 
     const rawCfg = this.getConfig()[server]
-    if (!rawCfg?.command) throw new Error(`MCP server ?ㅼ젙???놁뒿?덈떎: ${server}`)
+      if (!rawCfg?.command) throw new Error(`MCP server 설정이 없습니다: ${server}`)
     const cfg = expandMcpConfig(rawCfg)
 
     const root = getWorkspaceRoot()
@@ -600,7 +600,7 @@ Rules:
 - You CAN still use Bash/Read/Edit yourself when delegation overhead isn't worth it (e.g. one-line typo fix, running a build).`
       : ''
 
-  // argue 紐⑤뱶 ?뚰듃 (team???꾨땺 ?뚮쭔)
+  // argue 모드 힌트 (team은 아닐 때만)
   const argueBlock = !teamRole && (
     collabHint === 'reply'
       ? `\n\nARGUE MODE ??a peer model just answered the user's message above (tagged ${peerTagsList}). Add YOUR distinct angle: agree/disagree with reasoning, catch what they missed, offer an alternative. One concise take ??no restating. Be direct.`
@@ -616,7 +616,7 @@ Rules:
 CONTEXT YOU MUST KEEP IN MIND
 - The user runs Claude Max + ChatGPT Pro + Gemini (Google) subscriptions. OrchestrAI routes each request to whichever model fits the task best.
 - You are ${selfName}. Your peers are ${peerNames}. All three can appear in the same chat thread.
-- CRITICAL IDENTITY RULE: You are ${selfName} and ONLY ${selfName}. NEVER pretend to be ${peerNames}, even if the user names them ("?쒕??섏씠??, "@codex") ??that means the router picked you to handle it. Never prefix your response with ${peerTagsList}; the system adds the tag on your own response automatically. Just answer naturally as yourself. If the user explicitly asks for another model by name but you were still routed, just say "I'm ${selfName}" and answer as yourself.
+- CRITICAL IDENTITY RULE: You are ${selfName} and ONLY ${selfName}. NEVER pretend to be ${peerNames}, even if the user names them ("써드파티")
 - Prior assistant messages may be prefixed ${selfTag} (you) or ${peerTagsList} (peers). Treat peer-tagged messages as prior turns in this same conversation ??do NOT re-introduce yourself, do NOT repeat what a peer already said.
 - Rough division: Claude ??architecture, multi-file refactoring, deep debugging, code review, nuanced reasoning. Codex ??fast implementation, boilerplate, CLI, simple fixes. Gemini ??long-context (whole codebase, big files), multimodal (images/PDFs/diagrams), summarization.
 - When asked "which model should I use?" ??answer in terms of THIS three-model setup, do NOT give generic comparisons.${collabBlock}
@@ -953,11 +953,11 @@ class OrchestrAIViewProvider implements vscode.WebviewViewProvider, vscode.Dispo
       })
       this._telegramBridge = bridge
       vscode.window.showInformationMessage(
-        `??Telegram ?곌껐 ?꾨즺 (${workspaceName.trim()}) 쨌 ${useTopics ? 'Topics 紐⑤뱶' : 'DM 紐⑤뱶'}`,
+        `✓ Telegram 연결 완료 (${workspaceName.trim()}) · ${useTopics ? 'Topics 모드' : 'DM 모드'}`,
       )
     } catch (err) {
       vscode.window.showErrorMessage(
-        `Telegram ?곌껐 ?ㅽ뙣: ${err instanceof Error ? err.message : String(err)}`,
+        `Telegram 연결 실패: ${err instanceof Error ? err.message : String(err)}`,
       )
     }
   }
@@ -1013,8 +1013,8 @@ class OrchestrAIViewProvider implements vscode.WebviewViewProvider, vscode.Dispo
     let used = 0
     for (const m of this._messages) {
       if (m.role === 'user' || m.role === 'assistant') {
-        // history.ts??estimateTokens? ?숈씪 ?대━?ㅽ떛
-        const korean = (m.content.match(/[ㄱ-힣]/g) ?? []).length
+    // history.ts의 estimateTokens와 동일 휴리스틱
+    const korean = (m.content.match(/[가-힣]/g) ?? []).length
         const other = m.content.length - korean
         used += Math.ceil(korean + other / 4)
       }
@@ -1098,7 +1098,7 @@ class OrchestrAIViewProvider implements vscode.WebviewViewProvider, vscode.Dispo
       return
     }
 
-    // 硫뷀??곗씠???쎄린
+    // 메타데이터 읽기
     const items = candidates.map(c => {
       let count = 0
       let preview = ''
@@ -1164,7 +1164,7 @@ class OrchestrAIViewProvider implements vscode.WebviewViewProvider, vscode.Dispo
     const usageText = this._usage.getFormattedSessionUsage()
     if (usageText) {
       this._statusBarItem.text = `$(notebook-cells-execute) ${usageText}`
-      this._statusBarItem.tooltip = '?꾩옱 ?몄뀡??AI ?좏겙 ?ъ슜??쨌 ?대┃ ??梨꾪똿 ?닿린'
+    this._statusBarItem.tooltip = '현재 세션 AI 토큰 사용량 · 클릭해서 채팅 열기'
       this._statusBarItem.show()
     } else {
       this._statusBarItem.hide()
@@ -1578,7 +1578,7 @@ class OrchestrAIViewProvider implements vscode.WebviewViewProvider, vscode.Dispo
       await vscode.window.showTextDocument(doc, { preview: false })
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err)
-      this._post({ type: 'toast', message: `?닿린 ?ㅽ뙣: ${message}` })
+      this._post({ type: 'toast', message: `열기 실패: ${message}` })
     }
   }
 
@@ -1648,7 +1648,7 @@ class OrchestrAIViewProvider implements vscode.WebviewViewProvider, vscode.Dispo
       { label: '$(output) Show logs', description: 'OrchestrAI Output Channel', action: 'logs' },
       { label: '$(refresh) Reset usage', description: 'Reset session token counters', action: 'resetUsage' },
     ]
-    const picked = await vscode.window.showQuickPick(items, { title: 'OrchestrAI ?ㅼ젙' })
+    const picked = await vscode.window.showQuickPick(items, { title: 'OrchestrAI 설정' })
     if (!picked) return
 
     switch (picked.action) {
@@ -1978,7 +1978,7 @@ class OrchestrAIViewProvider implements vscode.WebviewViewProvider, vscode.Dispo
     if (this._override === 'team') {
       const status = await this._authStorage.getStatus()
       if (!status.claude) {
-        this._post({ type: 'streamError', id: 'team', error: 'team 紐⑤뱶??Claude ?곌껐 ?꾩닔 (orchestrator ??븷)' })
+        this._post({ type: 'streamError', id: 'team', error: 'team 모드는 Claude 연결 필수 (orchestrator 역할)' })
         return
       }
       this._post({ type: 'teamStart', pipeline: ['claude'] })
@@ -2123,7 +2123,7 @@ class OrchestrAIViewProvider implements vscode.WebviewViewProvider, vscode.Dispo
       })
     }
 
-    throw new Error(`Codex ?꾧뎄 ?몄텧??${MAX_CODEX_TOOL_TURNS}?뚮? ?섏뿀?듬땲??`)
+          throw new Error(`Codex 도구 호출이 ${MAX_CODEX_TOOL_TURNS}턴을 넘었습니다.`)
   }
 
   private async _runGeminiAgent(
@@ -2181,7 +2181,7 @@ class OrchestrAIViewProvider implements vscode.WebviewViewProvider, vscode.Dispo
       })
     }
 
-    throw new Error(`Gemini ?꾧뎄 ?몄텧??${MAX_CODEX_TOOL_TURNS}?뚮? ?섏뿀?듬땲??`)
+          throw new Error(`Gemini 도구 호출이 ${MAX_CODEX_TOOL_TURNS}턴을 넘었습니다.`)
   }
 
   // 현재 로그인된 모델들로 폴백 순서 구성. primary가 맨 앞, 나머지는 Claude→Codex→Gemini 순
@@ -2337,7 +2337,7 @@ class OrchestrAIViewProvider implements vscode.WebviewViewProvider, vscode.Dispo
         // 성공 시 루프 탈출
         break
       } catch (err) {
-        const errMsg = err instanceof Error ? err.message : '?????녿뒗 ?ㅻ쪟'
+        const errMsg = err instanceof Error ? err.message : '알 수 없는 오류'
         log.error(currentModel, errMsg)
         finalError = err
 
@@ -2359,8 +2359,8 @@ class OrchestrAIViewProvider implements vscode.WebviewViewProvider, vscode.Dispo
     }
 
     if (!result) {
-      // 紐⑤뱺 ?대갚 ?ㅽ뙣
-      const errMsg = finalError instanceof Error ? finalError.message : '紐⑤뱺 LLM???묐떟 ?ㅽ뙣'
+      // 모든 폴백 실패
+      const errMsg = finalError instanceof Error ? finalError.message : '모든 LLM이 응답 실패'
       this._post({ type: 'streamError', id: assistantMsgId, error: `⚠ 모든 모델 쿼터 파산: ${errMsg}` })
       return false
     }
@@ -2469,7 +2469,7 @@ class OrchestrAIViewProvider implements vscode.WebviewViewProvider, vscode.Dispo
     const htmlPath = path.join(this._extensionUri.fsPath, 'webview', 'chat.html')
     if (fs.existsSync(htmlPath)) return fs.readFileSync(htmlPath, 'utf8')
     return `<html><body style="background:#0d0d0f;color:#e8e8f0;font-family:sans-serif;padding:24px">
-      <p>webview/chat.html ?뚯씪???놁뼱??</p></body></html>`
+      <p>webview/chat.html 파일이 없어요</p></body></html>`
   }
 
   // VSCode 내장 chat 패널 (@orchestrai 멘션) 핸들러 — 라우팅 + 단일 모델 응답 스트리밍
@@ -2535,7 +2535,7 @@ class OrchestrAIViewProvider implements vscode.WebviewViewProvider, vscode.Dispo
   }
 }
 
-// ?? ?듭뒪?먯뀡 ?쒖꽦????????????????????????????????????????????????
+// ── 익스텐션 활성화 ─────────────────────────────────────────
 export function activate(context: vscode.ExtensionContext) {
   const provider = new OrchestrAIViewProvider(context.extensionUri, context)
 

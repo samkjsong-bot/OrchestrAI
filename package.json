@@ -4,6 +4,10 @@
   "description": "Claude + Codex + Gemini subscription router with argue mode, workspace tools, rollback, image attachments, and MCP.",
   "version": "0.1.0",
   "publisher": "samkj",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/samkjsong-bot/OrchestrAI.git"
+  },
   "engines": {
     "vscode": "^1.98.0"
   },
@@ -71,11 +75,11 @@
       },
       {
         "command": "orchestrai.openArchives",
-        "title": "OrchestrAI: ?꾩뭅?대툕 ?대뜑 ?닿린"
+        "title": "OrchestrAI: 아카이브 폴더 열기"
       },
       {
         "command": "orchestrai.restoreArchive",
-        "title": "OrchestrAI: ?댁쟾 ???蹂듭썝"
+        "title": "OrchestrAI: 이전 대화 복원"
       }
     ],
     "viewsContainers": {
