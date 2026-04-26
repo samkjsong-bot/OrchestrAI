@@ -1,0 +1,48 @@
+# 소스·설정
+src/**
+tsconfig.json
+.vscode/**
+.vscode-test/**
+.github/**
+작업실/**
+.gitignore
+.eslintrc*
+.prettierrc*
+
+# VSIX 자체
+*.vsix
+
+# 개발 부속
+node_modules/**/test/**
+node_modules/**/tests/**
+node_modules/**/__tests__/**
+node_modules/**/__test__/**
+node_modules/**/docs/**
+node_modules/**/doc/**
+node_modules/**/examples/**
+node_modules/**/example/**
+node_modules/**/*.md
+node_modules/**/*.map
+node_modules/**/*.ts
+node_modules/**/.github/**
+node_modules/**/CHANGELOG*
+node_modules/**/HISTORY*
+node_modules/**/LICENSE*
+node_modules/**/AUTHORS*
+node_modules/**/NOTICE*
+node_modules/**/.npmignore
+node_modules/**/.editorconfig
+node_modules/**/.eslintrc*
+node_modules/**/.prettierrc*
+node_modules/**/tsconfig*.json
+node_modules/**/rollup.config*
+node_modules/**/vite.config*
+node_modules/**/vitest.config*
+
+# types 패키지 불필요 (dev에서만 씀)
+node_modules/@types/**
+
+# 큰 선택 의존성 (나중에 필요 시 제거)
+node_modules/**/*.wasm.map
+
+# NOTE: Claude Agent SDK의 vendor/ripgrep은 포함해야 Grep·Glob 툴 동작함. 제외 금지.

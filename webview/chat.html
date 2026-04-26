@@ -1,0 +1,3420 @@
+﻿<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<!-- VSCode 기본 CSP 우회. CDN 스크립트·폰트 허용 명시 -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline' https://cdnjs.cloudflare.com https://fonts.googleapis.com; script-src 'unsafe-inline' https://cdnjs.cloudflare.com; font-src https://fonts.gstatic.com; img-src data: https:; connect-src https:;">
+<title>OrchestrAI</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/marked/12.0.0/marked.min.js"></script>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600&family=Inter:wght@300;400;500&display=swap');
+
+  :root {
+    --bg: #0d0d0f;
+    --surface: #141418;
+    --surface2: #1a1a20;
+    --border: #2a2a35;
+    --border-bright: #3a3a48;
+    --text: #e8e8f0;
+    --text-dim: #6b6b80;
+    --text-muted: #3d3d50;
+    /* 모델별 브랜드 컬러 — Claude(Anthropic 코랄), Codex(OpenAI 화이트), Gemini(블루) */
+    --claude: #cc785c;
+    --claude-dim: #cc785c22;
+    --claude-glow: #cc785c40;
+    --codex: #e5e7eb;
+    --codex-dim: #e5e7eb15;
+    --codex-glow: #e5e7eb33;
+    --gemini: #60a5fa;
+    --gemini-dim: #3b82f622;
+    --gemini-glow: #60a5fa33;
+    --router: #fb923c;
+    --effort-low: #34d399;
+    --effort-med: #fbbf24;
+    --effort-high: #f87171;
+    --accent: #6366f1;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Inter', sans-serif;
+    font-size: 13px;
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  /* ?? HEADER ?? */
+  .header {
+    padding: 12px 16px 10px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-shrink: 0;
+    background: var(--surface);
+  }
+
+  .logo {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .logo-icon {
+    width: 28px;
+    height: 22px;
+    position: relative;
+  }
+
+  .logo-icon svg { width: 100%; height: 100%; }
+
+  .logo-text {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 13px;
+    font-weight: 600;
+    letter-spacing: 0.05em;
+    color: var(--text);
+  }
+
+  .logo-text span {
+    color: var(--claude);
+  }
+
+  .header-right {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .status-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--codex);
+    box-shadow: 0 0 6px var(--codex);
+    animation: pulse 2s ease-in-out infinite;
+  }
+
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.4; }
+  }
+
+  .status-text {
+    font-size: 10px;
+    color: var(--text-dim);
+    font-family: 'JetBrains Mono', monospace;
+  }
+
+  .icon-btn {
+    width: 26px;
+    height: 26px;
+    border-radius: 5px;
+    border: 1px solid var(--border);
+    background: transparent;
+    color: var(--text-dim);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.15s;
+    font-size: 12px;
+  }
+
+  .icon-btn:hover {
+    background: var(--surface2);
+    color: var(--text);
+    border-color: var(--border-bright);
+  }
+
+  /* ?? MESSAGES ?? */
+  .messages {
+    flex: 1;
+    overflow-y: auto;
+    padding: 16px 0 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .messages::-webkit-scrollbar { width: 3px; }
+  .messages::-webkit-scrollbar-track { background: transparent; }
+  .messages::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+  .model-filter-bar {
+    display: flex;
+    gap: 4px;
+    padding: 8px 12px 0;
+    border-top: 1px solid rgba(255,255,255,0.03);
+  }
+
+  .model-filter-btn {
+    height: 24px;
+    padding: 0 9px;
+    border-radius: 6px;
+    border: 1px solid var(--border);
+    background: transparent;
+    color: var(--text-muted);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 9px;
+    cursor: pointer;
+  }
+
+  .model-filter-btn:hover,
+  .model-filter-btn.active {
+    color: var(--text);
+    background: var(--surface2);
+    border-color: var(--border-bright);
+  }
+
+  .model-filter-btn.claude.active { color: var(--claude); border-color: var(--claude-glow); background: var(--claude-dim); }
+  .model-filter-btn.codex.active { color: var(--codex); border-color: var(--codex-glow); background: var(--codex-dim); }
+  .model-filter-btn.gemini.active { color: var(--gemini); border-color: var(--gemini-glow); background: var(--gemini-dim); }
+
+  /* ?? ROUTING BADGE ?? */
+  .routing-event {
+    padding: 6px 16px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    opacity: 0.7;
+  }
+
+  .routing-line {
+    flex: 1;
+    height: 1px;
+    background: var(--border);
+  }
+
+  .routing-badge {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    padding: 3px 8px;
+    border-radius: 20px;
+    white-space: nowrap;
+  }
+
+  .routing-badge.claude {
+    background: var(--claude-dim);
+    border: 1px solid var(--claude-glow);
+    color: var(--claude);
+  }
+
+  .routing-badge.codex {
+    background: var(--codex-dim);
+    border: 1px solid var(--codex-glow);
+    color: var(--codex);
+  }
+
+  .routing-badge .dot {
+    width: 5px;
+    height: 5px;
+    border-radius: 50%;
+    background: currentColor;
+  }
+
+  .effort-pip {
+    display: flex;
+    gap: 2px;
+    align-items: center;
+  }
+
+  .effort-pip span {
+    width: 4px;
+    height: 4px;
+    border-radius: 1px;
+    background: currentColor;
+    opacity: 0.3;
+  }
+
+  .effort-pip span.on { opacity: 1; }
+
+  /* ?? MESSAGE BUBBLE ?? */
+  .msg {
+    padding: 4px 16px;
+    animation: fadeIn 0.2s ease;
+  }
+
+  .bubble {
+    position: relative;
+  }
+
+  .bubble-actions {
+    position: absolute;
+    top: 6px;
+    right: 8px;
+    display: flex;
+    gap: 4px;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.15s;
+  }
+
+  .bubble:hover .bubble-actions {
+    opacity: 1;
+    pointer-events: auto;
+  }
+
+  .float-btn {
+    height: 22px;
+    min-width: 22px;
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    background: rgba(13,13,15,0.92);
+    color: var(--text-dim);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    cursor: pointer;
+    padding: 0 6px;
+  }
+
+  .float-btn:hover {
+    color: var(--text);
+    border-color: var(--border-bright);
+  }
+
+  @keyframes fadeIn {
+    from { opacity: 0; transform: translateY(4px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  .msg-user .bubble {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 10px 10px 2px 10px;
+    padding: 10px 14px;
+    margin-left: 32px;
+    color: var(--text);
+    line-height: 1.6;
+  }
+
+  .attachments {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 8px;
+  }
+
+  .attachment-img {
+    width: 96px;
+    height: 72px;
+    object-fit: cover;
+    border-radius: 6px;
+    border: 1px solid var(--border);
+  }
+
+  .attach-preview {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    padding: 0 10px 8px;
+  }
+
+  .attach-chip {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    max-width: 180px;
+    padding: 4px 6px;
+    border-radius: 6px;
+    border: 1px solid var(--border);
+    background: var(--bg);
+    color: var(--text-dim);
+    font-size: 10px;
+  }
+
+  .attach-chip img {
+    width: 28px;
+    height: 28px;
+    object-fit: cover;
+    border-radius: 4px;
+  }
+
+  .attach-chip button {
+    border: 0;
+    background: transparent;
+    color: var(--text-muted);
+    cursor: pointer;
+  }
+
+  .change-panel {
+    margin-top: 14px;
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 10px;
+    overflow: hidden;
+    background: rgba(13,13,15,0.55);
+  }
+
+  .change-title {
+    padding: 8px 10px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    color: var(--text-dim);
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .change-file {
+    border-bottom: 1px solid rgba(255,255,255,0.06);
+  }
+
+  .change-file:last-child { border-bottom: 0; }
+
+  .change-file-head {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 10px;
+    background: rgba(255,255,255,0.02);
+  }
+
+  .change-status {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 9px;
+    text-transform: uppercase;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    padding: 2px 6px;
+  }
+
+  .change-status.added { color: var(--codex); }
+  .change-status.modified { color: var(--effort-med); }
+
+  .change-path {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    color: var(--text-dim);
+  }
+
+  .change-stat {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    white-space: nowrap;
+  }
+
+  .change-stat .add { color: #68d391; }
+  .change-stat .del { color: #f87171; }
+
+  .change-icon-btn {
+    width: 24px;
+    height: 24px;
+    border-radius: 5px;
+    border: 1px solid var(--border);
+    background: transparent;
+    color: var(--text-muted);
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .change-icon-btn:hover {
+    color: var(--text);
+    background: var(--surface2);
+    border-color: var(--border-bright);
+  }
+
+  .change-diff {
+    max-height: 220px;
+    overflow: auto;
+    background: rgba(0,0,0,0.20);
+    border-top: 1px solid rgba(255,255,255,0.04);
+  }
+
+  .diff-line {
+    display: grid;
+    grid-template-columns: 48px 1fr;
+    gap: 10px;
+    min-height: 22px;
+    padding: 1px 10px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    line-height: 1.7;
+    white-space: pre;
+  }
+
+  .diff-line .ln {
+    color: var(--text-muted);
+    text-align: right;
+    user-select: none;
+  }
+
+  .diff-line.add { background: rgba(46, 160, 67, 0.16); }
+  .diff-line.del { background: rgba(248, 81, 73, 0.16); }
+  .diff-line.add .code::before { content: '+ '; color: #68d391; }
+  .diff-line.del .code::before { content: '- '; color: #f87171; }
+  .diff-line.ctx .code::before { content: '  '; color: var(--text-muted); }
+
+  .diff-more {
+    padding: 6px 10px;
+    color: var(--text-muted);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+  }
+
+  .msg-ai .bubble {
+    border-radius: 2px 10px 10px 10px;
+    padding: 12px 14px;
+    line-height: 1.7;
+    margin-right: 8px;
+    position: relative;
+  }
+
+  .msg-ai.claude .bubble {
+    background: var(--claude-dim);
+    border: 1px solid var(--claude-glow);
+  }
+
+  .msg-ai.codex .bubble {
+    background: var(--codex-dim);
+    border: 1px solid var(--codex-glow);
+  }
+
+  .msg-ai.gemini .bubble {
+    background: var(--gemini-dim);
+    border: 1px solid var(--gemini-glow);
+  }
+
+  .msg-header {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-bottom: 8px;
+  }
+
+  .model-tag {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 9px;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    padding: 2px 6px;
+    border-radius: 3px;
+  }
+
+  .claude .model-tag {
+    color: var(--claude);
+    background: var(--claude-dim);
+    border: 1px solid var(--claude-glow);
+  }
+
+  .codex .model-tag {
+    color: var(--codex);
+    background: var(--codex-dim);
+    border: 1px solid var(--codex-glow);
+  }
+
+  .gemini .model-tag {
+    color: var(--gemini);
+    background: var(--gemini-dim);
+    border: 1px solid var(--gemini-glow);
+  }
+
+  .effort-tag {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 9px;
+    color: var(--text-muted);
+    letter-spacing: 0.05em;
+  }
+
+  .actual-model {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 9px;
+    color: var(--text-dim);
+    background: var(--surface2);
+    padding: 1px 6px;
+    border-radius: 3px;
+    border: 1px solid var(--border);
+  }
+
+  .tokens-tag {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 9px;
+    color: var(--text-muted);
+    margin-left: auto;
+  }
+
+  /* ?? CODE BLOCK ?? */
+  .code-block {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    margin: 8px 0;
+    overflow: hidden;
+  }
+
+  .code-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 6px 12px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .code-lang {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    color: var(--text-dim);
+  }
+
+  .copy-btn {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 9px;
+    color: var(--text-muted);
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    padding: 2px 6px;
+    border-radius: 3px;
+    transition: all 0.15s;
+  }
+
+  .copy-btn:hover { color: var(--text-dim); background: var(--surface2); }
+
+  pre {
+    padding: 12px;
+    overflow-x: auto;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11.5px;
+    line-height: 1.7;
+    color: var(--text);
+  }
+
+  pre::-webkit-scrollbar { height: 3px; }
+  pre::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+  .kw { color: #c084fc; }
+  .fn { color: #67e8f9; }
+  .str { color: #86efac; }
+  .cm { color: var(--text-muted); font-style: italic; }
+  .num { color: #fbbf24; }
+  .type { color: #fb923c; }
+
+  /* ?? THINKING INDICATOR ?? */
+  .thinking {
+    padding: 4px 16px;
+  }
+
+  .thinking-inner {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 14px;
+    border-radius: 2px 10px 10px 10px;
+    background: var(--claude-dim);
+    border: 1px solid var(--claude-glow);
+  }
+
+  .thinking-dots {
+    display: flex;
+    gap: 4px;
+  }
+
+  .thinking-dots span {
+    width: 5px;
+    height: 5px;
+    border-radius: 50%;
+    background: var(--claude);
+    animation: blink 1.2s ease-in-out infinite;
+  }
+
+  .thinking-dots span:nth-child(2) { animation-delay: 0.2s; }
+  .thinking-dots span:nth-child(3) { animation-delay: 0.4s; }
+
+  @keyframes blink {
+    0%, 80%, 100% { opacity: 0.2; transform: scale(0.8); }
+    40% { opacity: 1; transform: scale(1); }
+  }
+
+  .thinking-label {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    color: var(--claude);
+    opacity: 0.8;
+  }
+
+  .thinking-model {
+    font-size: 9px;
+    color: var(--text-muted);
+    font-family: 'JetBrains Mono', monospace;
+    margin-left: auto;
+  }
+
+  /* ?? INPUT AREA ?? */
+  .input-area {
+    padding: 10px 12px 12px;
+    border-top: 1px solid var(--border);
+    background: var(--surface);
+    flex-shrink: 0;
+    position: relative;
+  }
+
+  .review-bar {
+    display: none;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    min-height: 44px;
+    margin: 0 12px 8px;
+    padding: 0 14px;
+    border: 1px solid var(--border);
+    border-radius: 24px;
+    background: linear-gradient(180deg, rgba(255,255,255,0.035), rgba(255,255,255,0.015));
+    box-shadow: 0 8px 22px rgba(0,0,0,0.18);
+    flex-shrink: 0;
+  }
+
+  .review-bar.visible { display: flex; }
+
+  .review-meta {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+    color: var(--text-muted);
+    white-space: nowrap;
+  }
+
+  .review-add { color: #68d391; font-weight: 700; }
+  .review-del { color: #f87171; font-weight: 700; }
+
+  .review-action {
+    border: none;
+    background: transparent;
+    color: var(--text);
+    font-family: 'Inter', sans-serif;
+    font-size: 13px;
+    font-weight: 650;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 0;
+  }
+
+  .review-action:hover { color: #ffffff; }
+  .review-action span { color: var(--text-muted); font-size: 12px; }
+
+  .input-wrap {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    transition: border-color 0.15s;
+    overflow: hidden;
+  }
+
+  .input-wrap:focus-within {
+    border-color: var(--border-bright);
+  }
+
+  .input-wrap.drag-ready {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 1px var(--accent);
+  }
+
+  textarea {
+    width: 100%;
+    background: transparent;
+    border: none;
+    outline: none;
+    color: var(--text);
+    font-family: 'Inter', sans-serif;
+    font-size: 13px;
+    line-height: 1.6;
+    resize: none;
+    padding: 10px 14px 6px;
+    min-height: 42px;
+    max-height: 140px;
+  }
+
+  textarea::placeholder { color: var(--text-muted); }
+
+  .input-footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 4px 10px 8px;
+  }
+
+  .input-hints {
+    display: flex;
+    gap: 6px;
+  }
+
+  .hint-chip {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 9px;
+    color: var(--text-muted);
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 2px 6px;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+
+  .hint-chip:hover {
+    color: var(--text-dim);
+    border-color: var(--border-bright);
+  }
+
+  .send-btn {
+    width: 28px;
+    height: 28px;
+    border-radius: 7px;
+    background: var(--accent);
+    border: none;
+    color: white;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.15s;
+    flex-shrink: 0;
+  }
+
+  .send-btn:hover { background: #4f46e5; transform: scale(1.05); }
+  .send-btn:active { transform: scale(0.95); }
+
+  .send-btn svg { width: 13px; height: 13px; }
+
+  /* ?? ROUTE OVERRIDE ?? */
+  .override-bar {
+    display: flex;
+    gap: 4px;
+    padding: 6px 12px 0;
+  }
+
+  .override-btn {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 9px;
+    padding: 3px 8px;
+    border-radius: 4px;
+    border: 1px solid var(--border);
+    background: transparent;
+    color: var(--text-muted);
+    cursor: pointer;
+    transition: all 0.15s;
+    letter-spacing: 0.05em;
+  }
+
+  .override-btn:hover { color: var(--text-dim); border-color: var(--border-bright); }
+  .override-btn.active-claude { color: var(--claude); border-color: var(--claude-glow); background: var(--claude-dim); }
+  .override-btn.active-codex { color: var(--codex); border-color: var(--codex-glow); background: var(--codex-dim); }
+  .override-btn.active-gemini { color: var(--gemini); border-color: var(--gemini-glow); background: var(--gemini-dim); }
+  .override-btn.active-auto { color: var(--router); border-color: #fb923c33; background: #fb923c11; }
+  .override-btn.active-argue { color: #f9a8d4; border-color: #f9a8d433; background: #f9a8d411; }
+  .override-btn.active-team { color: #fbbf24; border-color: #fbbf2433; background: #fbbf2411; }
+
+  /* 컨텍스트 게이지 (헤더 바로 아래) */
+  .ctx-gauge {
+    padding: 6px 16px 8px;
+    border-bottom: 1px solid var(--border);
+    background: var(--surface);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    cursor: pointer;
+    flex-shrink: 0;
+    transition: background 0.15s;
+  }
+  .ctx-gauge:hover { background: var(--surface2); }
+  .ctx-gauge-label {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 9px;
+    color: var(--text-muted);
+    flex-shrink: 0;
+  }
+  .ctx-gauge-bar {
+    flex: 1;
+    height: 4px;
+    background: var(--surface2);
+    border-radius: 2px;
+    overflow: hidden;
+  }
+  .ctx-gauge-fill {
+    height: 100%;
+    width: 0%;
+    background: var(--codex);
+    border-radius: 2px;
+    transition: width 0.3s, background 0.3s;
+  }
+  .ctx-gauge-fill.warn { background: #fbbf24; }
+  .ctx-gauge-fill.danger { background: #f87171; }
+  .ctx-gauge-value {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 9px;
+    color: var(--text-dim);
+    flex-shrink: 0;
+    min-width: 80px;
+    text-align: right;
+  }
+  .ctx-gauge-reset {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 9px;
+    color: var(--text-muted);
+    background: transparent;
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    padding: 2px 6px;
+    cursor: pointer;
+  }
+  .ctx-gauge-reset:hover { color: var(--text); border-color: var(--border-bright); }
+
+  /* Mode 셀렉터 팝업 (Claude Code UI 복제) */
+  .mode-btn {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    padding: 5px 10px;
+    border-radius: 6px;
+    border: 1px solid var(--accent);
+    background: var(--surface2);
+    color: var(--text);
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    transition: all 0.15s;
+  }
+  .mode-btn:hover { background: var(--surface); }
+  .mode-btn.plan { border-color: #a78bfa; color: #a78bfa; }
+  .mode-btn.ask { border-color: #fbbf24; color: #fbbf24; }
+  .mode-btn.smart-auto { border-color: var(--router); color: var(--router); }
+
+  .mode-popup {
+    position: absolute;
+    right: 12px;
+    bottom: calc(100% + 6px);
+    width: 320px;
+    background: var(--surface);
+    border: 1px solid var(--border-bright);
+    border-radius: 10px;
+    padding: 6px;
+    z-index: 160;
+    box-shadow: 0 12px 28px rgba(0,0,0,0.55);
+    display: none;
+  }
+  .mode-popup.visible { display: block; }
+  .mode-popup-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 6px 10px 8px;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 4px;
+  }
+  .mode-popup-title { font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--text); font-weight: 600; }
+  .mode-popup-hint {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 9px;
+    color: var(--text-muted);
+    display: flex;
+    gap: 4px;
+    align-items: center;
+  }
+  .mode-popup-hint kbd {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    padding: 1px 5px;
+    font-size: 9px;
+    color: var(--text-dim);
+  }
+  .mode-item {
+    display: flex;
+    gap: 10px;
+    padding: 8px 10px;
+    border-radius: 6px;
+    cursor: pointer;
+    align-items: flex-start;
+  }
+  .mode-item:hover { background: var(--surface2); }
+  .mode-item.selected { background: var(--surface2); }
+  .mode-item .icon {
+    font-size: 16px;
+    flex-shrink: 0;
+    margin-top: 1px;
+    color: var(--text-dim);
+    width: 20px;
+    text-align: center;
+  }
+  .mode-item .body { flex: 1; }
+  .mode-item .title { font-family: 'Inter', sans-serif; font-size: 12px; color: var(--text); font-weight: 500; }
+  .mode-item .desc  { font-size: 10px; color: var(--text-muted); margin-top: 2px; line-height: 1.4; }
+  .mode-item .check { color: var(--codex); font-size: 14px; }
+  .mode-popup-effort {
+    margin-top: 6px;
+    padding: 10px;
+    border-top: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .mode-popup-effort .label {
+    font-family: 'Inter', sans-serif;
+    font-size: 11px;
+    color: var(--text);
+    flex: 1;
+  }
+  .mode-popup-effort .label small { color: var(--text-muted); font-size: 10px; margin-left: 4px; }
+  .effort-dots { display: flex; gap: 4px; align-items: center; }
+  .effort-dots .dot {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    background: var(--border-bright);
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .effort-dots .dot.on { background: var(--text); }
+  .effort-dots .dot:hover { transform: scale(1.3); }
+
+  .mode-item .desc { font-size: 9px; color: var(--text-muted); margin-top: 1px; }
+  .settings-btn {
+    width: 28px; height: 28px;
+    border-radius: 7px;
+    border: 1px solid var(--border);
+    background: var(--surface2);
+    color: var(--text-muted);
+    cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    transition: all 0.15s;
+    flex-shrink: 0;
+    box-shadow: inset 0 0 0 1px rgba(255,255,255,0.02);
+  }
+  .settings-btn:hover { color: var(--text); border-color: var(--border-bright); background: var(--surface); }
+
+  .mode-popup-effort .label { font-family: 'JetBrains Mono', monospace; font-size: 10px; color: var(--text-dim); display: flex; align-items: center; gap: 6px; }
+  .msg-ai.gemini .bubble { background: var(--gemini-dim); border: 1px solid var(--gemini-glow); }
+  .gemini .model-tag { color: var(--gemini); background: var(--gemini-dim); border: 1px solid var(--gemini-glow); }
+  .routing-badge.gemini { background: var(--gemini-dim); border: 1px solid var(--gemini-glow); color: var(--gemini); }
+
+  /* @mention 자동완성 팝업 — input-area 안, textarea 위쪽에 뜸 */
+  .mention-popup {
+    position: absolute;
+    bottom: calc(100% - 4px);
+    left: 12px;
+    right: 12px;
+    max-width: 280px;
+    background: var(--surface);
+    border: 1px solid var(--border-bright);
+    border-radius: 8px;
+    padding: 4px;
+    display: none;
+    z-index: 150;
+    box-shadow: 0 8px 20px rgba(0,0,0,0.5);
+  }
+  .mention-popup.visible { display: block; }
+  .mention-item {
+    padding: 8px 10px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    cursor: pointer;
+    border-radius: 5px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .mention-item.selected { background: var(--surface2); }
+  .mention-item:hover { background: var(--surface2); }
+  .mention-item .icon { font-size: 14px; width: 14px; flex-shrink: 0; }
+  .mention-item.claude .icon { color: var(--claude); }
+  .mention-item.codex .icon { color: var(--codex); }
+  .mention-item.gemini .icon { color: var(--gemini); }
+  .mention-item .name { color: var(--text); font-weight: 500; }
+  .mention-item .hint { font-size: 9px; color: var(--text-muted); margin-top: 1px; }
+
+  /* argue 스코어보드 (상단 sticky) */
+  .argue-board {
+    display: none;
+    position: sticky;
+    top: 0;
+    z-index: 50;
+    background: linear-gradient(180deg, var(--bg) 60%, transparent);
+    padding: 10px 16px 14px;
+    border-bottom: 1px solid var(--border);
+  }
+  .argue-board.visible { display: block; }
+  .argue-board-title {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    color: var(--text-dim);
+    margin-bottom: 8px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .argue-board-title .pulse {
+    width: 6px; height: 6px; border-radius: 50%;
+    background: #f9a8d4;
+    animation: pulse 1.2s ease-in-out infinite;
+  }
+  .argue-row {
+    display: grid;
+    grid-template-columns: 60px 1fr 60px;
+    gap: 8px;
+    align-items: center;
+    margin-bottom: 5px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+  }
+  .argue-row .label { color: var(--text-dim); }
+  .argue-row .label.claude { color: var(--claude); }
+  .argue-row .label.codex { color: var(--codex); }
+  .argue-row .label.gemini { color: var(--gemini); }
+  .argue-bar-wrap {
+    height: 6px;
+    background: var(--surface2);
+    border-radius: 3px;
+    overflow: hidden;
+  }
+  .argue-bar {
+    height: 100%;
+    transition: width 0.4s ease;
+    border-radius: 3px;
+  }
+  .argue-bar.claude { background: var(--claude); }
+  .argue-bar.codex { background: var(--codex); }
+  .argue-bar.gemini { background: var(--gemini); }
+  .argue-row .score {
+    text-align: right;
+    color: var(--text);
+    font-weight: 600;
+  }
+  .judge-verdict {
+    font-size: 10px;
+    color: var(--text-muted);
+    font-style: italic;
+    padding: 4px 16px 8px;
+    line-height: 1.5;
+  }
+
+  /* 사용량 패널 (모달 스타일) */
+  .usage-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.6);
+    z-index: 200;
+    align-items: center;
+    justify-content: center;
+  }
+  .usage-overlay.visible { display: flex; }
+  .usage-panel {
+    background: var(--surface);
+    border: 1px solid var(--border-bright);
+    border-radius: 10px;
+    width: 90%;
+    max-width: 440px;
+    padding: 18px 20px;
+    box-shadow: 0 10px 40px rgba(0,0,0,0.5);
+  }
+  .usage-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 14px;
+  }
+  .usage-title {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text);
+  }
+  .usage-close {
+    width: 24px; height: 24px; border-radius: 5px;
+    background: transparent; border: 1px solid var(--border);
+    color: var(--text-dim); cursor: pointer; font-size: 14px;
+  }
+  .usage-close:hover { color: var(--text); background: var(--surface2); }
+  .usage-row {
+    padding: 10px 0;
+    border-bottom: 1px solid var(--border);
+  }
+  .usage-row:last-child { border-bottom: none; }
+  .usage-row-title {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    margin-bottom: 4px;
+  }
+  .usage-row-model {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    font-weight: 600;
+  }
+  .usage-row-model.claude { color: var(--claude); }
+  .usage-row-model.codex { color: var(--codex); }
+  .usage-row-model.gemini { color: var(--gemini); }
+  .usage-row-plan {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 9px;
+    color: var(--text-muted);
+  }
+  .usage-stats {
+    display: flex;
+    gap: 14px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    color: var(--text-dim);
+  }
+  .usage-stats b { color: var(--text); font-weight: 500; }
+  .usage-hint {
+    font-size: 9px;
+    color: var(--text-muted);
+    margin-top: 4px;
+  }
+  .usage-reset {
+    margin-top: 14px;
+    padding: 6px 10px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--text-muted);
+    border-radius: 5px;
+    cursor: pointer;
+  }
+  .usage-reset:hover { color: var(--text); border-color: var(--border-bright); }
+
+  /* MCP 서버 관리 모달 */
+  .usage-card {
+    padding: 12px 0;
+    border-bottom: 1px solid var(--border);
+  }
+  .usage-card:last-child { border-bottom: none; }
+  .usage-card-head {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 8px;
+  }
+  .usage-card-icon { font-size: 14px; flex-shrink: 0; }
+  .usage-card-name {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+    font-weight: 600;
+    flex-shrink: 0;
+  }
+  .usage-card-plan {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 9px;
+    color: var(--text-muted);
+    flex: 1;
+  }
+  .usage-card-pct {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    color: var(--text);
+    font-weight: 600;
+  }
+  .usage-bar-wrap {
+    height: 5px;
+    background: var(--surface2);
+    border-radius: 3px;
+    overflow: hidden;
+    margin-bottom: 8px;
+  }
+  .usage-bar-fill {
+    height: 100%;
+    border-radius: 3px;
+    transition: width 0.3s, background 0.3s;
+  }
+  .usage-card-stats {
+    display: flex;
+    gap: 6px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    color: var(--text-dim);
+    align-items: baseline;
+  }
+  .usage-card-stats b { color: var(--text); font-weight: 500; }
+  .usage-card-hint {
+    font-size: 9px;
+    color: var(--text-muted);
+    margin-top: 6px;
+    line-height: 1.4;
+  }
+
+  /* 인라인 설정 모달 (VSCode QuickPick 대체) */
+  .settings-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.6);
+    z-index: 250;
+    align-items: center;
+    justify-content: center;
+  }
+  .settings-overlay.visible { display: flex; }
+  .settings-panel {
+    background: var(--surface);
+    border: 1px solid var(--border-bright);
+    border-radius: 10px;
+    width: 90%;
+    max-width: 420px;
+    max-height: 80vh;
+    overflow: hidden;
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
+    display: flex;
+    flex-direction: column;
+  }
+  .settings-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 14px 18px;
+    border-bottom: 1px solid var(--border);
+  }
+  .settings-title {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text);
+  }
+  .settings-close {
+    width: 24px; height: 24px;
+    border-radius: 5px;
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--text-dim);
+    cursor: pointer;
+    font-size: 14px;
+  }
+  .settings-close:hover { color: var(--text); background: var(--surface2); }
+  .settings-list {
+    overflow-y: auto;
+    padding: 6px;
+  }
+  .settings-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    width: 100%;
+    padding: 10px 12px;
+    background: transparent;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    text-align: left;
+    color: var(--text);
+    transition: background 0.1s;
+  }
+  .settings-item:hover { background: var(--surface2); }
+  .settings-item-icon { font-size: 18px; flex-shrink: 0; }
+  .settings-item-body { flex: 1; min-width: 0; }
+  .settings-item-title {
+    font-family: 'Inter', sans-serif;
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--text);
+  }
+  .settings-item-desc {
+    font-size: 10px;
+    color: var(--text-muted);
+    margin-top: 2px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .settings-item-arrow {
+    color: var(--text-muted);
+    font-size: 14px;
+    flex-shrink: 0;
+  }
+
+  /* compaction 알림 — 화면 우상단 */
+  .compaction-notice {
+    position: fixed;
+    top: 56px;
+    right: 12px;
+    z-index: 200;
+    background: var(--surface);
+    border: 1px solid var(--gemini-glow);
+    color: var(--gemini);
+    padding: 6px 12px;
+    border-radius: 6px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+    animation: slideIn 0.2s ease;
+  }
+  @keyframes slideIn {
+    from { transform: translateX(20px); opacity: 0; }
+    to   { transform: translateX(0); opacity: 1; }
+  }
+
+  /* generation STOP 버튼 — kill switch */
+  .gen-stop {
+    position: fixed;
+    bottom: 90px;
+    right: 16px;
+    background: #ef4444;
+    color: white;
+    border: none;
+    border-radius: 20px;
+    padding: 8px 14px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    font-weight: 600;
+    cursor: pointer;
+    box-shadow: 0 4px 12px rgba(239, 68, 68, 0.4);
+    z-index: 100;
+    display: none;
+    animation: pulse 2s ease-in-out infinite;
+  }
+  .gen-stop:hover { background: #dc2626; }
+  .gen-stop.visible { display: block; }
+
+  /* argue STOP 플로팅 버튼 */
+  .argue-stop {
+    position: fixed;
+    bottom: 90px;
+    right: 16px;
+    background: #ef4444;
+    color: white;
+    border: none;
+    border-radius: 20px;
+    padding: 8px 14px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    font-weight: 600;
+    cursor: pointer;
+    box-shadow: 0 4px 12px rgba(239, 68, 68, 0.4);
+    z-index: 100;
+    display: none;
+  }
+  .argue-stop:hover { background: #dc2626; }
+  .argue-stop.visible { display: block; }
+
+  .ctx-btn {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 9px;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 3px 7px;
+    border-radius: 4px;
+    border: 1px solid var(--border);
+    background: transparent;
+    color: var(--text-muted);
+    cursor: pointer;
+    transition: all 0.15s;
+    max-width: 120px;
+    overflow: hidden;
+  }
+  .ctx-btn.active {
+    color: var(--codex);
+    border-color: var(--codex-glow);
+    background: var(--codex-dim);
+  }
+  .ctx-btn.active .ctx-icon { color: var(--codex); }
+  .ctx-btn.has-selection { color: var(--claude); border-color: var(--claude-glow); background: var(--claude-dim); }
+  .ctx-label {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 80px;
+  }
+
+  .override-label {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 9px;
+    color: var(--text-muted);
+    display: flex;
+    align-items: center;
+    margin-right: 4px;
+  }
+
+  p { margin-bottom: 4px; }
+  p:last-child { margin-bottom: 0; }
+
+  /* ?? MARKDOWN RENDERED ?? */
+  .md { font-size: 13px; line-height: 1.75; }
+  .md p { margin: 0 0 10px; line-height: 1.75; }
+  .md p:last-child { margin-bottom: 0; }
+  .md h1, .md h2, .md h3 {
+    margin: 14px 0 8px;
+    line-height: 1.3;
+    font-weight: 600;
+  }
+  .md h1 { font-size: 18px; }
+  .md h2 { font-size: 16px; }
+  .md h3 { font-size: 14px; }
+  .md ul, .md ol { margin: 8px 0 10px 20px; }
+  .md li { margin: 4px 0; }
+  .md blockquote {
+    margin: 10px 0;
+    padding: 8px 12px;
+    border-left: 2px solid var(--border-bright);
+    color: var(--text-dim);
+    background: rgba(255,255,255,0.03);
+  }
+  .md table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 10px 0;
+    font-size: 12px;
+  }
+  .md th, .md td {
+    border: 1px solid var(--border);
+    padding: 6px 8px;
+    text-align: left;
+    vertical-align: top;
+  }
+  .md th { background: rgba(255,255,255,0.04); }
+
+  .md h1, .md h2, .md h3 {
+    font-family: 'JetBrains Mono', monospace;
+    font-weight: 600;
+    margin: 14px 0 6px;
+    color: var(--text);
+    letter-spacing: -0.01em;
+  }
+  .md h1 { font-size: 15px; }
+  .md h2 { font-size: 13px; }
+  .md h3 { font-size: 12px; color: var(--text-dim); }
+
+  .md ul, .md ol {
+    padding-left: 18px;
+    margin: 6px 0 8px;
+  }
+  .md li { margin-bottom: 3px; line-height: 1.6; }
+  .md li::marker { color: var(--text-muted); }
+
+  .md strong { color: var(--text); font-weight: 600; }
+  .md em { color: var(--text-dim); font-style: italic; }
+
+  .md blockquote {
+    border-left: 2px solid var(--border-bright);
+    padding-left: 12px;
+    margin: 8px 0;
+    color: var(--text-dim);
+    font-style: italic;
+  }
+
+  /* 메시지 버블 — Claude 메시지는 코랄 톤 */
+  .md code:not(pre code) {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    padding: 1px 5px;
+    color: var(--router);
+  }
+
+  /* 코드 블록 (hljs) */
+  .md pre {
+    background: var(--bg) !important;
+    border: 1px solid var(--border);
+    border-radius: 0 0 6px 6px;
+    padding: 12px !important;
+    overflow-x: auto;
+    margin: 0;
+    font-size: 11.5px !important;
+    line-height: 1.7 !important;
+  }
+
+  .md pre::-webkit-scrollbar { height: 3px; }
+  .md pre::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+  .md .code-wrap {
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    overflow: hidden;
+    margin: 8px 0;
+  }
+
+  .md .code-wrap pre {
+    border: none !important;
+    border-radius: 0 !important;
+    margin: 0 !important;
+  }
+
+  .md .code-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 5px 12px;
+    background: var(--surface2);
+    border-bottom: 1px solid var(--border);
+  }
+
+  .md .code-lang {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    color: var(--text-dim);
+  }
+
+  .md .copy-btn {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 9px;
+    color: var(--text-muted);
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    padding: 2px 6px;
+    border-radius: 3px;
+    transition: all 0.15s;
+  }
+  .md .copy-btn:hover { color: var(--text-dim); background: var(--border); }
+  .md .copy-btn.copied { color: var(--codex); }
+
+  /* 툴 콜 박스 — Read(file), Bash(cmd) 등 한 줄로 */
+  .file-link {
+    color: #67e8f9 !important;
+    text-decoration: underline;
+    cursor: pointer;
+    background: rgba(103, 232, 249, 0.08);
+    padding: 0 4px;
+    border-radius: 3px;
+    transition: background 0.15s;
+  }
+  .file-link:hover { background: rgba(103, 232, 249, 0.2); }
+
+  /* 변경 사항 카드 (말풍선 안 카드형) */
+  .tool-call {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 12px;
+    margin: 6px 0;
+    background: rgba(103, 232, 249, 0.05);
+    border-left: 2px solid #67e8f9;
+    border-radius: 0 6px 6px 0;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    line-height: 1.5;
+  }
+  .tool-call .tool-dot {
+    color: #67e8f9;
+    font-size: 10px;
+    flex-shrink: 0;
+  }
+  .tool-call .tool-name {
+    color: var(--text);
+    font-weight: 600;
+    flex-shrink: 0;
+  }
+  .tool-call .tool-args {
+    color: var(--text-dim);
+    word-break: break-all;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .tool-call .tool-args code {
+    background: var(--surface2);
+    padding: 1px 5px;
+    border-radius: 3px;
+    color: var(--router);
+    font-size: 10px;
+  }
+  /* 변경 요약 바 — 입력창 위 sticky */
+  .tool-call.tool-Bash       { border-left-color: #fbbf24; background: rgba(251, 191, 36, 0.05); }
+  .tool-call.tool-Bash .tool-dot { color: #fbbf24; }
+  .tool-call.tool-Write,
+  .tool-call.tool-Edit,
+  .tool-call.tool-MultiEdit,
+  .tool-call.tool-write_file,
+  .tool-call.tool-replace_in_file { border-left-color: #34d399; background: rgba(52, 211, 153, 0.05); }
+  .tool-call.tool-Write .tool-dot,
+  .tool-call.tool-Edit .tool-dot,
+  .tool-call.tool-MultiEdit .tool-dot,
+  .tool-call.tool-write_file .tool-dot,
+  .tool-call.tool-replace_in_file .tool-dot { color: #34d399; }
+  .tool-call.tool-WebFetch,
+  .tool-call.tool-WebSearch  { border-left-color: #c084fc; background: rgba(192, 132, 252, 0.05); }
+  .tool-call.tool-WebFetch .tool-dot,
+  .tool-call.tool-WebSearch .tool-dot { color: #c084fc; }
+  .tool-call.tool-TodoWrite  { border-left-color: #f9a8d4; background: rgba(249, 168, 212, 0.05); }
+  .tool-call.tool-TodoWrite .tool-dot { color: #f9a8d4; }
+  .tool-call.tool-generate_image,
+  .tool-call.tool-consult_codex,
+  .tool-call.tool-consult_gemini { border-left-color: #fb923c; background: rgba(251, 146, 60, 0.05); }
+  .tool-call.tool-generate_image .tool-dot,
+  .tool-call.tool-consult_codex .tool-dot,
+  .tool-call.tool-consult_gemini .tool-dot { color: #fb923c; }
+
+  /* 메시지 헤더 — 모델 라벨 + actualModel */
+  .hljs { background: transparent !important; padding: 0 !important; }
+  .hljs-keyword { color: #c084fc !important; }
+  .hljs-built_in { color: #67e8f9 !important; }
+  .hljs-string { color: #86efac !important; }
+  .hljs-comment { color: #4b5563 !important; font-style: italic; }
+  .hljs-number { color: #fbbf24 !important; }
+  .hljs-type, .hljs-class { color: #fb923c !important; }
+  .hljs-function, .hljs-title { color: #67e8f9 !important; }
+  .hljs-variable { color: #e8e8f0 !important; }
+  .hljs-attr { color: #93c5fd !important; }
+  .hljs-meta { color: #f87171 !important; }
+
+  .actual-model {
+  .streaming-cursor::after {
+    color: var(--text-dim);
+    color: var(--claude);
+    animation: blink-cursor 0.8s step-end infinite;
+    margin-left: 1px;
+  }
+  .codex-streaming .streaming-cursor::after { color: var(--codex); }
+
+  @keyframes blink-cursor {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0; }
+  }
+
+  /* thinking 인디케이터 */
+  .md table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 8px 0;
+    font-size: 12px;
+  }
+  .md th {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    font-weight: 600;
+    padding: 6px 10px;
+    border-bottom: 1px solid var(--border-bright);
+    color: var(--text-dim);
+    text-align: left;
+  }
+  .md td {
+    padding: 5px 10px;
+    border-bottom: 1px solid var(--border);
+    color: var(--text);
+  }
+  .md tr:last-child td { border-bottom: none; }
+</style>
+</head>
+<body>
+
+<!-- HEADER -->
+<div class="header">
+  <div class="logo">
+    <div class="logo-icon">
+      <svg viewBox="0 0 28 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <!-- 3개 모델을 삼각형으로 겹쳐 (mix-blend-mode로 교집합 영역에서 색이 섞임) -->
+        <g style="mix-blend-mode: screen;">
+          <circle cx="9"  cy="15" r="6.5" fill="#cc785c" opacity="0.85"/>
+          <circle cx="19" cy="15" r="6.5" fill="#60a5fa" opacity="0.85"/>
+          <circle cx="14" cy="8"  r="6.5" fill="#e5e7eb" opacity="0.85"/>
+        </g>
+      </svg>
+    </div>
+    <span class="logo-text">Orchestr<span>AI</span></span>
+  </div>
+  <div class="header-right">
+    <div class="status-dot"></div>
+    <span class="status-text">auto</span>
+    <button class="icon-btn" title="Review changes" onclick="reviewLatestChanges()">
+      <svg viewBox="0 0 16 16" fill="none" width="12" height="12">
+        <path d="M3 4.5h10M3 8h10M3 11.5h6" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>
+      </svg>
+    </button>
+    <button class="icon-btn" title="Usage" onclick="openUsagePanel()">
+      <svg viewBox="0 0 16 16" fill="none" width="12" height="12">
+        <rect x="2" y="9" width="2" height="5" fill="currentColor"/>
+        <rect x="6" y="6" width="2" height="8" fill="currentColor"/>
+        <rect x="10" y="3" width="2" height="11" fill="currentColor"/>
+      </svg>
+    </button>
+    <button class="icon-btn" title="Clear chat" onclick="clearChat()">
+      <svg viewBox="0 0 16 16" fill="none" width="12" height="12">
+        <path d="M3 5h10M6 5V3h4v2M5 5l1 9h4l1-9" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+    </button>
+  </div>
+</div>
+
+<!-- 컨텍스트 게이지 (메모리 사용량 + 리셋) -->
+<div class="ctx-gauge" id="ctx-gauge" onclick="onGaugeClick()" title="클릭하면 대화 리셋 (컨텍스트 초기화)">
+  <span class="ctx-gauge-label">🧠 memory</span>
+  <div class="ctx-gauge-bar"><div class="ctx-gauge-fill" id="ctx-gauge-fill"></div></div>
+  <span class="ctx-gauge-value" id="ctx-gauge-value">0 / 200k</span>
+  <button class="ctx-gauge-reset" onclick="event.stopPropagation(); onGaugeClick()">reset</button>
+</div>
+
+<!-- argue 스코어보드 (판정 실시간 점수) -->
+<div class="argue-board" id="argue-board">
+  <div class="argue-board-title"><span class="pulse"></span> argue 판정 (Claude Haiku) · 0~10점</div>
+  <div id="argue-rows"></div>
+</div>
+
+<div class="model-filter-bar" id="model-filter-bar">
+  <button class="model-filter-btn active" data-filter="all" onclick="setModelFilter('all', this)">all</button>
+  <button class="model-filter-btn claude" data-filter="claude" onclick="setModelFilter('claude', this)">Claude</button>
+  <button class="model-filter-btn codex" data-filter="codex" onclick="setModelFilter('codex', this)">Codex</button>
+  <button class="model-filter-btn gemini" data-filter="gemini" onclick="setModelFilter('gemini', this)">Gemini</button>
+</div>
+
+<!-- MESSAGES -->
+<div class="messages" id="messages">
+</div>
+
+<!-- argue 모드 중단 확인 버튼 -->
+  <button class="argue-stop" id="argue-stop" onclick="stopArgue()">■ STOP</button>
+
+<!-- 일반 generation 중단 (kill switch) — argue 아닐 때 표시 -->
+  <button class="gen-stop" id="gen-stop" onclick="stopGeneration()">■ STOP</button>
+
+<div class="review-bar" id="review-bar">
+  <div class="review-meta" id="review-meta"></div>
+  <button class="review-action" onclick="reviewLatestChanges()">변경 사항 검토 <span>↗</span></button>
+</div>
+
+<!-- 사용량 패널 -->
+<div class="usage-overlay" id="usage-overlay" onclick="if(event.target===this)closeUsagePanel()">
+  <div class="usage-panel">
+    <div class="usage-header">
+      <div class="usage-title">📊 Account & Usage</div>
+      <button class="usage-close" onclick="closeUsagePanel()">×</button>
+    </div>
+    <div id="usage-body"></div>
+    <button class="usage-reset" onclick="postToExtension({type:'resetSessionUsage'})">세션 카운터 리셋</button>
+  </div>
+</div>
+
+<!-- 인라인 설정 모달 (VSCode QuickPick 대체) -->
+<div class="settings-overlay" id="settings-overlay" onclick="if(event.target===this)closeSettingsModal()">
+  <div class="settings-panel">
+    <div class="settings-header">
+      <div class="settings-title">⚙ 설정</div>
+      <button class="settings-close" onclick="closeSettingsModal()">×</button>
+    </div>
+    <div class="settings-list">
+      <button class="settings-item" onclick="onSettingsAction('accounts')">
+        <span class="settings-item-icon">👤</span>
+        <div class="settings-item-body">
+          <div class="settings-item-title">계정 연결</div>
+          <div class="settings-item-desc" id="settings-accounts-status">Claude · Codex · Gemini · 이미지 API</div>
+        </div>
+        <span class="settings-item-arrow">›</span>
+      </button>
+      <button class="settings-item" onclick="onSettingsAction('mcp')">
+        <span class="settings-item-icon">🔌</span>
+        <div class="settings-item-body">
+          <div class="settings-item-title">MCP 서버 관리</div>
+          <div class="settings-item-desc" id="settings-mcp-status">새 서버 추가·삭제</div>
+        </div>
+        <span class="settings-item-arrow">›</span>
+      </button>
+      <button class="settings-item" onclick="onSettingsAction('telegram')">
+        <span class="settings-item-icon">📱</span>
+        <div class="settings-item-body">
+          <div class="settings-item-title">Telegram 연결</div>
+          <div class="settings-item-desc" id="settings-telegram-status">어디서나 채팅 가능</div>
+        </div>
+        <span class="settings-item-arrow">›</span>
+      </button>
+      <button class="settings-item" onclick="onSettingsAction('usage')">
+        <span class="settings-item-icon">📊</span>
+        <div class="settings-item-body">
+          <div class="settings-item-title">사용량 보기</div>
+          <div class="settings-item-desc">모델별 토큰 사용량</div>
+        </div>
+        <span class="settings-item-arrow">›</span>
+      </button>
+      <button class="settings-item" onclick="onSettingsAction('restoreArchive')">
+        <span class="settings-item-icon">📦</span>
+        <div class="settings-item-body">
+          <div class="settings-item-title">이전 대화 복원</div>
+          <div class="settings-item-desc">아카이브에서 불러오기</div>
+        </div>
+        <span class="settings-item-arrow">›</span>
+      </button>
+      <button class="settings-item" onclick="onSettingsAction('openArchives')">
+        <span class="settings-item-icon">📁</span>
+        <div class="settings-item-body">
+          <div class="settings-item-title">아카이브 폴더 열기</div>
+          <div class="settings-item-desc">JSON 파일 직접 보기</div>
+        </div>
+        <span class="settings-item-arrow">›</span>
+      </button>
+      <button class="settings-item" onclick="onSettingsAction('logs')">
+        <span class="settings-item-icon">📜</span>
+        <div class="settings-item-body">
+          <div class="settings-item-title">로그 보기</div>
+          <div class="settings-item-desc">OrchestrAI Output Channel</div>
+        </div>
+        <span class="settings-item-arrow">›</span>
+      </button>
+      <button class="settings-item" onclick="onSettingsAction('resetUsage')">
+        <span class="settings-item-icon">🔄</span>
+        <div class="settings-item-body">
+          <div class="settings-item-title">사용량 리셋</div>
+          <div class="settings-item-desc">세션 카운터 초기화</div>
+        </div>
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- INPUT -->
+<div class="input-area">
+  <div class="override-bar">
+    <button class="settings-btn" onclick="openSettingsModal()" title="Settings">
+      <svg viewBox="0 0 16 16" fill="none" width="12" height="12">
+        <rect x="3" y="3" width="10" height="10" rx="2" stroke="currentColor" stroke-width="1.35"/>
+        <path d="M5 11L11 5" stroke="currentColor" stroke-width="1.35" stroke-linecap="round"/>
+      </svg>
+    </button>
+    <span class="override-label">force:</span>
+    <button class="override-btn active-auto" onclick="setOverride(this,'auto')">✦ auto</button>
+    <button class="override-btn" onclick="setOverride(this,'claude')">● claude</button>
+    <button class="override-btn" onclick="setOverride(this,'codex')">○ codex</button>
+    <button class="override-btn" onclick="setOverride(this,'gemini')">◆ gemini</button>
+    <button class="override-btn" onclick="setOverride(this,'argue')" title="등록된 모델들이 라운드 로빈으로 서로 보완·반박 (최대 6턴, 중간 확장 가능)">⚡ argue</button>
+    <button class="override-btn" onclick="setOverride(this,'team')" title="작업 모드 — Claude 설계 → Codex 구현 → Gemini 리뷰 순차 실행">👥 team</button>
+    <div style="flex:1"></div>
+    <button class="ctx-btn active" id="ctx-btn" onclick="toggleContext(this)" title="현재 파일 컨텍스트 자동 주입">
+      <span class="ctx-icon">📄</span>
+      <span class="ctx-label" id="ctx-label">no file</span>
+    </button>
+  </div>
+  <div style="height:6px"></div>
+  <!-- @ 멘션 자동완성 -->
+  <div class="mention-popup" id="mention-popup"></div>
+
+  <div class="input-wrap">
+    <input id="image-input" type="file" accept="image/*" multiple hidden onchange="handleImageFiles(this.files)">
+    <div class="attach-preview" id="attach-preview"></div>
+    <textarea id="input" placeholder="무엇을 만들까요... (@ 치면 모델 선택)" rows="1"
+      oninput="onInputChange(event)" onkeydown="handleKey(event)"
+      onblur="setTimeout(closeMention, 150)"></textarea>
+    <div class="input-footer">
+      <div class="input-hints">
+        <span class="hint-chip" onclick="fillInput('전체 구조 리팩토링해줘')">리팩토링</span>
+        <span class="hint-chip" onclick="fillInput('git commit 메시지 써줘')">git</span>
+        <span class="hint-chip" onclick="fillInput('이 코드 어떻게 동작해?')">설명</span>
+      </div>
+      <button class="icon-btn" title="이미지 첨부" onclick="document.getElementById('image-input').click()">
+        <svg viewBox="0 0 16 16" fill="none" width="12" height="12">
+          <rect x="2" y="3" width="12" height="10" rx="1.5" stroke="currentColor" stroke-width="1.3"/>
+          <path d="M4 11l3-3 2 2 1-1 2 2" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/>
+          <circle cx="11" cy="6" r="1" fill="currentColor"/>
+        </svg>
+      </button>
+      <button class="mode-btn auto-edit" id="mode-btn" onclick="toggleModePopup(event)" title="Mode 쨌 Effort (Shift+Tab)">
+        <span id="mode-btn-icon">&lt;/&gt;</span>
+        <span id="mode-btn-label">Edit automatically</span>
+      </button>
+      <button class="send-btn" onclick="sendMessage()">
+        <svg viewBox="0 0 14 14" fill="none">
+          <path d="M2 7h10M7 2l5 5-5 5" stroke="white" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </button>
+    </div>
+  </div>
+
+  <!-- Mode + Effort 팝업 -->
+  <div class="mode-popup" id="mode-popup">
+    <div class="mode-popup-header">
+      <span class="mode-popup-title">Modes</span>
+      <span class="mode-popup-hint"><kbd>⇧</kbd> + <kbd>tab</kbd> to switch</span>
+    </div>
+    <div class="mode-item" data-mode="ask" onclick="setPermissionMode('ask')">
+      <span class="icon">?</span>
+      <div class="body">
+        <div class="title">Ask before edits</div>
+        <div class="desc">수정 전에 매번 확인받음</div>
+      </div>
+      <span class="check" id="check-ask"></span>
+    </div>
+    <div class="mode-item selected" data-mode="auto-edit" onclick="setPermissionMode('auto-edit')">
+      <span class="icon">&lt;/&gt;</span>
+      <div class="body">
+        <div class="title">Edit automatically</div>
+        <div class="desc">선택 영역 또는 파일을 바로 수정</div>
+      </div>
+      <span class="check" id="check-auto-edit">✓</span>
+    </div>
+    <div class="mode-item" data-mode="plan" onclick="setPermissionMode('plan')">
+      <span class="icon">📋</span>
+      <div class="body">
+        <div class="title">Plan mode</div>
+        <div class="desc">코드 탐색 후 수정 대신 계획.md 먼저 작성</div>
+      </div>
+      <span class="check" id="check-plan"></span>
+    </div>
+    <div class="mode-item" data-mode="smart-auto" onclick="setPermissionMode('smart-auto')">
+      <span class="icon">⚡</span>
+      <div class="body">
+        <div class="title">Auto mode</div>
+        <div class="desc">작업 성격에 따라 자동으로 실행/확인 판단</div>
+      </div>
+      <span class="check" id="check-smart-auto"></span>
+    </div>
+    <div class="mode-popup-effort">
+      <div class="label">Effort<small id="effort-label">(auto)</small></div>
+      <div class="effort-dots" id="effort-dots">
+        <div class="dot" data-effort="low" onclick="setEffortOverride('low')"></div>
+        <div class="dot" data-effort="medium" onclick="setEffortOverride('medium')"></div>
+        <div class="dot" data-effort="high" onclick="setEffortOverride('high')"></div>
+        <div class="dot" data-effort="extra-high" onclick="setEffortOverride('extra-high')"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  // ── Marked.js 설정 (CDN 실패 시 fallback) ──
+  const HAS_MARKED = typeof marked !== 'undefined'
+  const HAS_HLJS = typeof hljs !== 'undefined'
+
+  if (HAS_MARKED) {
+    marked.setOptions({ breaks: true, gfm: true })
+    const renderer = new marked.Renderer()
+    renderer.code = function({ text, lang }) {
+      const language = lang || 'plaintext'
+      const validLang = HAS_HLJS && hljs.getLanguage(language) ? language : 'plaintext'
+      const highlighted = HAS_HLJS
+        ? hljs.highlight(text, { language: validLang }).value
+        : text.replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      const escapedLang = language.replace(/</g, '&lt;')
+      return `<div class="code-wrap">
+        <div class="code-header">
+          <span class="code-lang">${escapedLang}</span>
+          <button class="copy-btn" onclick="copyCode(this, \`${text.replace(/`/g,'\\`').replace(/\$/g,'\\$')}\`)">copy</button>
+        </div>
+        <pre><code class="hljs language-${validLang}">${highlighted}</code></pre>
+      </div>`
+    }
+    // 파일 경로 링크 — orchestrai-open: 스킴이면 클릭 시 VSCode 열기 메시지 보냄
+    renderer.link = function({ href, text }) {
+      if (typeof href === 'string' && href.startsWith('orchestrai-open:')) {
+        const p = decodeURIComponent(href.slice('orchestrai-open:'.length))
+        const safeText = (text || p).replace(/</g,'&lt;').replace(/>/g,'&gt;')
+        const safePath = p.replace(/'/g, "\\'").replace(/"/g, '&quot;')
+        return `<a class="file-link" title="${safePath}" onclick="event.preventDefault();postToExtension({type:'openFile',path:'${safePath}'})">${safeText}</a>`
+      }
+      // 일반 링크는 새 창으로
+      return `<a href="${safeHref}" target="_blank" rel="noreferrer">${text}</a>`
+    }
+    marked.use({ renderer })
+  }
+
+  // Codex가 출력에 literal escape (\n, \t, \r) + @@ 같은 separator를 흘려보낼 때가 있음 — 정리
+  function cleanRawStream(raw) {
+    return String(raw ?? '')
+      .replace(/\\n@@\\n/g, '\n\n')      // \n@@\n separator → 빈 줄
+      .replace(/\\n/g, '\n')              // literal \n → 실제 newline
+      .replace(/\\t/g, '\t')
+      .replace(/\\r/g, '')
+      .replace(/】【/g, '')                // 잘린 JSON token fragment
+  }
+
+  function renderToolActivityLine(line) {
+    const match = String(line || '').match(/^[ \t]*(?:⏺|●|◦|▪|\?\?)\s*(.*)$/)
+    if (!match) return null
+    const body = match[1].trim()
+    const call = body.match(/^([A-Za-z_][\w.-]*)(?:\((.*)\))?$/)
+    const toolName = call ? call[1] : 'activity'
+    const toolArgs = call && call[2] != null ? call[2] : body
+    const cssName = toolName.replace(/[^A-Za-z0-9_]/g, '')
+    return `<div class="tool-call tool-${cssName}"><span class="tool-dot">⏺</span><span class="tool-name">${escapeHtml(toolName)}</span><span class="tool-args">${escapeHtml(toolArgs)}</span></div>`
+  }
+
+  function normalizeToolActivities(raw) {
+    return cleanRawStream(raw)
+      .replace(/([^\n])((?:⏺|●|◦|▪|\?\?)\s*[A-Za-z_][\w.-]*(?:\(|\b))/g, '$1\n$2')
+      .split('\n')
+      .map(line => renderToolActivityLine(line) || line)
+      .join('\n')
+  }
+
+  function renderMarkdown(raw) {
+    const normalized = normalizeToolActivities(raw)
+    if (HAS_MARKED) return marked.parse(normalized)
+    return normalized
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/\n/g, '<br>')
+  }
+
+  function escapeHtml(value) {
+    return String(value ?? '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;')
+  }
+
+  function plainTextFromMessage(msgId) {
+    const el = document.getElementById(`content-${msgId}`) || document.querySelector(`#msg-${msgId} .message-text`)
+    return el ? el.innerText : ''
+  }
+
+  function copyMessage(msgId, btn) {
+    navigator.clipboard.writeText(plainTextFromMessage(msgId)).then(() => {
+      const old = btn.textContent
+      btn.textContent = 'copied'
+      setTimeout(() => { btn.textContent = old }, 1200)
+    })
+  }
+
+  function rollbackTurn(userId) {
+    if (!confirm('이 메시지 이후의 코드 변경과 채팅을 되돌릴까요?')) return
+    postToExtension({ type: 'rollbackTurn', userId })
+  }
+
+  function openChangedFile(path) {
+    postToExtension({ type: 'openFile', path })
+  }
+
+  function reviewFileChange(turnId, path) {
+    postToExtension({ type: 'reviewChanges', turnId, path })
+  }
+
+  let latestChangeSummary = null
+
+  function updateReviewBar(summary) {
+    latestChangeSummary = summary && summary.files > 0 ? summary : null
+    const bar = document.getElementById('review-bar')
+    const meta = document.getElementById('review-meta')
+    if (!bar || !meta) return
+    if (!latestChangeSummary) {
+      bar.classList.remove('visible')
+      meta.innerHTML = ''
+      return
+    }
+    const files = latestChangeSummary.files
+    meta.innerHTML = `
+      <span>${files}개 파일 변경됨</span>
+      <span class="review-add">+${latestChangeSummary.additions ?? 0}</span>
+      <span class="review-del">-${latestChangeSummary.deletions ?? 0}</span>
+    `
+    bar.classList.add('visible')
+  }
+
+  function reviewLatestChanges() {
+    if (!latestChangeSummary) {
+      showToast('검토할 변경 사항이 없어요')
+      return
+    }
+    postToExtension({ type: 'reviewChanges', turnId: latestChangeSummary.turnId })
+  }
+
+  function renderChangedFiles(files = [], summary = null) {
+    if (!files.length) return ''
+    const totalAdd = files.reduce((sum, f) => sum + (f.additions || 0), 0)
+    const totalDel = files.reduce((sum, f) => sum + (f.deletions || 0), 0)
+    const turnId = summary?.turnId || latestChangeSummary?.turnId || files[0]?.turnId || ''
+    return `<div class="change-panel">
+      <div class="change-title">
+        <span>편집한 파일</span>
+        <span><span class="review-add">+${totalAdd}</span> <span class="review-del">-${totalDel}</span></span>
+      </div>
+      ${files.map(f => `
+        <div class="change-file">
+          <div class="change-file-head">
+            <span class="change-status ${f.status}">${f.status}</span>
+            <span class="change-path" title="${escapeHtml(f.path)}">${escapeHtml(f.path)}</span>
+            <span class="change-stat"><span class="add">+${f.additions || 0}</span> <span class="del">-${f.deletions || 0}</span></span>
+            <button class="change-icon-btn" title="파일 열기" data-path="${escapeHtml(f.path)}" onclick="openChangedFile(this.dataset.path)">↗</button>
+            <button class="change-icon-btn" title="diff 보기" data-turn="${escapeHtml(turnId)}" data-path="${escapeHtml(f.path)}" onclick="reviewFileChange(this.dataset.turn, this.dataset.path)">≡</button>
+          </div>
+          ${renderDiffPreview(f.preview || [])}
+        </div>
+      `).join('')}
+    </div>`
+  }
+
+  function renderDiffPreview(lines = []) {
+    if (!lines.length) return ''
+    return `<div class="change-diff">
+      ${lines.map(line => {
+        const ln = line.type === 'add'
+          ? (line.newLine ?? '')
+          : line.type === 'del'
+          ? (line.oldLine ?? '')
+          : `${line.oldLine ?? ''}`
+        return `<div class="diff-line ${line.type}">
+          <span class="ln">${escapeHtml(ln)}</span>
+          <span class="code">${escapeHtml(line.text ?? '')}</span>
+        </div>`
+      }).join('')}
+      ${lines.length >= 18 ? '<div class="diff-more">전체 diff는 ≡ 버튼으로 확인</div>' : ''}
+    </div>`
+  }
+
+  function renderAttachments(attachments = []) {
+    if (!attachments.length) return ''
+    return `<div class="attachments">${attachments.map(a => `
+      <img class="attachment-img" src="${a.dataUrl}" title="${escapeHtml(a.name)}">
+    `).join('')}</div>`
+  }
+
+  function copyCode(btn, code) {
+    navigator.clipboard.writeText(code).then(() => {
+      btn.textContent = 'copied!'
+      btn.classList.add('copied')
+      setTimeout(() => {
+        btn.textContent = 'copy'
+        btn.classList.remove('copied')
+      }, 1500)
+    })
+  }
+
+  // ── VSCode API 브릿지 ──
+  const vscode = typeof acquireVsCodeApi !== 'undefined' ? acquireVsCodeApi() : null
+  const WEBVIEW_INSTANCE_ID = `${Date.now()}-${Math.random().toString(36).slice(2)}`
+
+  function postToExtension(msg) {
+    if (vscode) vscode.postMessage(msg)
+  }
+
+  // Extension → WebView 메시지 수신
+  window.addEventListener('message', (event) => {
+    const msg = event.data
+    switch (msg.type) {
+      case 'userMessage':
+        appendUserMessage(msg.message)
+        break
+      case 'routing':
+        showThinking()
+        break
+      case 'routingDecision':
+        hideThinking()
+        appendRoutingBadge(msg.decision)
+        break
+      case 'streamStart':
+        beginStreamBubble(msg.id, msg.decision)
+        break
+      case 'streamChunk':
+        appendChunk(msg.id, msg.text)
+        break
+      case 'streamEnd':
+        finalizeMessage(msg.id, msg.tokens, msg.changedFiles || [], msg.actualModel, msg.changeSummary)
+        break
+      case 'streamError':
+        showStreamError(msg.id, msg.error)
+        break
+      case 'blocked':
+        showToast(msg.reason)
+        break
+      case 'sendUnlocked':
+        setSendLocked(false)
+        break
+      case 'cleared':
+        document.getElementById('messages').innerHTML = ''
+        Object.keys(streamBuffers).forEach(k => delete streamBuffers[k])
+        updateReviewBar(null)
+        showToast('대화 초기화됐어요')
+        break
+      case 'authStatus':
+        updateAuthStatus(msg.claude, msg.codex, msg.gemini)
+        break
+      case 'generationStart':
+        document.getElementById('gen-stop').classList.add('visible')
+        break
+      case 'generationEnd':
+      case 'generationStopped':
+        document.getElementById('gen-stop').classList.remove('visible')
+        break
+      case 'argueStart':
+        document.getElementById('argue-stop').classList.add('visible')
+        // argue 모드면 일반 stop 버튼 숨김 (argue stop이 별도 컨트롤로 많음)
+        document.getElementById('gen-stop').classList.remove('visible')
+        initArgueBoard(msg.models)
+        break
+      case 'argueJudging':
+        showJudgingHint(msg.model)
+        break
+      case 'argueScore':
+        updateArgueBoard(msg.scoreboard)
+        appendVerdictUnderMessage(msg.msgId, msg.verdict)
+        break
+      case 'argueEnd':
+        document.getElementById('argue-stop').classList.remove('visible')
+        finalizeArgueBoard(msg.scoreboard)
+        break
+      case 'rehydrate':
+        rehydrateMessages(msg.messages)
+        break
+      case 'usage':
+        renderUsagePanel(msg)
+        break
+      case 'compactionStart':
+        showCompactionNotice(`Compacting ${msg.messageCount} messages...`)
+        break
+      case 'compactionEnd': {
+        const el = document.getElementById('compaction-notice')
+        if (msg.failed) {
+        showCompactionNotice('⚠ 압축 실패 (계속 정상 동작)')
+          setTimeout(() => el?.remove(), 4000)
+        } else {
+          const saved = msg.originalTokens - msg.summaryTokens
+          const pct = msg.originalTokens > 0 ? Math.round(saved / msg.originalTokens * 100) : 0
+          showCompactionNotice(`Compacted ${msg.originalTokens.toLocaleString()} -> ${msg.summaryTokens.toLocaleString()} tok (${pct}% saved)`)
+          setTimeout(() => el?.remove(), 5000)
+        }
+        break
+      }
+      case 'contextGauge':
+        renderContextGauge(msg)
+        break
+      case 'permissionModeState':
+        currentPermissionMode = msg.mode
+        updateModeUI()
+        break
+      case 'effortOverrideState':
+        currentEffortOverride = msg.effort
+        updateEffortUI()
+        break
+      case 'teamStart':
+      // 작업 시작 알림 (현재는 배지만; 필요시 UI 추가)
+        break
+      case 'teamEnd':
+        break
+      case 'authRequired':
+        showAuthRequired(msg.model, msg.reason)
+        break
+      case 'contextChanged':
+        updateContextBadge(msg.fileName, msg.hasSelection, msg.language)
+        break
+      case 'contextUsed':
+        showContextUsedEvent(msg.fileName, msg.hasSelection, msg.isTruncated)
+        break
+      case 'contextSent':
+        showContextSentEvent(msg)
+        break
+      case 'rollbackResult':
+        showToast(msg.message)
+        break
+      case 'toast':
+        showToast(msg.message)
+        break
+      case 'overrideChanged':
+        setOverrideButton(msg.mode)
+        break
+      case 'contextToggleState':
+        contextEnabled = msg.enabled
+        showToast(msg.enabled ? '파일 컨텍스트 켜짐' : '파일 컨텍스트 꺼짐')
+        break
+    }
+  })
+
+  // ── 컨텍스트 토글 ──
+  let contextEnabled = true
+
+  function showStreamError(id, error) {
+    setSendLocked(false)
+    const el = document.getElementById(`content-${id}`)
+    if (el) {
+      el.className = 'msg-content md'
+      el.innerHTML = `<span style="color:var(--effort-high);font-family:'JetBrains Mono',monospace;font-size:11px">⚠ ${error}</span>`
+    }
+    const tokEl = document.getElementById(`tok-${id}`)
+    if (tokEl) tokEl.textContent = 'error'
+  }
+
+  function stopArgue() {
+    postToExtension({ type: 'stopArgue' })
+    document.getElementById('argue-stop').classList.remove('visible')
+  }
+
+  function stopGeneration() {
+    postToExtension({ type: 'stopGeneration' })
+    document.getElementById('gen-stop').classList.remove('visible')
+      showToast('중단 요청 보냄...')
+  }
+
+  function clearChat() {
+    postToExtension({ type: 'clearChat' })
+  }
+
+  // ── 인라인 설정 모달 ──────────────────────────────
+  function openSettingsModal() {
+    document.getElementById('settings-overlay').classList.add('visible')
+    const accounts = []
+    if (loggedInModels.claude) accounts.push('Claude')
+    if (loggedInModels.codex) accounts.push('Codex')
+    if (loggedInModels.gemini) accounts.push('Gemini')
+    document.getElementById('settings-accounts-status').textContent =
+      accounts.length > 0 ? `Connected: ${accounts.join(', ')}` : 'No connected accounts yet'
+  }
+  function closeSettingsModal() {
+    document.getElementById('settings-overlay').classList.remove('visible')
+  }
+  function onSettingsAction(action) {
+    closeSettingsModal()
+    if (action === 'usage') {
+      openUsagePanel()
+      return
+    }
+    // 나머지는 backend로 보내서 OS 네이티브 입력박스 띄우게 함 (토큰·키 입력은 InputBox 필수)
+    postToExtension({ type: 'settingsAction', action })
+  }
+
+  // ── 압축 알림 (헤더 아래 sticky 배너) ──
+  function showCompactionNotice(text) {
+    let el = document.getElementById('compaction-notice')
+    if (!el) {
+      el = document.createElement('div')
+      el.id = 'compaction-notice'
+      el.className = 'compaction-notice'
+      document.body.appendChild(el)
+    }
+    el.textContent = text
+  }
+
+  // ── 컨텍스트 게이지 ──────────────────────────────
+  function onGaugeClick() {
+    if (!confirm('컨텍스트(대화 기록)를 초기화할까요?')) return
+    postToExtension({ type: 'clearChat' })
+  }
+  function renderContextGauge({ used, max }) {
+    const fill = document.getElementById('ctx-gauge-fill')
+    const val = document.getElementById('ctx-gauge-value')
+    if (!fill || !val) return
+    const pct = Math.min(100, (used / max) * 100)
+    fill.style.width = pct + '%'
+    fill.className = 'ctx-gauge-fill' + (pct >= 80 ? ' danger' : pct >= 50 ? ' warn' : '')
+    const fmt = (n) => n >= 1000 ? (n/1000).toFixed(1) + 'k' : String(n)
+    val.textContent = `${fmt(used)} / ${fmt(max)} (${pct.toFixed(0)}%)`
+  }
+
+  // ?? Mode / Effort ?앹뾽 ????????????????????????????????????????
+  let currentPermissionMode = 'auto-edit'
+  let currentEffortOverride = null
+
+  const MODE_META = {
+    'ask':        { label: 'Ask before edits',  icon: '?',  cssClass: 'ask' },
+    'auto-edit':  { label: 'Edit automatically', icon: '</>', cssClass: 'auto-edit' },
+    'plan':       { label: 'Plan mode',          icon: '#', cssClass: 'plan' },
+    'smart-auto': { label: 'Auto mode',          icon: '*', cssClass: 'smart-auto' },
+  }
+
+  function toggleModePopup(e) {
+    if (e) e.stopPropagation()
+    const popup = document.getElementById('mode-popup')
+    popup.classList.toggle('visible')
+  }
+
+  function setPermissionMode(mode) {
+    currentPermissionMode = mode
+    postToExtension({ type: 'setPermissionMode', mode })
+    updateModeUI()
+    document.getElementById('mode-popup').classList.remove('visible')
+  }
+
+  function setEffortOverride(effort) {
+    currentEffortOverride = currentEffortOverride === effort ? null : effort
+    postToExtension({ type: 'setEffortOverride', effort: currentEffortOverride })
+    updateEffortUI()
+  }
+
+  function updateModeUI() {
+    const meta = MODE_META[currentPermissionMode]
+    if (!meta) return
+    const btn = document.getElementById('mode-btn')
+    if (!btn) return
+    btn.className = 'mode-btn ' + meta.cssClass
+    document.getElementById('mode-btn-icon').textContent = meta.icon
+    document.getElementById('mode-btn-label').textContent = meta.label
+    for (const m of Object.keys(MODE_META)) {
+      const item = document.querySelector(`.mode-item[data-mode="${m}"]`)
+      if (item) item.classList.toggle('selected', m === currentPermissionMode)
+      const check = document.getElementById(`check-${m}`)
+      if (check) check.textContent = m === currentPermissionMode ? 'ok' : ''
+    }
+  }
+
+  function updateEffortUI() {
+    const order = ['low', 'medium', 'high', 'extra-high']
+    const active = currentEffortOverride
+    document.querySelectorAll('.effort-dots .dot').forEach(dot => {
+      const e = dot.dataset.effort
+      const activeIdx = active ? order.indexOf(active) : -1
+      const thisIdx = order.indexOf(e)
+      dot.classList.toggle('on', activeIdx >= 0 && thisIdx <= activeIdx)
+    })
+    const label = document.getElementById('effort-label')
+    if (label) label.textContent = active ? `(${active})` : '(auto)'
+  }
+
+  // 팝업 바깥 클릭 시 닫기
+  document.addEventListener('click', (e) => {
+    const popup = document.getElementById('mode-popup')
+    const btn = document.getElementById('mode-btn')
+    if (!popup || !btn) return
+    if (popup.contains(e.target) || btn.contains(e.target)) return
+    popup.classList.remove('visible')
+  })
+
+  function sendReady() {
+    if (vscode) {
+      console.log('[orchestrai] webviewReady sent')
+      postToExtension({ type: 'webviewReady', instanceId: WEBVIEW_INSTANCE_ID })
+    }
+  }
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', sendReady, { once: true })
+  } else {
+    sendReady()
+  }
+  // safety: 100ms 안에 한 번 더 보냄 (첫 신호가 어떤 이유로 누락 시)
+  setTimeout(() => { if (vscode) postToExtension({ type: 'webviewReady', instanceId: WEBVIEW_INSTANCE_ID }) }, 100)
+
+  // Shift+Tab으로 mode 전환 (Claude Code UX 복제)
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Tab' && e.shiftKey && document.activeElement === document.getElementById('input')) {
+      e.preventDefault()
+      const order = ['ask', 'auto-edit', 'plan', 'smart-auto']
+      const idx = order.indexOf(currentPermissionMode)
+      setPermissionMode(order[(idx + 1) % order.length])
+    }
+  })
+
+  // ── 사람용 커맨드 ────────────────────────────────
+  function handleSlashCommand(text) {
+    const t = text.trim()
+    if (!t.startsWith('/')) return false
+    const [cmd, ...rest] = t.slice(1).split(/\s+/)
+    const arg = rest.join(' ')
+    switch (cmd.toLowerCase()) {
+      case 'clear':   postToExtension({ type: 'clearChat' }); return true
+      case 'plan':    setPermissionMode('plan'); showToast('Plan mode enabled'); return true
+      case 'ask':     setPermissionMode('ask'); showToast('Ask mode enabled'); return true
+      case 'auto':    setPermissionMode('auto-edit'); showToast('Auto-edit mode'); return true
+      case 'smart':   setPermissionMode('smart-auto'); showToast('Smart auto mode'); return true
+      case 'team':    setOverrideToMode('team'); return true
+      case 'argue':   setOverrideToMode('argue'); return true
+      case 'effort':  setEffortOverride(arg); return true
+      case 'help': {
+        showHelpDialog()
+        return true
+      }
+      case 'vibe':
+      case 'guide': {
+        showVibeGuide()
+        return true
+      }
+      case 'examples': {
+        showVibeExamples()
+        return true
+      }
+      case 'cheatsheet':
+      case 'cheat': {
+        showVibeCheatsheet()
+        return true
+      }
+    }
+    return false
+  }
+
+  function showHelpDialog() {
+    showModal('Commands', `
+      <h2 style="margin:0 0 12px">OrchestrAI commands</h2>
+      <ul style="margin:0;padding-left:18px;font-size:11px">
+        <li><code>/clear</code> clear chat</li>
+        <li><code>/plan</code> plan mode</li>
+        <li><code>/ask</code> ask before edits</li>
+        <li><code>/auto</code> edit automatically</li>
+        <li><code>/smart</code> smart auto mode</li>
+        <li><code>/team</code> Claude plan, Codex implement, Gemini review</li>
+        <li><code>/argue</code> multi-model debate</li>
+        <li><code>/effort low|medium|high|extra-high</code> set effort override</li>
+        <li><code>/vibe</code> prompt guide</li>
+        <li><code>/examples</code> prompt examples</li>
+        <li><code>/cheatsheet</code> compact guide</li>
+      </ul>`)
+  }
+
+  function showVibeGuide() {
+    showModal('Prompt guide', `
+      <p>Start with the outcome, name the stack, and add constraints.</p>
+      <p><code>/plan</code> is best for risky changes. <code>/team</code> is best for larger work.</p>
+      <p>Use <code>@claude</code> for design, <code>@codex</code> for implementation, and <code>@gemini</code> for long context or images.</p>`)
+  }
+
+  function showVibeExamples() {
+    showModal('Prompt examples', `
+      <p><code>/plan Refactor src/auth.ts into smaller modules. Keep public API unchanged.</code></p>
+      <p><code>@codex Fix the failing build and package the extension.</code></p>
+      <p><code>/team Add Stripe checkout with success/cancel pages and webhook handling.</code></p>`)
+  }
+
+  function showVibeCheatsheet() {
+    showModal('Cheatsheet', `
+      <ul style="margin:0;padding-left:18px;font-size:11px">
+        <li>Outcome first</li>
+        <li>Stack and version next</li>
+        <li>Constraints last</li>
+        <li>Use rollback from the user bubble when edits go wrong</li>
+      </ul>`)
+  }
+  function showModal(title, innerHtml) {
+    const existing = document.getElementById('vibe-modal')
+    if (existing) existing.remove()
+    const el = document.createElement('div')
+    el.id = 'vibe-modal'
+    el.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:300;display:flex;align-items:center;justify-content:center;padding:20px'
+    el.onclick = (e) => { if (e.target === el) el.remove() }
+    el.innerHTML = `
+      <div style="background:var(--surface);border:1px solid var(--border-bright);border-radius:10px;max-width:520px;width:100%;max-height:85vh;overflow:auto;padding:20px 24px;font-family:Inter,sans-serif;font-size:12px;line-height:1.6;color:var(--text)">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;border-bottom:1px solid var(--border);padding-bottom:10px">
+          <strong style="font-family:'JetBrains Mono',monospace;font-size:13px">${title}</strong>
+          <button onclick="document.getElementById('vibe-modal').remove()" style="background:transparent;border:1px solid var(--border);color:var(--text-dim);width:24px;height:24px;border-radius:4px;cursor:pointer">횞</button>
+        </div>
+        ${innerHtml}
+      </div>
+    `
+    document.body.appendChild(el)
+  }
+  function setOverrideToMode(mode) {
+    // force 버튼 토글
+    document.querySelectorAll('.override-btn').forEach(b => b.className = 'override-btn')
+    const btn = [...document.querySelectorAll('.override-btn')].find(b => b.textContent?.trim().endsWith(mode))
+    if (btn) btn.classList.add('active-' + mode)
+    postToExtension({ type: 'setOverride', mode })
+  }
+
+  // ── argue 스코어보드 ──
+  let _argueModels = []
+  function initArgueBoard(models) {
+    _argueModels = models || []
+    const rows = document.getElementById('argue-rows')
+    rows.innerHTML = _argueModels.map(m => `
+      <div class="argue-row" id="argue-row-${m}">
+        <div class="label ${m}">${m}</div>
+        <div class="argue-bar-wrap"><div class="argue-bar ${m}" style="width:0%"></div></div>
+        <div class="score" id="argue-score-${m}">0.0 (0)</div>
+      </div>
+    `).join('')
+    document.getElementById('argue-board').classList.add('visible')
+  }
+
+  function updateArgueBoard(scoreboard) {
+    // 평균 점수로 바 길이 결정 (0~10 → 0~100%)
+    for (const m of _argueModels) {
+      const s = scoreboard[m] || { total: 0, turns: 0 }
+      const avg = s.turns > 0 ? s.total / s.turns : 0
+      const pct = Math.min(100, avg * 10)
+      const bar = document.querySelector(`#argue-row-${m} .argue-bar`)
+      const scoreEl = document.getElementById(`argue-score-${m}`)
+      if (bar) bar.style.width = pct + '%'
+      if (scoreEl) scoreEl.textContent = `${avg.toFixed(1)} (${s.turns})`
+    }
+  }
+
+  function showJudgingHint(model) {
+    const scoreEl = document.getElementById(`argue-score-${model}`)
+    if (scoreEl) scoreEl.textContent = '채점중...'
+  }
+
+  function finalizeArgueBoard(scoreboard) {
+    // argue 종료 시 보드는 켜둠 (유저가 결과 보고 있게). 다음 argue 시작 시 재초기화.
+    updateArgueBoard(scoreboard)
+  }
+
+  function appendVerdictUnderMessage(msgId, verdict) {
+    const msgEl = document.getElementById(`msg-${msgId}`)
+    if (!msgEl) return
+    const v = document.createElement('div')
+    v.className = 'judge-verdict'
+    v.innerHTML = `<b>?ы뙋:</b> ${verdict.score}/10 쨌 ${verdict.reason}`
+    msgEl.appendChild(v)
+  }
+
+  let activeModelFilter = 'all'
+
+  function setModelFilter(filter, button) {
+    activeModelFilter = filter || 'all'
+    document.querySelectorAll('.model-filter-btn').forEach(btn => {
+      btn.classList.toggle('active', btn.dataset.filter === activeModelFilter)
+    })
+    if (button) button.classList.add('active')
+    applyModelFilter()
+  }
+
+  function applyModelFilter() {
+    document.querySelectorAll('.msg-ai').forEach(el => {
+      const model = el.dataset.model || ['claude', 'codex', 'gemini'].find(m => el.classList.contains(m)) || ''
+      el.style.display = activeModelFilter === 'all' || model === activeModelFilter ? '' : 'none'
+    })
+  }
+
+  // ── 대화 복원 ──
+  function appendUserMessage(m) {
+    const container = document.getElementById('messages')
+    if (document.getElementById(`msg-${m.id}`)) return
+    const el = document.createElement('div')
+    el.className = 'msg msg-user'
+    el.id = `msg-${m.id}`
+    el.innerHTML = `<div class="bubble">
+      <div class="bubble-actions">
+        <button class="float-btn" onclick="copyMessage('${m.id}', this)">copy</button>
+        <button class="float-btn" onclick="rollbackTurn('${m.id}')">rollback</button>
+      </div>
+      <div class="message-text">${escapeHtml(m.content).replace(/\n/g, '<br>')}</div>
+      ${renderAttachments(m.attachments)}
+    </div>`
+    container.appendChild(el)
+    container.scrollTop = container.scrollHeight
+  }
+
+  function rehydrateMessages(messages) {
+    console.log('[orchestrai] rehydrate received:', messages?.length, 'messages')
+    const container = document.getElementById('messages')
+    if (!container) {
+      console.warn('[orchestrai] messages container not found!')
+      setTimeout(() => rehydrateMessages(messages), 100)
+      return
+    }
+    container.innerHTML = ''
+    Object.keys(streamBuffers).forEach(k => delete streamBuffers[k])
+    if (!messages || messages.length === 0) {
+      console.log('[orchestrai] empty rehydrate, cleared view')
+      applyModelFilter()
+      updateReviewBar(null)
+      return
+    }
+    for (const m of messages) {
+      if (m.role === 'user') {
+        appendUserMessage(m)
+      } else if (m.role === 'assistant') {
+        const model = m.model || 'claude'
+        const modelLabel = model === 'claude' ? 'Claude' : model === 'codex' ? 'Codex' : 'Gemini'
+        const actualModel = m.actualModel || m.routing?.actualModel || ''
+        const actualName = actualModel ? `<span class="actual-model">${escapeHtml(actualModel)}</span>` : ''
+        const el = document.createElement('div')
+        el.className = `msg msg-ai ${model}`
+        el.dataset.model = model
+        el.id = `msg-${m.id}`
+        el.innerHTML = `<div class="bubble">
+          <div class="msg-header">
+            <span class="model-tag">${modelLabel}</span>
+            ${actualName}
+            <span class="effort-tag">effort쨌${m.effort || 'medium'}</span>
+            <span class="tokens-tag">${(m.tokens ?? 0).toLocaleString()} tok</span>
+          </div>
+          <div class="bubble-actions">
+            <button class="float-btn" onclick="copyMessage('${m.id}', this)">copy</button>
+          </div>
+          <div class="msg-content md" id="content-${m.id}">${renderMarkdown(m.content)}</div>
+        </div>`
+        container.appendChild(el)
+      }
+    }
+    const latestChanged = [...messages].reverse().find(m => m.role === 'assistant' && m.changeSummary && m.changeSummary.files > 0)
+    updateReviewBar(latestChanged?.changeSummary || null)
+    applyModelFilter()
+    container.scrollTop = container.scrollHeight
+  }
+
+  // ── 사용량 패널 ──
+  function openUsagePanel() {
+    postToExtension({ type: 'requestUsage' })
+    document.getElementById('usage-overlay').classList.add('visible')
+  }
+  function closeUsagePanel() {
+    document.getElementById('usage-overlay').classList.remove('visible')
+  }
+  function fmtElapsed(ms) {
+    const s = Math.floor(ms / 1000)
+    if (s < 60) return `${s}s`
+    const m = Math.floor(s / 60)
+    if (m < 60) return `${m}m`
+    const h = Math.floor(m / 60)
+    return `${h}h ${m % 60}m`
+  }
+  function renderUsagePanel({ session, plans, startedAt }) {
+    const body = document.getElementById('usage-body')
+    const elapsed = fmtElapsed(Date.now() - startedAt)
+    // 모델별 리미트싱 시도 (실제 구독 시도는 API 호출 없이 — 시각 게이지로 표시)
+    const HEURISTIC_LIMIT = { claude: 100_000, codex: 100_000, gemini: 200_000 }
+    const ICON = { claude: 'C', codex: 'X', gemini: 'G' }
+    const COLOR = { claude: 'var(--claude)', codex: 'var(--codex)', gemini: 'var(--gemini)' }
+
+    body.innerHTML = `
+      <div style="font-size:10px;color:var(--text-muted);margin-bottom:14px;font-family:'JetBrains Mono',monospace;padding-bottom:10px;border-bottom:1px solid var(--border)">
+        ?몄뀡 ?쒖옉 ?댄썑 ${elapsed}
+      </div>
+      ${['claude','codex','gemini'].map(m => {
+        const u = session[m] || { requests: 0, inputTokens: 0, outputTokens: 0 }
+        const p = plans[m]
+        const total = u.inputTokens + u.outputTokens
+        const limit = HEURISTIC_LIMIT[m]
+        const pct = Math.min(100, (total / limit) * 100)
+        const fmtTok = (n) => n >= 1000 ? (n/1000).toFixed(1) + 'k' : String(n)
+        return `
+        <div class="usage-card">
+          <div class="usage-card-head">
+            <span class="usage-card-icon" style="color:${COLOR[m]}">${ICON[m]}</span>
+            <span class="usage-card-name" style="color:${COLOR[m]}">${m}</span>
+            <span class="usage-card-plan">${p.label}</span>
+            <span class="usage-card-pct">${pct.toFixed(0)}%</span>
+          </div>
+          <div class="usage-bar-wrap">
+            <div class="usage-bar-fill" style="width:${pct}%;background:${COLOR[m]}"></div>
+          </div>
+          <div class="usage-card-stats">
+            <span>?붿껌 <b>${u.requests}</b></span>
+            <span></span>
+            <span>in <b>${fmtTok(u.inputTokens)}</b></span>
+            <span></span>
+            <span>out <b>${fmtTok(u.outputTokens)}</b></span>
+            <span></span>
+            <span>총 <b>${fmtTok(total)}</b></span>
+          </div>
+          <div class="usage-card-hint">${p.limitHint}</div>
+        </div>`
+      }).join('')}
+      <div style="font-size:9px;color:var(--text-muted);margin-top:14px;padding-top:10px;border-top:1px solid var(--border);font-family:'JetBrains Mono',monospace">
+      대화 게이지는 세션 누적치 기반 추정치예요. 정확한 잔여량은:<br>
+      • Claude: 터미널 <code>claude /status</code><br>
+      • Codex: ChatGPT 설정 → 사용량<br>
+      • Gemini: <a href="https://aistudio.google.com" target="_blank">AI Studio</a>
+      </div>
+    `
+  }
+
+  function updateAuthStatus(claude, codex, gemini) {
+    loggedInModels = { claude: !!claude, codex: !!codex, gemini: !!gemini }
+    const messages = document.getElementById('messages')
+
+    // 모두 로그인된 경우 로그인 카드 표시
+    if (!claude && !codex && !gemini && messages.children.length === 0) {
+      messages.innerHTML = `
+        <div style="padding:24px 16px">
+          <div style="font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--text-muted);margin-bottom:16px;text-align:center">로그인이 필요해요</div>
+          <div style="display:flex;flex-direction:column;gap:8px">
+            <button onclick="postToExtension({type:'loginClaude'})" style="
+              padding:10px 14px;border-radius:8px;border:1px solid var(--claude-glow);
+              background:var(--claude-dim);color:var(--claude);cursor:pointer;
+              font-family:'JetBrains Mono',monospace;font-size:11px;text-align:left;
+              display:flex;align-items:center;gap:8px;transition:all 0.15s">
+              <span></span>
+              <div>
+                <div style="font-weight:600">Claude ?곌껐</div>
+                <div style="color:var(--text-muted);font-size:9px;margin-top:2px">로컬 Claude Code CLI 인증 감지 (Max 구독 사용)</div>
+              </div>
+            </button>
+            <button onclick="postToExtension({type:'loginCodex'})" style="
+              padding:10px 14px;border-radius:8px;border:1px solid var(--codex-glow);
+              background:var(--codex-dim);color:var(--codex);cursor:pointer;
+              font-family:'JetBrains Mono',monospace;font-size:11px;text-align:left;
+              display:flex;align-items:center;gap:8px;transition:all 0.15s">
+              <span></span>
+              <div>
+                <div style="font-weight:600">Codex 로그인</div>
+                <div style="color:var(--text-muted);font-size:9px;margin-top:2px">브라우저에서 ChatGPT 계정으로 로그인</div>
+              </div>
+            </button>
+            <button onclick="postToExtension({type:'loginGemini'})" style="
+              padding:10px 14px;border-radius:8px;border:1px solid var(--gemini-glow);
+              background:var(--gemini-dim);color:var(--gemini);cursor:pointer;
+              font-family:'JetBrains Mono',monospace;font-size:11px;text-align:left;
+              display:flex;align-items:center;gap:8px;transition:all 0.15s">
+              <span></span>
+              <div>
+                <div style="font-weight:600">Gemini ?곌껐</div>
+                <div style="color:var(--text-muted);font-size:9px;margin-top:2px">로컬 gemini CLI 감지 (Google 무료 티어)</div>
+              </div>
+            </button>
+          </div>
+        </div>`
+    }
+
+    // 헤더 상태 업데이트
+    const statusDot = document.querySelector('.status-dot')
+    const statusText = document.querySelector('.status-text')
+    const active = [claude && 'claude', codex && 'codex', gemini && 'gemini'].filter(Boolean)
+    if (active.length === 0) {
+      statusDot.style.background = 'var(--text-muted)'
+      statusDot.style.boxShadow = 'none'
+      statusText.textContent = 'not logged in'
+    } else {
+      const color = active.length >= 2 ? 'var(--router)' : `var(--${active[0]})`
+      statusDot.style.background = color
+      statusDot.style.boxShadow = `0 0 6px ${color}`
+      statusText.textContent = active.join(' + ')
+    }
+  }
+
+  function showAuthRequired(model, reason) {
+    setSendLocked(false)
+    const messages = document.getElementById('messages')
+    const label = reason === 'expired'
+      ? `${model} token expired. Please log in again.`
+      : `${model} login is required.`
+    const el = document.createElement('div')
+    el.style.cssText = 'padding:8px 16px'
+    el.innerHTML = `
+      <div style="padding:10px 14px;border-radius:8px;border:1px solid var(--border);
+        background:var(--surface2);display:flex;align-items:center;justify-content:space-between">
+        <span style="font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--text-dim)">
+          ${label}
+        </span>
+        <button onclick="postToExtension({type:'login${model.charAt(0).toUpperCase()+model.slice(1)}'})"
+          style="font-family:'JetBrains Mono',monospace;font-size:9px;padding:4px 8px;
+          border-radius:4px;border:1px solid var(--${model === 'claude' ? 'claude' : 'codex'}-glow);
+          background:var(--${model === 'claude' ? 'claude' : 'codex'}-dim);
+          color:var(--${model === 'claude' ? 'claude' : 'codex'});cursor:pointer">
+          로그인        </button>
+      </div>`
+    messages.appendChild(el)
+    messages.scrollTop = messages.scrollHeight
+  }
+
+  function updateContextBadge(fileName, hasSelection, language) {
+    const btn = document.getElementById('ctx-btn')
+    const label = document.getElementById('ctx-label')
+    if (!fileName) {
+      btn.className = 'ctx-btn'
+      label.textContent = 'no file'
+      return
+    }
+    btn.className = hasSelection ? 'ctx-btn has-selection' : 'ctx-btn active'
+    label.textContent = hasSelection ? `짠 ${fileName}` : fileName
+    btn.title = hasSelection
+      ? `?좏깮 ?곸뿭 ?ы븿 쨌 ${fileName}`
+      : `현재 파일: ${fileName} (${language})
+클릭해서 컨텍스트 끄기`
+  }
+
+  function toggleContext(btn) {
+    contextEnabled = !contextEnabled
+    if (!contextEnabled) {
+      btn.className = 'ctx-btn'
+      document.getElementById('ctx-label').textContent = 'off'
+    } else {
+      btn.className = 'ctx-btn active'
+    }
+    postToExtension({ type: 'toggleContext', enabled: contextEnabled })
+  }
+
+  function showContextUsedEvent(fileName, hasSelection, isTruncated) {
+    const messages = document.getElementById('messages')
+    const el = document.createElement('div')
+    el.className = 'routing-event'
+    const label = hasSelection
+      ? `짠 ?좏깮 ?곸뿭 쨌 ${fileName}`
+      : isTruncated
+        ? `✓ ${fileName} (수정됨)`
+        : `+ ${fileName}`
+    el.innerHTML = `
+      <div class="routing-line"></div>
+      <div class="routing-badge" style="color:var(--text-muted);border-color:var(--border);background:transparent;font-size:9px">
+        ${label}
+      </div>
+      <div class="routing-line"></div>`
+    messages.appendChild(el)
+    messages.scrollTop = messages.scrollHeight
+  }
+
+  // ── 스트리밍 버블 관리 ──
+  const streamBuffers = {}
+
+  function beginStreamBubble(id, decision) {
+    setSendLocked(true)
+    const messages = document.getElementById('messages')
+    const el = document.createElement('div')
+    el.className = `msg msg-ai ${decision.model}`
+    el.dataset.model = decision.model
+    el.id = `msg-${id}`
+    const modelLabel = decision.model === 'claude' ? 'Claude' : decision.model === 'codex' ? 'Codex' : 'Gemini'
+    const actualName = decision.actualModel ? `<span class="actual-model">${escapeHtml(decision.actualModel)}</span>` : ''
+    el.innerHTML = `<div class="bubble">
+      <div class="msg-header">
+        <span class="model-tag">${modelLabel}</span>
+        ${actualName}
+        <span class="effort-tag">effort쨌${decision.effort}</span>
+        <span class="tokens-tag" id="tok-${id}">...</span>
+      </div>
+      <div class="bubble-actions">
+        <button class="float-btn" onclick="copyMessage('${id}', this)">copy</button>
+      </div>
+      <div class="msg-content" id="content-${id}"></div>
+    </div>`
+    messages.appendChild(el)
+    streamBuffers[id] = ''
+    applyModelFilter()
+    messages.scrollTop = messages.scrollHeight
+  }
+
+  // 스트리밍 중에도 ⏺/● 라인은 즉시 박스로 보이게 throttled markdown 렌더 (rAF 1회/frame)
+  const _streamRenderPending = new Set()
+  function _flushStreamRender(id) {
+    _streamRenderPending.delete(id)
+    const el = document.getElementById(`content-${id}`)
+    if (!el) return
+    const buf = streamBuffers[id] || ''
+    // 미완성 코드 펜스가 있으면 텍스트 그대로 (깜빡이는 코드 방지)
+    const fenceCount = (buf.match(/```/g) || []).length
+    if (fenceCount % 2 === 1) {
+      el.className = 'msg-content streaming-cursor'
+      el.textContent = cleanRawStream(buf)
+    } else {
+      el.className = 'msg-content md streaming-cursor'
+      el.innerHTML = renderMarkdown(buf)
+    }
+    const messages = document.getElementById('messages')
+    messages.scrollTop = messages.scrollHeight
+  }
+
+  function appendChunk(id, text) {
+    streamBuffers[id] = (streamBuffers[id] || '') + text
+    if (!document.getElementById(`content-${id}`)) return
+    if (_streamRenderPending.has(id)) return
+    _streamRenderPending.add(id)
+    requestAnimationFrame(() => _flushStreamRender(id))
+  }
+
+  function finalizeMessage(id, tokens, changedFiles = [], actualModel = '', changeSummary = null) {
+    setSendLocked(false)
+    const tokEl = document.getElementById(`tok-${id}`)
+    if (tokEl) tokEl.textContent = `${tokens?.toLocaleString() ?? '?'} tok`
+    if (actualModel) {
+      const header = document.querySelector(`#msg-${id} .msg-header`)
+      if (header && !header.querySelector('.actual-model')) {
+        const span = document.createElement('span')
+        span.className = 'actual-model'
+        span.textContent = actualModel
+        const effort = header.querySelector('.effort-tag')
+        header.insertBefore(span, effort || null)
+      }
+    }
+
+    const el = document.getElementById(`content-${id}`)
+    if (el && streamBuffers[id]) {
+      el.className = 'msg-content md'
+      el.innerHTML = renderMarkdown(streamBuffers[id]) + renderChangedFiles(changedFiles, changeSummary)
+    }
+    updateReviewBar(changeSummary)
+
+    const messages = document.getElementById('messages')
+    messages.scrollTop = messages.scrollHeight
+  }
+
+  function appendRoutingBadge(decision) {
+    const messages = document.getElementById('messages')
+    const pips = decision.effort === 'low'
+      ? '<span class="on"></span><span></span><span></span>'
+      : decision.effort === 'medium'
+      ? '<span class="on"></span><span class="on"></span><span></span>'
+      : '<span class="on"></span><span class="on"></span><span class="on"></span>'
+
+    // 라우터 이유 직역 표시 — 유저가 "왜 이 모델로 갔지?"를 즉시 이해
+    const reasonMap = {
+      override: 'force',
+      mention: '@mention',
+      pattern: `pattern${decision.ruleMatched ? `: ${decision.ruleMatched}` : ''}`,
+      llm: 'llm routed',
+      fallback: 'fallback',
+      attachment: 'image',
+      'collab-first': 'argue 쨌 ?좉났',
+      'collab-reply': 'argue · 반박',
+      'argue-open': 'argue 쨌 ?좉났',
+      'argue-reply': 'argue · 반박',
+    }
+    const reasonText = reasonMap[decision.reason] ?? decision.reason
+    const conf = Math.round((decision.confidence ?? 0) * 100)
+
+    const el = document.createElement('div')
+    el.className = 'routing-event'
+    el.innerHTML = `
+      <div class="routing-line"></div>
+      <div class="routing-badge ${decision.model}" title="reason: ${decision.reason}${decision.ruleMatched ? '\nrule: '+decision.ruleMatched : ''}\nconfidence: ${conf}%">
+        <div class="dot"></div>
+        ${decision.model} 쨌 ${decision.effort}
+        <div class="effort-pip">${pips}</div>
+        <span style="opacity:0.6;margin-left:6px;font-size:9px">${reasonText}</span>
+      </div>
+      <div class="routing-line"></div>`
+    messages.appendChild(el)
+    messages.scrollTop = messages.scrollHeight
+  }
+
+    // 컨텍스트 전달 정보 — "모델 A가 어떤 히스토리를 받았는지" 명시
+  function showContextSentEvent({ model, includedMessages, totalMessages, estimatedTokens, trimmed }) {
+    const messages = document.getElementById('messages')
+    const el = document.createElement('div')
+    el.className = 'routing-event'
+    const trimInfo = trimmed ? ` (전체 ${totalMessages}중 ${includedMessages})` : ''
+    el.innerHTML = `
+      <div class="routing-line"></div>
+      <div class="routing-badge" style="color:var(--text-muted);border-color:var(--border);background:transparent;font-size:9px">
+      ↪ ${model}에 ${includedMessages}msg · ~${estimatedTokens.toLocaleString()}tok${trimInfo}
+      </div>
+      <div class="routing-line"></div>`
+    messages.appendChild(el)
+    messages.scrollTop = messages.scrollHeight
+  }
+
+  let thinkingEl = null
+  function showThinking() {
+    const messages = document.getElementById('messages')
+    thinkingEl = document.createElement('div')
+    thinkingEl.className = 'thinking'
+    thinkingEl.innerHTML = `<div class="thinking-inner">
+      <div class="thinking-dots"><span></span><span></span><span></span></div>
+      <span class="thinking-label">routing...</span>
+      <span class="thinking-model">analyzing intent</span>
+    </div>`
+    messages.appendChild(thinkingEl)
+    messages.scrollTop = messages.scrollHeight
+  }
+
+  function hideThinking() {
+    if (thinkingEl?.parentNode) thinkingEl.parentNode.removeChild(thinkingEl)
+    thinkingEl = null
+  }
+
+  function autoResize(el) {
+    el.style.height = 'auto';
+    el.style.height = Math.min(el.scrollHeight, 140) + 'px';
+  }
+
+  // ?? @ 硫섏뀡 ?먮룞?꾩꽦 ?????????????????????????????????????????
+  let loggedInModels = { claude: false, codex: false, gemini: false }
+  let mentionActive = false
+  let mentionStartPos = -1
+  let mentionFilter = ''
+  let mentionSelectedIdx = 0
+
+  const MENTION_ITEMS = [
+    { id: 'claude', label: 'Claude', icon: 'C', hint: 'architecture, refactor, review' },
+    { id: 'codex',  label: 'Codex',  icon: 'X', hint: 'implementation, CLI, edits' },
+    { id: 'gemini', label: 'Gemini', icon: 'G', hint: 'long context, images, review' },
+  ]
+
+  function filteredMentions() {
+    const f = mentionFilter.toLowerCase()
+    return MENTION_ITEMS
+      .filter(m => loggedInModels[m.id])
+      .filter(m => m.id.startsWith(f))
+  }
+
+  function renderMentionList() {
+    const list = filteredMentions()
+    const popup = document.getElementById('mention-popup')
+    if (list.length === 0) { closeMention(); return }
+    mentionSelectedIdx = Math.min(mentionSelectedIdx, list.length - 1)
+    popup.innerHTML = list.map((m, i) => `
+      <div class="mention-item ${m.id} ${i === mentionSelectedIdx ? 'selected' : ''}"
+           data-idx="${i}" data-model="${m.id}"
+           onmousedown="event.preventDefault()"
+           onclick="insertMention('${m.id}')">
+        <span class="icon">${m.icon}</span>
+        <div>
+          <div class="name">${m.label}</div>
+          <div class="hint">${m.hint}</div>
+        </div>
+      </div>
+    `).join('')
+    popup.classList.add('visible')
+    mentionActive = true
+  }
+
+  function moveMentionSelection(delta) {
+    const list = filteredMentions()
+    if (list.length === 0) return
+    mentionSelectedIdx = (mentionSelectedIdx + delta + list.length) % list.length
+    renderMentionList()
+  }
+
+  function selectCurrentMention() {
+    const list = filteredMentions()
+    if (list.length === 0) return
+    insertMention(list[mentionSelectedIdx].id)
+  }
+
+  function insertMention(modelId) {
+    const ta = document.getElementById('input')
+    const before = ta.value.slice(0, mentionStartPos)
+    const after = ta.value.slice(ta.selectionStart)
+    ta.value = before + '@' + modelId + ' ' + after
+    const newPos = mentionStartPos + modelId.length + 2
+    ta.setSelectionRange(newPos, newPos)
+    ta.focus()
+    closeMention()
+    autoResize(ta)
+  }
+
+  function closeMention() {
+    document.getElementById('mention-popup').classList.remove('visible')
+    mentionActive = false
+    mentionFilter = ''
+    mentionStartPos = -1
+    mentionSelectedIdx = 0
+  }
+
+  function onInputChange(e) {
+    const ta = e.target
+    const pos = ta.selectionStart
+    const textBefore = ta.value.slice(0, pos)
+    // 커서 바로 앞이 @(영문법) 형태인지
+    const atMatch = textBefore.match(/@([a-zA-Z]*)$/)
+    if (atMatch) {
+      mentionStartPos = pos - atMatch[0].length
+      mentionFilter = atMatch[1]
+      renderMentionList()
+    } else {
+      closeMention()
+    }
+    autoResize(ta)
+  }
+
+  function handleKey(e) {
+    if (mentionActive) {
+      if (e.key === 'ArrowDown') { e.preventDefault(); moveMentionSelection(1);  return }
+      if (e.key === 'ArrowUp')   { e.preventDefault(); moveMentionSelection(-1); return }
+      if (e.key === 'Enter' || e.key === 'Tab') { e.preventDefault(); selectCurrentMention(); return }
+      if (e.key === 'Escape')    { e.preventDefault(); closeMention(); return }
+    }
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      sendMessage();
+    }
+  }
+
+  function fillInput(text) {
+    const el = document.getElementById('input');
+    el.value = text;
+    el.focus();
+    autoResize(el);
+  }
+
+  function setOverride(btn, mode) {
+    document.querySelectorAll('.override-btn').forEach(b => {
+      b.className = 'override-btn';
+    });
+    btn.classList.add('active-' + mode);
+    postToExtension({ type: 'setOverride', mode });
+  }
+
+  function setOverrideButton(mode) {
+    document.querySelectorAll('.override-btn').forEach(b => {
+      b.className = 'override-btn'
+      const onclick = b.getAttribute('onclick') || ''
+      if (onclick.includes(`'${mode}'`)) b.classList.add('active-' + mode)
+    })
+  }
+
+  let isSending = false
+  let pendingAttachments = []
+
+  function setSendLocked(locked) {
+    isSending = locked
+    const btn = document.querySelector('.send-btn')
+    if (btn) {
+      btn.style.opacity = locked ? '0.4' : '1'
+      btn.style.cursor = locked ? 'not-allowed' : 'pointer'
+    }
+  }
+
+  function showToast(msg) {
+    const toast = document.createElement('div')
+    toast.style.cssText = `position:fixed;bottom:80px;left:50%;transform:translateX(-50%);
+      background:var(--surface2);border:1px solid var(--border);border-radius:6px;
+      padding:6px 12px;font-family:'JetBrains Mono',monospace;font-size:10px;
+      color:var(--text-dim);z-index:100;animation:fadeIn 0.15s ease;white-space:nowrap`
+    toast.textContent = msg
+    document.body.appendChild(toast)
+    setTimeout(() => toast.remove(), 2000)
+  }
+
+  function renderAttachPreview() {
+    const preview = document.getElementById('attach-preview')
+    preview.innerHTML = pendingAttachments.map((a, i) => `
+      <div class="attach-chip">
+        <img src="${a.dataUrl}" alt="">
+        <span>${escapeHtml(a.name)}</span>
+        <button onclick="removeAttachment(${i})">x</button>
+      </div>
+    `).join('')
+  }
+
+  function removeAttachment(index) {
+    pendingAttachments.splice(index, 1)
+    renderAttachPreview()
+  }
+
+  function addImageFile(file) {
+    if (!file || !file.type?.startsWith('image/')) return
+    const reader = new FileReader()
+    reader.onload = () => {
+      pendingAttachments.push({ name: file.name || 'pasted-image.png', mime: file.type, dataUrl: String(reader.result) })
+      renderAttachPreview()
+    }
+    reader.readAsDataURL(file)
+  }
+
+  function handleImageFiles(files) {
+    for (const file of Array.from(files || [])) {
+      addImageFile(file)
+    }
+    document.getElementById('image-input').value = ''
+  }
+
+  const inputWrap = document.querySelector('.input-wrap')
+  const inputBox = document.getElementById('input')
+
+  inputBox.addEventListener('paste', (event) => {
+    const files = Array.from(event.clipboardData?.files || []).filter(f => f.type.startsWith('image/'))
+    const itemFiles = Array.from(event.clipboardData?.items || [])
+      .filter(item => item.kind === 'file' && item.type.startsWith('image/'))
+      .map(item => item.getAsFile())
+      .filter(Boolean)
+    const images = files.length ? files : itemFiles
+    if (!images.length) return
+    event.preventDefault()
+    images.forEach(addImageFile)
+  })
+
+  inputWrap.addEventListener('dragover', (event) => {
+    if (!event.ctrlKey) return
+    event.preventDefault()
+    inputWrap.classList.add('drag-ready')
+  })
+
+  inputWrap.addEventListener('dragleave', () => {
+    inputWrap.classList.remove('drag-ready')
+  })
+
+  inputWrap.addEventListener('drop', (event) => {
+    inputWrap.classList.remove('drag-ready')
+    if (!event.ctrlKey) return
+    const images = Array.from(event.dataTransfer?.files || []).filter(f => f.type.startsWith('image/'))
+    if (!images.length) return
+    event.preventDefault()
+    images.forEach(addImageFile)
+  })
+
+  function sendMessage() {
+    const el = document.getElementById('input');
+    const text = el.value.trim();
+    if (!text && pendingAttachments.length === 0) return;
+    if (isSending) { showToast('Wait for the current response to finish'); return; }
+
+  // 사람용 커맨드 먼저 처리 — 매칭되면 백엔드로 안 보냄
+    if (handleSlashCommand(text)) {
+      el.value = '';
+      el.style.height = 'auto';
+      return;
+    }
+
+    setSendLocked(true)
+    const attachments = pendingAttachments.slice()
+
+    el.value = '';
+    el.style.height = 'auto';
+    pendingAttachments = []
+    renderAttachPreview()
+
+    postToExtension({ type: 'send', text, attachments });
+    if (!vscode) simulateDemo(text);
+  }
+
+  const DEMO_MD = {
+    claude: `패턴 라우터 분석 완료. 두 가지 개선 포인트가 있어요.
+
+### 1. confidence 가중치 합산
+
+현재는 첫 번째 매칭 룰만 따르는데, 여러 패턴이 겹칠 때 가중치 합산하면 더 정확해요.
+
+\`\`\`typescript
+export function patternRoute(input: string): RoutingDecision | null {
+  const scores: Record<string, number> = {}
+
+  for (const rule of RULES) {
+    if (rule.pattern.test(input)) {
+      const key = \`\${rule.model}-\${rule.effort}\`
+      scores[key] = (scores[key] ?? 0) + rule.confidence
+    }
+  }
+
+  const best = Object.entries(scores)
+    .sort(([, a], [, b]) => b - a)[0]
+
+  if (!best) return null
+  const [key, confidence] = best
+  const [model, effort] = key.split('-')
+  return { model, effort, confidence: Math.min(confidence, 1), reason: 'pattern' }
+}
+\`\`\`
+
+### 2. 길이 기반 effort 보정
+
+입력의 길이로 effort를 한 단계 올리는 게 좋아요.
+
+| 입력 길이 | effort 보정 |
+|-----------|------------|
+| < 50자  | 유지       |
+| 50~200자 | +1단계    |
+| > 200자 | high 고정  |`,
+
+    codex: `\`\`\`typescript
+// orchestrator.ts에 길이 보정 추가
+function adjustEffortByLength(effort: Effort, input: string): Effort {
+  const len = input.length
+  if (len > 200) return 'high'
+  if (len > 50 && effort === 'low') return 'medium'
+  return effort
+}
+\`\`\`
+
+> **Note:** 이 함수를 \`route()\` 마지막에 끼워 넣으면 돼요.`,
+  }
+
+  let demoIdx = 0
+
+  function simulateDemo(text) {
+    const DEMO_ROUTES = [
+      { model: 'codex', effort: 'low' },
+      { model: 'claude', effort: 'high' },
+      { model: 'codex', effort: 'medium' },
+      { model: 'claude', effort: 'medium' },
+    ]
+    const route = DEMO_ROUTES[demoIdx % DEMO_ROUTES.length]
+    demoIdx++
+    showThinking()
+    setTimeout(() => {
+      hideThinking()
+      appendRoutingBadge(route)
+      const id = Date.now().toString()
+      beginStreamBubble(id, route)
+      const response = DEMO_MD[route.model]
+      let i = 0
+      const interval = setInterval(() => {
+        if (i >= response.length) {
+          clearInterval(interval)
+          finalizeMessage(id, Math.floor(Math.random() * 900 + 300))
+          return
+        }
+        // 청크 단위로 스트리밍 시뮬레이션
+        appendChunk(id, chunk)
+        i += 4
+      }, 12)
+    }, 500)
+  }
+</script>
+</body>
+</html>
+
+
+

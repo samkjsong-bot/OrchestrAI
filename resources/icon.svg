@@ -1,0 +1,6 @@
+<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" xmlns="http://www.w3.org/2000/svg">
+  <!-- 3개 원이 삼각형으로 겹쳐 — Olympic ring 느낌의 오케스트레이션 -->
+  <circle cx="8.5" cy="14.5" r="5"/>
+  <circle cx="15.5" cy="14.5" r="5"/>
+  <circle cx="12" cy="8.5" r="5"/>
+</svg>

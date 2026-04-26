@@ -1,0 +1,188 @@
+{
+  "name": "orchestrai",
+  "displayName": "OrchestrAI",
+  "description": "Claude + Codex + Gemini subscription router with argue mode, workspace tools, rollback, image attachments, and MCP.",
+  "version": "0.1.0",
+  "publisher": "samkj",
+  "engines": {
+    "vscode": "^1.98.0"
+  },
+  "categories": [
+    "AI",
+    "Chat"
+  ],
+  "activationEvents": [
+    "onChatParticipant:orchestrai.assistant"
+  ],
+  "main": "./dist/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "orchestrai.openChat",
+        "title": "OrchestrAI: Open Chat"
+      },
+      {
+        "command": "orchestrai.clearChat",
+        "title": "OrchestrAI: Clear Chat"
+      },
+      {
+        "command": "orchestrai.forceAuto",
+        "title": "OrchestrAI: Force Auto Routing"
+      },
+      {
+        "command": "orchestrai.forceClaude",
+        "title": "OrchestrAI: Force Claude"
+      },
+      {
+        "command": "orchestrai.forceCodex",
+        "title": "OrchestrAI: Force Codex"
+      },
+      {
+        "command": "orchestrai.forceGemini",
+        "title": "OrchestrAI: Force Gemini"
+      },
+      {
+        "command": "orchestrai.startArgue",
+        "title": "OrchestrAI: Start Argue Mode"
+      },
+      {
+        "command": "orchestrai.toggleFileContext",
+        "title": "OrchestrAI: Toggle File Context"
+      },
+      {
+        "command": "orchestrai.showMcpTools",
+        "title": "OrchestrAI: Show MCP Tools"
+      },
+      {
+        "command": "orchestrai.refreshMcp",
+        "title": "OrchestrAI: Refresh MCP Servers"
+      },
+      {
+        "command": "orchestrai.loginClaude",
+        "title": "OrchestrAI: Login with Claude"
+      },
+      {
+        "command": "orchestrai.loginCodex",
+        "title": "OrchestrAI: Login with Codex (ChatGPT)"
+      },
+      {
+        "command": "orchestrai.showLogs",
+        "title": "OrchestrAI: Show Logs"
+      },
+      {
+        "command": "orchestrai.openArchives",
+        "title": "OrchestrAI: ?꾩뭅?대툕 ?대뜑 ?닿린"
+      },
+      {
+        "command": "orchestrai.restoreArchive",
+        "title": "OrchestrAI: ?댁쟾 ???蹂듭썝"
+      }
+    ],
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "orchestrai",
+          "title": "OrchestrAI",
+          "icon": "resources/icon.svg"
+        }
+      ]
+    },
+    "chatParticipants": [
+      {
+        "id": "orchestrai.assistant",
+        "name": "orchestrai",
+        "fullName": "OrchestrAI",
+        "description": "Claude + Codex + Gemini auto router",
+        "isSticky": true
+      }
+    ],
+    "views": {
+      "orchestrai": [
+        {
+          "type": "webview",
+          "id": "orchestrai.chatView",
+          "name": "Chat",
+          "retainContextWhenHidden": true
+        }
+      ]
+    },
+    "configuration": {
+      "title": "OrchestrAI",
+      "properties": {
+        "orchestrai.metaModel": {
+          "type": "string",
+          "default": "claude-haiku-4-5",
+          "enum": [
+            "claude-haiku-4-5"
+          ],
+          "description": "Model used for LLM routing fallback. Requires Claude login."
+        },
+        "orchestrai.confidenceThreshold": {
+          "type": "number",
+          "default": 0.8,
+          "minimum": 0,
+          "maximum": 1,
+          "description": "Pattern-route confidence threshold before skipping the LLM router."
+        },
+        "orchestrai.mcpServers": {
+          "type": "object",
+          "default": {},
+          "description": "MCP stdio servers. Example: { \"filesystem\": { \"command\": \"npx\", \"args\": [\"-y\", \"@modelcontextprotocol/server-filesystem\", \"${workspaceFolder}\"] } }",
+          "additionalProperties": {
+            "type": "object",
+            "properties": {
+              "command": {
+                "type": "string"
+              },
+              "args": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "env": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "string"
+                }
+              },
+              "cwd": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "command"
+            ]
+          }
+        }
+      }
+    },
+    "keybindings": [
+      {
+        "command": "orchestrai.openChat",
+        "key": "ctrl+shift+o",
+        "mac": "cmd+shift+o"
+      }
+    ]
+  },
+  "scripts": {
+    "build": "esbuild src/extension.ts --bundle --outfile=dist/extension.js --external:vscode --external:@anthropic-ai/claude-agent-sdk --external:ai --external:ai-sdk-provider-gemini-cli --external:@google/gemini-cli-core --external:zod --platform=node --format=cjs",
+    "watch": "npm run build -- --watch",
+    "dev": "npm run watch",
+    "package": "npm run build && vsce package -o orchestrai.vsix"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "@types/vscode": "^1.98.0",
+    "@vscode/vsce": "^3.9.1",
+    "esbuild": "^0.20.0",
+    "typescript": "^5.4.0"
+  },
+  "dependencies": {
+    "@anthropic-ai/claude-agent-sdk": "^0.1.0",
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "ai": "^6.0.168",
+    "ai-sdk-provider-gemini-cli": "^2.0.1"
+  }
+}
+

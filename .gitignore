@@ -1,0 +1,28 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+*.vsix
+
+# VSCode workspace
+.vscode/
+
+# Codex가 잘못된 위치에 만든 게임 폴더 (실제 작업 폴더 아님)
+작업실/
+
+# 임시 fix 스크립트
+_fix_*.py
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+npm-debug.log*
+
+# Editor
+.idea/
+*.swp
+*.swo
