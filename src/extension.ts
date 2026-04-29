@@ -1411,9 +1411,40 @@ class OrchestrAIViewProvider implements vscode.WebviewViewProvider, vscode.Dispo
   private _recordSnapshot(turnId: string | undefined, relPath: string, before: string | null) {
     if (!turnId) return
     const snapshots = this._fileSnapshotsByTurn.get(turnId) ?? []
+    const isFirstForTurn = snapshots.length === 0
     if (!snapshots.some(s => s.path === relPath)) {
       snapshots.push({ path: relPath, before })
       this._fileSnapshotsByTurn.set(turnId, snapshots)
+      // 턴 당 첫 번째 파일 변경 시 자동 vscode.diff 열기 (setting on일 때만)
+      if (isFirstForTurn && this._cfg<boolean>('autoOpenDiff') !== false) {
+        void this._openLiveDiff(turnId, relPath, before).catch(err => log.warn('diff', 'auto-open failed:', err))
+      }
+    }
+  }
+
+  // 첫 변경 파일을 자동 vscode.diff 에디터로 열기 — Claude Code for VSCode 처럼 즉시 검토 가능
+  private async _openLiveDiff(turnId: string, relPath: string, before: string | null) {
+    try {
+      const currentPath = resolveWorkspacePath(relPath)
+      const reviewDir = path.join(this._context.globalStorageUri.fsPath, 'reviews', turnId)
+      await fs.promises.mkdir(reviewDir, { recursive: true })
+      const beforeName = relPath.replace(/[<>:"/\\|?*\x00-\x1F]/g, '_')
+      const beforePath = path.join(reviewDir, `${beforeName}.before`)
+      // 이미 있으면 덮어쓰지 않음 (같은 턴 같은 파일 재호출 방지)
+      if (!fs.existsSync(beforePath)) {
+        await fs.promises.writeFile(beforePath, before ?? '', 'utf8')
+      }
+      // 파일이 디스크에 쓰일 시간 약간 줌 (executeCodexTool은 바로 쓰지만 SDK 경로는 비동기)
+      await new Promise(r => setTimeout(r, 100))
+      await vscode.commands.executeCommand(
+        'vscode.diff',
+        vscode.Uri.file(beforePath),
+        vscode.Uri.file(currentPath),
+        `OrchestrAI: ${relPath} (변경 검토)`,
+        { preview: true, viewColumn: vscode.ViewColumn.Beside },
+      )
+    } catch (err) {
+      log.warn('diff', `open live diff failed for ${relPath}:`, err)
     }
   }
 
@@ -1899,11 +1930,13 @@ class OrchestrAIViewProvider implements vscode.WebviewViewProvider, vscode.Dispo
 
   private _notifyContextChange() {
     const ctx = getActiveFileContext()
+    const selectionLines = ctx?.selectedText ? ctx.selectedText.split('\n').length : 0
     this._post({
       type: 'contextChanged',
       fileName: ctx?.fileName ?? null,
       language: ctx?.language ?? null,
       hasSelection: !!ctx?.selectedText,
+      selectionLines,
       cursorLine: ctx?.cursorLine ?? null,
     })
   }

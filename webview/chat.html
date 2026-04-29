@@ -2371,7 +2371,7 @@
         showAuthRequired(msg.model, msg.reason)
         break
       case 'contextChanged':
-        updateContextBadge(msg.fileName, msg.hasSelection, msg.language)
+        updateContextBadge(msg.fileName, msg.hasSelection, msg.language, msg.selectionLines)
         break
       case 'contextUsed':
         showContextUsedEvent(msg.fileName, msg.hasSelection, msg.isTruncated)
@@ -2959,7 +2959,7 @@
     scrollIfNearBottom(messages)
   }
 
-  function updateContextBadge(fileName, hasSelection, language) {
+  function updateContextBadge(fileName, hasSelection, language, selectionLines) {
     const btn = document.getElementById('ctx-btn')
     const label = document.getElementById('ctx-label')
     if (!fileName) {
@@ -2968,11 +2968,12 @@
       return
     }
     btn.className = hasSelection ? 'ctx-btn has-selection' : 'ctx-btn active'
-    label.textContent = hasSelection ? `짠 ${fileName}` : fileName
+    label.textContent = hasSelection
+      ? `📎 ${selectionLines || '?'}줄 · ${fileName}`
+      : fileName
     btn.title = hasSelection
-      ? `선택 영역 포함 · ${fileName}`
-      : `현재 파일: ${fileName} (${language})
-클릭해서 컨텍스트 끄기`
+      ? `선택 영역 ${selectionLines}줄 자동 포함 · ${fileName}\n클릭해서 컨텍스트 끄기`
+      : `현재 파일: ${fileName} (${language})\n클릭해서 컨텍스트 끄기`
   }
 
   function toggleContext(btn) {

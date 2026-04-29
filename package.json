@@ -128,6 +128,11 @@
           "maximum": 1,
           "description": "Pattern-route confidence threshold before skipping the LLM router."
         },
+        "orchestrai.autoOpenDiff": {
+          "type": "boolean",
+          "default": true,
+          "description": "파일이 수정될 때 자동으로 VSCode diff 에디터를 엽니다 (한 턴 당 첫 번째 파일만). 변경을 즉시 검토 가능."
+        },
         "orchestrai.codexEngine": {
           "type": "string",
           "default": "native",
