@@ -2,8 +2,8 @@
 
 export type Model = 'claude' | 'codex' | 'gemini'
 export type Effort = 'low' | 'medium' | 'high' | 'extra-high'
-// auto: 라우터 판단 / claude·codex·gemini: 강제 / argue: 라운드로빈 토론 / team: 순차 협업(Claude=plan → Codex=impl → Gemini=review)
-export type RouterMode = 'auto' | 'claude' | 'codex' | 'gemini' | 'argue' | 'team'
+// auto: 라우터 판단 / claude·codex·gemini: 강제 / argue: 라운드로빈 토론 / team: 순차 협업 / loop: Ralph Wiggum 반복(될 때까지)
+export type RouterMode = 'auto' | 'claude' | 'codex' | 'gemini' | 'argue' | 'team' | 'loop'
 
 export interface RoutingDecision {
   model: Model

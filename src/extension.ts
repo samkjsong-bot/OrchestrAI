@@ -1363,6 +1363,12 @@ class OrchestrAIViewProvider implements vscode.WebviewViewProvider, vscode.Dispo
           case 'openFile':
             await this._openWorkspaceFile(msg.path, msg.line)
             break
+          case 'runCommand': {
+            const term = vscode.window.createTerminal({ name: 'OrchestrAI Run', cwd: getWorkspaceRoot() ?? undefined })
+            term.show()
+            term.sendText(msg.command)
+            break
+          }
           case 'reviewChanges':
             await this._reviewChanges(msg.turnId, msg.path)
             break
@@ -2064,6 +2070,55 @@ class OrchestrAIViewProvider implements vscode.WebviewViewProvider, vscode.Dispo
       return
     }
 
+    // ── loop 모드 (Ralph Wiggum): "될 때까지" 반복. 모델이 결과 확인 후 부족하면 자동 다음 iteration ──
+    if (this._override === 'loop') {
+      const MAX_ITERATIONS = 5
+      const status = await this._authStorage.getStatus()
+      // 메인 모델은 Claude 우선 (Claude가 자체 검증 잘 함), 없으면 가능한 모델
+      const mainModel: Model = status.claude ? 'claude' : status.codex ? 'codex' : status.gemini ? 'gemini' : 'claude'
+      let lastResult = ''
+      for (let iter = 1; iter <= MAX_ITERATIONS; iter++) {
+        if (this._currentAbort?.signal.aborted) break
+        const decision: RoutingDecision = {
+          model: mainModel,
+          effort: inferredEffort,
+          confidence: 1.0,
+          reason: iter === 1 ? 'loop-start' : `loop-iter-${iter}`,
+          ruleMatched: `iteration ${iter}/${MAX_ITERATIONS}`,
+        }
+        this._post({ type: 'routingDecision', decision })
+        const ok = await this._runTurn(decision, iter === 1 ? fileCtx : null, iter === 1 ? 'first' : 'reply', userMsg.id, undefined)
+        if (!ok) break
+
+        const last = this._messages[this._messages.length - 1]
+        if (!last || last.role !== 'assistant') break
+        lastResult = last.content
+
+        // 모델이 'DONE' 또는 '완료' 명시했으면 종료
+        const tail = lastResult.trim().slice(-200).toLowerCase()
+        if (/\bdone\b|✅\s*완료|^완료$|task complete|finished/.test(tail)) {
+          this._post({ type: 'toast', message: `🔁 loop: ${iter}회 만에 완료` })
+          break
+        }
+
+        // max 도달
+        if (iter >= MAX_ITERATIONS) {
+          this._post({ type: 'toast', message: `🔁 loop: max ${MAX_ITERATIONS}회 도달` })
+          break
+        }
+
+        // 다음 iteration 자동 trigger — 사용자 메시지처럼 끼워 넣음
+        this._messages.push({
+          id: `loop-${iter}-${Date.now()}`,
+          role: 'user',
+          content: `[자동 iteration ${iter + 1}/${MAX_ITERATIONS}] 위 결과를 검토하고: (1) 작업이 완료됐으면 마지막 줄에 "✅ 완료" 명시. (2) 부족하면 부족한 점 식별하고 그것만 수정. 똑같은 작업 반복 금지.`,
+          timestamp: Date.now(),
+        })
+        await this._persistMessages()
+      }
+      return
+    }
+
     // ── team 모드: Claude가 orchestrator. Codex(구현) / Gemini(텍스트·이미지) 동료를 툴로 호출 ──
     // 토큰 효율 ↑: Claude는 계획·검수만, 실제 코드는 Codex 구독으로, 이미지는 Gemini API로
     if (this._override === 'team') {
@@ -2562,9 +2617,60 @@ PATH RULES: paths are relative to workspace root. Don't prefix with "${gWsBase}/
       changedFiles,
       changeSummary,
     })
+    // 결과 자동 미리보기 (HTML → Simple Browser, dev script 있으면 안내)
+    void this._maybeAutoPreview(changedFiles)
     // 백그라운드 압축 — 대화가 늘나고 한계치면 Haiku로 요약 (다음 턴 input 절약)
     void this._maybeCompact()
     return true
+  }
+
+  // 변경 파일 중 미리보기 가능한 게 있으면 자동으로 띄우기
+  private async _maybeAutoPreview(changedFiles: ChangedFile[]) {
+    if (this._cfg<boolean>('autoPreview') === false) return
+    if (!changedFiles || changedFiles.length === 0) return
+
+    // 1. HTML 파일 만들었거나 수정했으면 → Simple Browser
+    const html = changedFiles.find(f => /\.html?$/i.test(f.path) && f.kind !== 'deleted')
+    if (html) {
+      try {
+        const fullPath = resolveWorkspacePath(html.path)
+        const uri = vscode.Uri.file(fullPath)
+        await vscode.commands.executeCommand('simpleBrowser.show', uri.toString())
+        log.info('preview', `Simple Browser opened for ${html.path}`)
+        this._post({ type: 'toast', message: `🌐 ${html.path} 미리보기 열림` })
+        return
+      } catch (err) {
+        log.warn('preview', `simpleBrowser failed:`, err)
+      }
+    }
+
+    // 2. package.json 변경 + dev script 있으면 안내 (자동 실행은 안 함 — 위험)
+    const pkg = changedFiles.find(f => f.path === 'package.json' || f.path.endsWith('/package.json'))
+    if (pkg) {
+      try {
+        const fullPath = resolveWorkspacePath(pkg.path)
+        const content = fs.readFileSync(fullPath, 'utf8')
+        const parsed = JSON.parse(content)
+        const scripts = parsed?.scripts ?? {}
+        const dev = scripts.dev ?? scripts.start ?? scripts.serve
+        if (dev) {
+          this._post({ type: 'previewSuggest', script: scripts.dev ? 'dev' : (scripts.start ? 'start' : 'serve'), command: dev })
+        }
+      } catch {}
+    }
+
+    // 3. Python 스크립트 새로 만들었으면 ▶ 버튼 안내
+    const py = changedFiles.find(f => /\.py$/i.test(f.path) && f.kind === 'added')
+    if (py) {
+      this._post({ type: 'previewSuggest', script: 'python', command: `python ${py.path}` })
+    }
+
+    // 4. Node 스크립트
+    const js = changedFiles.find(f => /\.(m?js|ts)$/i.test(f.path) && f.kind === 'added')
+    if (js && !html && !pkg) {
+      const isTs = js.path.endsWith('.ts')
+      this._post({ type: 'previewSuggest', script: isTs ? 'tsx' : 'node', command: `${isTs ? 'tsx' : 'node'} ${js.path}` })
+    }
   }
 
   private async _maybeCompact() {

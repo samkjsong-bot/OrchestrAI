@@ -825,6 +825,7 @@
   .override-btn.active-auto { color: var(--router); border-color: #fb923c33; background: #fb923c11; }
   .override-btn.active-argue { color: #f9a8d4; border-color: #f9a8d433; background: #f9a8d411; }
   .override-btn.active-team { color: #fbbf24; border-color: #fbbf2433; background: #fbbf2411; }
+  .override-btn.active-loop { color: #34d399; border-color: #34d39933; background: #34d39911; }
 
   /* 컨텍스트 게이지 (헤더 바로 아래) */
   .ctx-gauge {
@@ -1363,6 +1364,56 @@
     to   { transform: translateX(0); opacity: 1; }
   }
 
+  /* 메시지 큐 (작업 중 입력 대기) */
+  .msg-queue {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    margin: 0 12px;
+    flex-shrink: 0;
+  }
+  .msg-queue:empty { display: none; }
+  .queued-msg {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 10px;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--accent);
+    border-radius: 5px;
+    font-size: 11px;
+    color: var(--text-dim);
+    animation: fadeIn 0.15s ease;
+  }
+  .queued-msg-icon { color: var(--accent); flex-shrink: 0; }
+  .queued-msg-text {
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: var(--text);
+  }
+  .queued-msg-actions {
+    display: flex;
+    gap: 4px;
+    flex-shrink: 0;
+  }
+  .queued-msg-btn {
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--text-muted);
+    border-radius: 3px;
+    padding: 2px 6px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 9px;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .queued-msg-btn:hover { color: var(--text); border-color: var(--border-bright); }
+  .queued-msg-btn.interrupt:hover { color: #fbbf24; border-color: #fbbf24; }
+  .queued-msg-btn.remove:hover { color: #ef4444; border-color: #ef4444; }
+
   /* 진행 표시 바 — 입력창 위 sticky */
   .progress-bar {
     display: none;
@@ -1830,6 +1881,9 @@
   <button class="progress-stop" onclick="stopGeneration()" title="중단">■</button>
 </div>
 
+<!-- 메시지 큐 (작업 중일 때 사용자가 친 메시지 대기열) -->
+<div class="msg-queue" id="msg-queue"></div>
+
 <div class="review-bar" id="review-bar">
   <div class="review-meta" id="review-meta"></div>
   <button class="review-action" onclick="reviewLatestChanges()">변경 사항 검토 <span>↗</span></button>
@@ -1938,6 +1992,7 @@
     <button class="override-btn" onclick="setOverride(this,'gemini')">◆ gemini</button>
     <button class="override-btn" onclick="setOverride(this,'argue')" title="등록된 모델들이 라운드 로빈으로 서로 보완·반박 (최대 6턴, 중간 확장 가능)">⚡ argue</button>
     <button class="override-btn" onclick="setOverride(this,'team')" title="작업 모드 — Claude 설계 → Codex 구현 → Gemini 리뷰 순차 실행">👥 team</button>
+    <button class="override-btn" onclick="setOverride(this,'loop')" title="될 때까지 반복 (Ralph Wiggum 패턴) — 모델이 결과 검증 후 부족하면 자동 다음 iteration. max 5회">🔁 loop</button>
     <div style="flex:1"></div>
     <button class="ctx-btn active" id="ctx-btn" onclick="toggleContext(this)" title="현재 파일 컨텍스트 자동 주입">
       <span class="ctx-icon">📄</span>
@@ -2307,10 +2362,15 @@
         document.getElementById('gen-stop').classList.add('visible')
         showProgress('working...')
         break
+      case 'previewSuggest':
+        showPreviewSuggest(msg.script, msg.command)
+        break
       case 'generationEnd':
       case 'generationStopped':
         document.getElementById('gen-stop').classList.remove('visible')
         hideProgress()
+        // 큐의 다음 메시지 자동 발송 (있으면)
+        setTimeout(() => _drainQueue(), 100)
         break
       case 'argueStart':
         document.getElementById('argue-stop').classList.add('visible')
@@ -3092,6 +3152,25 @@
     if (bar) bar.classList.remove('visible')
   }
 
+  // 결과 자동 미리보기 — 실행 가능 스크립트 발견 시 마지막 메시지 아래 ▶ 버튼 추가
+  function showPreviewSuggest(script, command) {
+    const messages = document.getElementById('messages')
+    if (!messages || messages.lastElementChild == null) return
+    const card = document.createElement('div')
+    card.style.cssText = 'margin: 8px 12px; padding: 8px 12px; background: var(--surface2); border: 1px solid rgba(99,102,241,0.4); border-radius: 6px; display: flex; align-items: center; gap: 10px; font-family: \'JetBrains Mono\', monospace; font-size: 11px;'
+    card.innerHTML = `
+      <span style="color: var(--accent);">▶</span>
+      <span style="flex: 1; color: var(--text);">실행 가능: <code style="background: var(--bg); padding: 1px 6px; border-radius: 3px;">${escapeHtml(command)}</code></span>
+      <button onclick="runSuggested('${script}', ${JSON.stringify(command).replace(/"/g, '&quot;')}); this.closest('div').remove();" style="background: var(--accent); color: white; border: none; border-radius: 4px; padding: 4px 12px; font-family: 'JetBrains Mono', monospace; font-size: 10px; cursor: pointer; font-weight: 600;">실행</button>
+      <button onclick="this.closest('div').remove()" style="background: transparent; border: 1px solid var(--border); color: var(--text-muted); border-radius: 4px; padding: 4px 8px; font-family: 'JetBrains Mono', monospace; font-size: 10px; cursor: pointer;">✕</button>
+    `
+    messages.appendChild(card)
+    scrollIfNearBottom(messages)
+  }
+  function runSuggested(script, command) {
+    postToExtension({ type: 'runCommand', script, command })
+  }
+
   function finalizeMessage(id, tokens, changedFiles = [], actualModel = '', changeSummary = null) {
     setSendLocked(false)
     const tokEl = document.getElementById(`tok-${id}`)
@@ -3413,29 +3492,75 @@
     images.forEach(addImageFile)
   })
 
+  // 큐: 작업 중에 사용자가 친 메시지를 대기열로 쌓아둠. 끝나면 자동 발송.
+  const messageQueue = []  // {id, text, attachments}
+
   function sendMessage() {
     const el = document.getElementById('input');
     const text = el.value.trim();
     if (!text && pendingAttachments.length === 0) return;
-    if (isSending) { showToast('Wait for the current response to finish'); return; }
 
-  // 사람용 커맨드 먼저 처리 — 매칭되면 백엔드로 안 보냄
-    if (handleSlashCommand(text)) {
+    // 슬래시 커맨드는 큐 안 쓰고 즉시
+    if (text && handleSlashCommand(text)) {
       el.value = '';
       el.style.height = 'auto';
       return;
     }
 
-    setSendLocked(true)
     const attachments = pendingAttachments.slice()
-
     el.value = '';
     el.style.height = 'auto';
     pendingAttachments = []
     renderAttachPreview()
 
+    if (isSending) {
+      // 작업 중 → 큐에 추가
+      const id = `q-${Date.now()}-${Math.random().toString(36).slice(2,7)}`
+      messageQueue.push({ id, text, attachments })
+      renderMessageQueue()
+      return
+    }
+
+    setSendLocked(true)
     postToExtension({ type: 'send', text, attachments });
     if (!vscode) simulateDemo(text);
+  }
+
+  function renderMessageQueue() {
+    const container = document.getElementById('msg-queue')
+    if (!container) return
+    container.innerHTML = messageQueue.map((q, i) => `
+      <div class="queued-msg" data-id="${q.id}">
+        <span class="queued-msg-icon">⏳</span>
+        <span class="queued-msg-text" title="${escapeHtml(q.text)}">${escapeHtml(q.text || '(image only)')}</span>
+        <div class="queued-msg-actions">
+          ${i === 0 ? `<button class="queued-msg-btn interrupt" onclick="interruptQueueMsg('${q.id}')" title="현재 작업 중단하고 즉시 시작">⏩ 끼어들기</button>` : ''}
+          <button class="queued-msg-btn remove" onclick="removeQueueMsg('${q.id}')" title="큐에서 제거">✕</button>
+        </div>
+      </div>
+    `).join('')
+  }
+
+  function removeQueueMsg(id) {
+    const idx = messageQueue.findIndex(q => q.id === id)
+    if (idx >= 0) messageQueue.splice(idx, 1)
+    renderMessageQueue()
+  }
+
+  function interruptQueueMsg(id) {
+    // 현재 작업 중단 → 큐 첫 메시지 즉시 시작
+    postToExtension({ type: 'stopGeneration' })
+    // generationEnd 도착하면 자동으로 큐 첫 메시지 send 됨
+  }
+
+  // 작업 끝났을 때 큐의 첫 메시지 자동 발송
+  function _drainQueue() {
+    if (isSending) return
+    if (messageQueue.length === 0) return
+    const next = messageQueue.shift()
+    renderMessageQueue()
+    setSendLocked(true)
+    postToExtension({ type: 'send', text: next.text, attachments: next.attachments })
   }
 
   const DEMO_MD = {
