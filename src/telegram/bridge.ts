@@ -643,7 +643,11 @@ export class TelegramBridge implements vscode.Disposable {
         this._maybeEdit()
       } else if (msg.type === 'streamEnd') {
         this.activeStream.done = true
-        void this._editStream(this._finalize())
+        // 긴 응답은 placeholder 마무리 + 나머지를 별도 메시지로 분할 발송
+        const stream = this.activeStream
+        void (async () => {
+          await this._finalizeAndSplit(stream, threadOpt)
+        })()
         this.activeStream.observer.dispose()
         this.activeStream = undefined
         this.isHandlingExternal = false
@@ -835,11 +839,12 @@ export class TelegramBridge implements vscode.Disposable {
 
   // ── 스트림 편집 헬퍼 ───────────────────────────────────────────
 
-  private _header(): string {
-    if (!this.activeStream) return ''
+  private _header(stream?: ActiveStream): string {
+    const s = stream ?? this.activeStream
+    if (!s) return ''
     const parts: string[] = []
-    if (this.activeStream.targetName) parts.push(`🎯 ${this.activeStream.targetName}`)
-    if (this.activeStream.modelLabel) parts.push(this.activeStream.modelLabel)
+    if (s.targetName) parts.push(`🎯 ${s.targetName}`)
+    if (s.modelLabel) parts.push(s.modelLabel)
     return parts.join(' · ') + '\n\n'
   }
 
@@ -877,6 +882,48 @@ export class TelegramBridge implements vscode.Disposable {
       ? body.slice(0, limit) + '\n\n...(잘림 · VSCode에서 전체 확인)'
       : body
     return header + (text || '(빈 응답)')
+  }
+
+  // 긴 응답: placeholder는 첫 part로 마무리, 나머지는 새 메시지로 분할 발송
+  private async _finalizeAndSplit(stream: ActiveStream, threadOpt?: { message_thread_id?: number }) {
+    if (!this.client) return
+    const header = this._header(stream)
+    const body = stream.buffer
+    const placeholderLimit = TG_MAX - header.length - 60
+    if (body.length <= placeholderLimit) {
+      // 짧으면 기존 동작
+      const text = header + (body || '(빈 응답)')
+      await this.client.editMessageText(this.chatId, stream.messageId, text).catch(() => undefined)
+      return
+    }
+    // 첫 part: placeholder edit
+    const firstPart = body.slice(0, placeholderLimit)
+    const continuationNote = '\n\n…(이어짐 ↓)'
+    await this.client.editMessageText(
+      this.chatId, stream.messageId,
+      header + firstPart + continuationNote,
+    ).catch(() => undefined)
+
+    // 나머지: 새 메시지로 분할 (줄바꿈 우선 split)
+    let remaining = body.slice(placeholderLimit)
+    let partNum = 2
+    while (remaining.length > 0) {
+      const chunkLimit = TG_MAX - 60
+      let splitAt: number
+      if (remaining.length <= chunkLimit) {
+        splitAt = remaining.length
+      } else {
+        splitAt = remaining.lastIndexOf('\n', chunkLimit)
+        if (splitAt < chunkLimit - 500) splitAt = chunkLimit
+      }
+      const part = remaining.slice(0, splitAt)
+      remaining = remaining.slice(splitAt).trimStart()
+      const tag = remaining.length > 0 ? `(part ${partNum} ↓)` : `(part ${partNum} · 끝)`
+      try {
+        await this.client.sendMessage(this.chatId, `${tag}\n\n${part}`, threadOpt)
+      } catch {}
+      partNum++
+    }
   }
 
   // 4096 자 넘는 메시지를 여러 통으로 쪼개서 보냄 (Telegram 제한)

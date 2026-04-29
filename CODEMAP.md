@@ -17,9 +17,11 @@ orchestrai/
 │   │   └── storage.ts                  토큰 디스크 저장
 │   ├── providers/                      각 모델 호출 래퍼 (스트리밍, abort, 폴백)
 │   │   ├── claudeProvider.ts           @anthropic-ai/claude-agent-sdk 통한 호출 + 툴 박스 포맷팅
-│   │   ├── codexProvider.ts            chatgpt.com/backend-api/codex/responses (SSE)
+│   │   ├── codexMcpClient.ts           ★ Codex CLI mcp-server stdio JSON-RPC 클라이언트 (native engine)
+│   │   ├── codexMcpProvider.ts         ★ Codex 호출 인터페이스 (codex.exe spawn 통한 공식 처리)
+│   │   ├── codexProvider.ts            (legacy) chatgpt.com/backend-api/codex/responses 직접 fetch
 │   │   ├── geminiProvider.ts           ai-sdk-provider-gemini-cli (ESM dynamic import)
-│   │   └── geminiImageProvider.ts      Gemini API 키 기반 이미지 생성
+│   │   └── geminiImageProvider.ts      Gemini API 키 기반 이미지 생성 (모델 폴백 체인 + ListModels)
 │   ├── router/                         라우팅 로직
 │   │   ├── types.ts                    Model/Effort/RoutingDecision/ChatMessage
 │   │   ├── orchestrator.ts             메인 라우터 (mention → pattern → llm 순)
@@ -87,7 +89,9 @@ orchestrai/
 ## 🔐 인증 경로 (전부 구독·무료, API 과금 X)
 
 - **Claude**: 로컬 `claude` CLI의 OAuth 토큰 재사용 → Claude Agent SDK가 자동 감지 (`ANTHROPIC_API_KEY` 환경변수 있으면 끔)
-- **Codex**: 직접 PKCE OAuth → `chatgpt.com/backend-api/codex/responses` 직접 호출. Originator/User-Agent 헤더 진짜 CLI fingerprint 흉내 필수
+- **Codex**: 두 가지 엔진 (`orchestrai.codexEngine` setting)
+  - `native` (default, 권장): 설치된 Codex VSCode 확장의 `codex.exe` 를 `mcp-server` 모드로 spawn → stdio MCP. OAuth/tool/path/sandbox 다 OpenAI 공식 코드가 처리
+  - `legacy`: 직접 PKCE OAuth → `chatgpt.com/backend-api/codex/responses` 직접 호출. Originator/User-Agent fingerprint 위장. native 실패 시 자동 폴백
 - **Gemini**: 로컬 `gemini` CLI의 OAuth → ai-sdk-provider-gemini-cli ESM import
 - **Gemini API key** (이미지 생성 전용): `orchestrai.geminiApiKey` 설정에 저장, 텍스트엔 안 씀
 
@@ -130,11 +134,12 @@ ${globalStorage}/                       ~/AppData/Roaming/Code/User/globalStorag
 - **변경 카드/diff** → `webview/chat.html:2115-2150` (`renderChangePanel`/`renderDiff`)
 
 ### 모델 호출 동작
-- **Claude 시스템 프롬프트** → `extension.ts:563` `buildSystemPrompt()` (mode별, team role별 다 여기)
-- **Claude 모델 매핑 (effort→ID)** → `providers/claudeProvider.ts:9` `MODEL_BY_EFFORT`
-- **Codex 모델/엔드포인트** → `providers/codexProvider.ts:8-19`
-- **Gemini 모델/폴백** → `providers/geminiProvider.ts:10-15`
-- **이미지 생성** → `providers/geminiImageProvider.ts`
+- **Claude 시스템 프롬프트** → `extension.ts:buildSystemPrompt()` (mode별, team role별 다 여기)
+- **Claude 모델 매핑 (effort→ID) / maxTokens** → `providers/claudeProvider.ts` 의 `MODEL_BY_EFFORT`, `MAX_OUTPUT`
+- **Codex native 엔진 (codex.exe spawn)** → `providers/codexMcpClient.ts` (stdio MCP), `codexMcpProvider.ts` (단순 인터페이스). 분기는 `extension.ts:_runCodexAgent`
+- **Codex legacy 엔진** → `providers/codexProvider.ts` (chatgpt.com SSE)
+- **Gemini 모델/폴백** → `providers/geminiProvider.ts`
+- **이미지 생성** → `providers/geminiImageProvider.ts` (모델 폴백 체인 + ListModels)
 
 ### 대화 저장/복원
 - **저장 키 생성** → `extension.ts:31` `chatStateKey()`
@@ -211,6 +216,19 @@ code --install-extension orchestrai.vsix --force
 - `zod`
 
 ---
+
+## ⚙ 주요 설정 (settings.json)
+
+```jsonc
+{
+  "orchestrai.codexEngine": "native",     // native | legacy
+  "orchestrai.metaModel": "claude-haiku-4-5",
+  "orchestrai.confidenceThreshold": 0.8,
+  "orchestrai.mcpServers": {
+    "filesystem": { "command": "npx", "args": ["-y", "@modelcontextprotocol/server-filesystem", "${workspaceFolder}"] }
+  }
+}
+```
 
 ## 🚨 알려진 함정
 

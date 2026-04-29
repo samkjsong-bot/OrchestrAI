@@ -5,6 +5,11 @@ tsconfig.json
 .vscode-test/**
 .github/**
 작업실/**
+test/**
+_fix_*.py
+_diag*.py
+_probe_*.js
+_verify.py
 .gitignore
 .eslintrc*
 .prettierrc*

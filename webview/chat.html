@@ -1363,6 +1363,52 @@
     to   { transform: translateX(0); opacity: 1; }
   }
 
+  /* 진행 표시 바 — 입력창 위 sticky */
+  .progress-bar {
+    display: none;
+    align-items: center;
+    gap: 10px;
+    padding: 7px 14px;
+    margin: 0 12px 6px;
+    background: linear-gradient(90deg, rgba(99, 102, 241, 0.08), rgba(99, 102, 241, 0.02));
+    border: 1px solid rgba(99, 102, 241, 0.25);
+    border-radius: 6px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    color: var(--text);
+    flex-shrink: 0;
+  }
+  .progress-bar.visible { display: flex; }
+  .progress-spinner {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--accent);
+    box-shadow: 0 0 8px var(--accent);
+    animation: pulse 1.2s ease-in-out infinite;
+    flex-shrink: 0;
+  }
+  .progress-text {
+    flex: 1;
+    color: var(--text-dim);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .progress-text strong { color: var(--text); font-weight: 600; }
+  .progress-stop {
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--text-muted);
+    border-radius: 4px;
+    padding: 2px 8px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .progress-stop:hover { color: #ef4444; border-color: #ef4444; }
+
   /* generation STOP 버튼 — kill switch */
   .gen-stop {
     position: fixed;
@@ -1777,6 +1823,13 @@
 <!-- 일반 generation 중단 (kill switch) — argue 아닐 때 표시 -->
   <button class="gen-stop" id="gen-stop" onclick="stopGeneration()">■ STOP</button>
 
+<!-- 진행 표시 바 (입력창 위 sticky) — 현재 어떤 툴이 도는지 즉시 보임 -->
+<div class="progress-bar" id="progress-bar">
+  <span class="progress-spinner"></span>
+  <span class="progress-text" id="progress-text">working...</span>
+  <button class="progress-stop" onclick="stopGeneration()" title="중단">■</button>
+</div>
+
 <div class="review-bar" id="review-bar">
   <div class="review-meta" id="review-meta"></div>
   <button class="review-action" onclick="reviewLatestChanges()">변경 사항 검토 <span>↗</span></button>
@@ -2044,12 +2097,36 @@
 
   function renderMarkdown(raw) {
     const normalized = normalizeToolActivities(raw)
-    if (HAS_MARKED) return marked.parse(normalized)
+    if (HAS_MARKED) {
+      const html = marked.parse(normalized)
+      return autoLinkifyPaths(html)
+    }
     return normalized
       .replace(/&/g, '&amp;')
       .replace(/</g, '&lt;')
       .replace(/>/g, '&gt;')
       .replace(/\n/g, '<br>')
+  }
+
+  // <code> 태그 안 또는 plain text의 파일 경로 (예: src/foo.ts, test/index.html, app/main.py:42)를
+  // orchestrai-open: 스킴 링크로 자동 변환 — 클릭하면 VSCode에서 열림.
+  function autoLinkifyPaths(html) {
+    // 이미 <a> 안인지 (orchestrai-open) 체크 위해 placeholder 처리
+    // <code>...</code> 안에 있는 path만 변환 (긴 paragraph 안 우연한 슬래시는 안 건드림)
+    const pathRe = /\b((?:[a-zA-Z]:[\\/])?(?:[\w.-]+[\\/])+[\w.-]+\.[a-zA-Z0-9]{1,8})(?::(\d+)(?:-(\d+))?)?\b/g
+    return html.replace(/<code>([^<]+)<\/code>/g, (full, inner) => {
+      // 코드 펜스 (multi-line)는 건드리지 않음 — block code에는 <pre><code>로 감싸짐
+      // 여기 매칭은 inline <code>만
+      const replaced = inner.replace(pathRe, (m, path, lineStart, lineEnd) => {
+        const cleanPath = path.replace(/\\/g, '/')
+        const lineFragment = lineStart ? (lineEnd ? `#L${lineStart}-L${lineEnd}` : `#L${lineStart}`) : ''
+        const display = m
+        const safePath = cleanPath.replace(/'/g, "\\'")
+        const safeLine = lineStart ? `'${lineStart}'` : 'null'
+        return `<a class="file-link" onclick="event.preventDefault();postToExtension({type:'openFile',path:'${safePath}',line:${safeLine}})" title="${cleanPath}">${display}</a>`
+      })
+      return `<code>${replaced}</code>`
+    })
   }
 
   function escapeHtml(value) {
@@ -2228,10 +2305,12 @@
         break
       case 'generationStart':
         document.getElementById('gen-stop').classList.add('visible')
+        showProgress('working...')
         break
       case 'generationEnd':
       case 'generationStopped':
         document.getElementById('gen-stop').classList.remove('visible')
+        hideProgress()
         break
       case 'argueStart':
         document.getElementById('argue-stop').classList.add('visible')
@@ -2673,7 +2752,7 @@
       ${renderAttachments(m.attachments)}
     </div>`
     container.appendChild(el)
-    container.scrollTop = container.scrollHeight
+    scrollIfNearBottom(container)
   }
 
   function rehydrateMessages(messages) {
@@ -2722,7 +2801,7 @@
     const latestChanged = [...messages].reverse().find(m => m.role === 'assistant' && m.changeSummary && m.changeSummary.files > 0)
     updateReviewBar(latestChanged?.changeSummary || null)
     applyModelFilter()
-    container.scrollTop = container.scrollHeight
+    scrollIfNearBottom(container)
   }
 
   // ── 사용량 패널 ──
@@ -2877,7 +2956,7 @@
           로그인        </button>
       </div>`
     messages.appendChild(el)
-    messages.scrollTop = messages.scrollHeight
+    scrollIfNearBottom(messages)
   }
 
   function updateContextBadge(fileName, hasSelection, language) {
@@ -2923,7 +3002,7 @@
       </div>
       <div class="routing-line"></div>`
     messages.appendChild(el)
-    messages.scrollTop = messages.scrollHeight
+    scrollIfNearBottom(messages)
   }
 
   // ── 스트리밍 버블 관리 ──
@@ -2953,7 +3032,7 @@
     messages.appendChild(el)
     streamBuffers[id] = ''
     applyModelFilter()
-    messages.scrollTop = messages.scrollHeight
+    scrollIfNearBottom(messages)
   }
 
   // 스트리밍 중에도 ⏺/● 라인은 즉시 박스로 보이게 throttled markdown 렌더 (rAF 1회/frame)
@@ -2973,15 +3052,43 @@
       el.innerHTML = renderMarkdown(buf)
     }
     const messages = document.getElementById('messages')
-    messages.scrollTop = messages.scrollHeight
+    scrollIfNearBottom(messages)
   }
 
   function appendChunk(id, text) {
     streamBuffers[id] = (streamBuffers[id] || '') + text
+    // ⏺ ToolName(args) 라인이 들어오면 progress bar에 즉시 반영 (라인 단위 마지막 매치 사용)
+    const toolMatch = String(text || '').match(/⏺\s*([A-Za-z_][\w.-]*)\s*(?:\(([^\n]*?)\))?/)
+    if (toolMatch) {
+      const name = toolMatch[1]
+      const args = (toolMatch[2] || '').trim()
+      const summary = args ? `${name}(${args.length > 60 ? args.slice(0, 60) + '…' : args})` : name
+      showProgress(`<strong>${escapeHtml(name)}</strong> ${escapeHtml(summary.slice(name.length))}`)
+    }
     if (!document.getElementById(`content-${id}`)) return
     if (_streamRenderPending.has(id)) return
     _streamRenderPending.add(id)
     requestAnimationFrame(() => _flushStreamRender(id))
+  }
+
+  // 사용자가 위로 스크롤해서 보고 있으면 자동 스크롤 안 함. bottom 근처면 따라감.
+  function scrollIfNearBottom(el, threshold = 120) {
+    if (!el) return
+    const distance = el.scrollHeight - el.scrollTop - el.clientHeight
+    if (distance < threshold) el.scrollTop = el.scrollHeight
+  }
+
+  // ── 진행 표시 바 helper ──
+  function showProgress(html) {
+    const bar = document.getElementById('progress-bar')
+    const txt = document.getElementById('progress-text')
+    if (!bar || !txt) return
+    txt.innerHTML = html
+    bar.classList.add('visible')
+  }
+  function hideProgress() {
+    const bar = document.getElementById('progress-bar')
+    if (bar) bar.classList.remove('visible')
   }
 
   function finalizeMessage(id, tokens, changedFiles = [], actualModel = '', changeSummary = null) {
@@ -3007,7 +3114,7 @@
     updateReviewBar(changeSummary)
 
     const messages = document.getElementById('messages')
-    messages.scrollTop = messages.scrollHeight
+    scrollIfNearBottom(messages)
   }
 
   function appendRoutingBadge(decision) {
@@ -3046,7 +3153,7 @@
       </div>
       <div class="routing-line"></div>`
     messages.appendChild(el)
-    messages.scrollTop = messages.scrollHeight
+    scrollIfNearBottom(messages)
   }
 
     // 컨텍스트 전달 정보 — "모델 A가 어떤 히스토리를 받았는지" 명시
@@ -3062,7 +3169,7 @@
       </div>
       <div class="routing-line"></div>`
     messages.appendChild(el)
-    messages.scrollTop = messages.scrollHeight
+    scrollIfNearBottom(messages)
   }
 
   let thinkingEl = null
@@ -3076,7 +3183,7 @@
       <span class="thinking-model">analyzing intent</span>
     </div>`
     messages.appendChild(thinkingEl)
-    messages.scrollTop = messages.scrollHeight
+    scrollIfNearBottom(messages)
   }
 
   function hideThinking() {

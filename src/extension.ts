@@ -7,6 +7,7 @@ import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js'
 import { Orchestrator, inferEffort, parseAllMentions } from './router/orchestrator'
 import { callClaude } from './providers/claudeProvider'
 import { callCodex } from './providers/codexProvider'
+import { getCodexMcpClient, disposeCodexMcpClient } from './providers/codexMcpClient'
 import { callGemini } from './providers/geminiProvider'
 import { ChatMessage, RouterMode, RoutingDecision, Model, Effort, ChangeSummary } from './router/types'
 import { AuthStorage } from './auth/storage'
@@ -213,7 +214,17 @@ function resolveWorkspacePath(relPath?: string): string {
   const root = getWorkspaceRoot()
   if (!root) throw new Error('워크스페이스 폴더가 열려 있지 않습니다.')
 
-  const cleaned = (relPath ?? '.').replace(/\\/g, '/').replace(/^\/+/, '')
+  let cleaned = (relPath ?? '.').replace(/\\/g, '/').replace(/^\/+/, '')
+
+  // 모델이 workspace 폴더명을 prefix로 또 붙이는 케이스 자동 strip
+  // (예: workspace=orchestrai 인데 Codex가 'orchestrai/test/foo.md' 라고 생성)
+  const rootBase = path.basename(root).toLowerCase()
+  const firstSeg = cleaned.split('/')[0]?.toLowerCase()
+  if (firstSeg && firstSeg === rootBase) {
+    const stripped = cleaned.split('/').slice(1).join('/')
+    if (stripped) cleaned = stripped
+  }
+
   const resolved = path.resolve(root, cleaned)
   const relative = path.relative(root, resolved)
   if (relative.startsWith('..') || path.isAbsolute(relative)) {
@@ -579,47 +590,51 @@ function buildSystemPrompt(
   // implementer/reviewer는 더 이상 직접 응답하지 않고, Claude가 consult로 부름.
   const teamRoleBlock =
     teamRole === 'architect'
-      ? `\n\nTEAM MODE ??you are the ORCHESTRATOR (architect + final reviewer).
+      ? `\n\nTEAM MODE — you are the ORCHESTRATOR (architect + final reviewer). The user explicitly chose team mode because they want to SEE Codex and Gemini contribute. Hogging all the work yourself defeats the purpose.
 
 Your team:
-- **You (Claude)**: plan, delegate, integrate, FINAL REVIEW. Don't write big chunks of code yourself ??delegate.
-- **Codex (GPT-5)**: implementer. Call via \`consult_codex(task)\` tool. Codex actually edits files via its own tools. Use for: writing code, implementing features, fixing bugs, scaffolding.
-- **Gemini**: specialist. Call via \`consult_gemini(question)\` for: long-context analysis, summaries, lookups (free tier ??cheap). Call \`generate_image(prompt, save_to)\` for image creation (cover art, mockups, icons).
+- **You (Claude)**: plan, delegate, integrate, FINAL REVIEW. Do NOT write code or do file analysis yourself when a teammate fits.
+- **Codex (GPT-5)**: implementer. Call via \`consult_codex(task)\` tool. Codex edits files itself. Use for ALL of: writing code, implementing features, fixing bugs, scaffolding, refactors, test writing, generating boilerplate.
+- **Gemini**: specialist. Call via \`consult_gemini(question)\` for ALL of: long-context analysis (whole codebase scan), summarization, multi-file reading, web/doc lookups, "explain this large thing". Call \`generate_image(prompt, save_to)\` for any image creation.
 
-Standard flow:
-1. Read user request. Plan briefly (steps, files, risks). Use TodoWrite if it helps you track.
-2. Delegate concrete coding tasks to Codex via consult_codex ??give file paths and acceptance criteria, not vague instructions.
-3. If you need image/visual: generate_image. If you need to analyze/summarize a long doc or whole codebase: consult_gemini.
-4. After delegations finish, READ the changed files yourself with Read tool to verify. Catch anything Codex missed.
-5. Final response: short summary (what was done, file links, anything user should know). NOT the whole plan again.
+MANDATORY DELEGATION (do this every team-mode turn):
+- If user asks for code changes / new files / fixes / features: you MUST call consult_codex. Do NOT write the code yourself.
+- If user asks to analyze/summarize/read large content: you MUST call consult_gemini.
+- If user asks for image/visual: you MUST call generate_image.
+- You may chain multiple consults in one turn (e.g. consult_gemini for context → consult_codex for impl).
+- Brief plan FIRST (2-4 lines max), then call the tool(s), then short final summary. Don't write the implementation in your own message.
 
-Rules:
-- Keep your own output minimal ??most code goes through consult_codex. Saves your tokens.
-- Each consult task should be focused and self-contained ??don't dump entire user message into the consult.
-- Ask Codex/Gemini brief follow-up questions if their first response misses the mark.
-- You CAN still use Bash/Read/Edit yourself when delegation overhead isn't worth it (e.g. one-line typo fix, running a build).`
+When you can answer directly (skip delegation):
+- Pure conceptual questions ("what does X mean", "which is faster"), where no file work and no image is needed.
+- One-line trivial fixes you can do with Edit tool faster than describing it to Codex.
+- Status check / questions about your own prior reply.
+
+Output discipline:
+- Your OWN messages: brief plan (≤4 lines) → tool calls → ≤3 sentence final summary. Codex/Gemini outputs are shown to the user in their OWN bubbles, do NOT repeat their content in your message.
+- Each consult_codex(task) gets ONE focused job with concrete file paths + acceptance criteria. NOT the whole user message.
+- After Codex/Gemini finish, you may verify by reading files yourself, then close with a 1-2 line wrap-up.`
       : ''
 
   // argue 모드 힌트 (team은 아닐 때만)
   const argueBlock = !teamRole && (
     collabHint === 'reply'
-      ? `\n\nARGUE MODE ??a peer model just answered the user's message above (tagged ${peerTagsList}). Add YOUR distinct angle: agree/disagree with reasoning, catch what they missed, offer an alternative. One concise take ??no restating. Be direct.`
+      ? `\n\nARGUE MODE —a peer model just answered the user's message above (tagged ${peerTagsList}). Add YOUR distinct angle: agree/disagree with reasoning, catch what they missed, offer an alternative. One concise take —no restating. Be direct.`
       : collabHint === 'first'
-      ? `\n\nARGUE MODE ??your peers (${peerNames}) will chime in after you on the same question. Give your best take first; they'll critique/extend. Keep it tight.`
+      ? `\n\nARGUE MODE —your peers (${peerNames}) will chime in after you on the same question. Give your best take first; they'll critique/extend. Keep it tight.`
       : ''
   )
 
   const collabBlock = teamRoleBlock || argueBlock
 
-  const base = `You are the ${selfName} backend of OrchestrAI ??a VSCode extension that orchestrates multiple AI models.
+  const base = `You are the ${selfName} backend of OrchestrAI —a VSCode extension that orchestrates multiple AI models.
 
 CONTEXT YOU MUST KEEP IN MIND
 - The user runs Claude Max + ChatGPT Pro + Gemini (Google) subscriptions. OrchestrAI routes each request to whichever model fits the task best.
 - You are ${selfName}. Your peers are ${peerNames}. All three can appear in the same chat thread.
 - CRITICAL IDENTITY RULE: You are ${selfName} and ONLY ${selfName}. NEVER pretend to be ${peerNames}, even if the user names them ("써드파티")
-- Prior assistant messages may be prefixed ${selfTag} (you) or ${peerTagsList} (peers). Treat peer-tagged messages as prior turns in this same conversation ??do NOT re-introduce yourself, do NOT repeat what a peer already said.
-- Rough division: Claude ??architecture, multi-file refactoring, deep debugging, code review, nuanced reasoning. Codex ??fast implementation, boilerplate, CLI, simple fixes. Gemini ??long-context (whole codebase, big files), multimodal (images/PDFs/diagrams), summarization.
-- When asked "which model should I use?" ??answer in terms of THIS three-model setup, do NOT give generic comparisons.${collabBlock}
+- Prior assistant messages may be prefixed ${selfTag} (you) or ${peerTagsList} (peers). Treat peer-tagged messages as prior turns in this same conversation —do NOT re-introduce yourself, do NOT repeat what a peer already said.
+- Rough division: Claude —architecture, multi-file refactoring, deep debugging, code review, nuanced reasoning. Codex —fast implementation, boilerplate, CLI, simple fixes. Gemini —long-context (whole codebase, big files), multimodal (images/PDFs/diagrams), summarization.
+- When asked "which model should I use?" —answer in terms of THIS three-model setup, do NOT give generic comparisons.${collabBlock}
 
 HOW TO THINK BEFORE ANSWERING
 - Pause and plan. Identify what the user actually needs (a fix? an explanation? a decision?). Pick the 2-3 points that matter and skip the rest.
@@ -656,35 +671,34 @@ When NOT to refine:
 - 단순 질문 ("이거 뭐야?", "왜 이래?")
 - 이미 앞 대화에서 다듬은 안을 사용자가 OK했거나 작업 진행 중
 PROACTIVELY UPGRADE THE USER'S SETUP
-The user is a vibe-coder ??they often don't know what tools exist or could help. When you notice the workflow could benefit from setup changes, SAY SO. Specifically:
+The user is a vibe-coder —they often don't know what tools exist or could help. When you notice the workflow could benefit from setup changes, SAY SO. Specifically:
 - **Missing MCP that fits the task** — recommend a concrete MCP server with name and what it would unlock. Examples: NotebookLM MCP for research/note synthesis, GitHub MCP for repo management, Postgres MCP for DB work, Playwright MCP for browser automation, Linear MCP for ticketing.
 - **Missing Gemini API key when image gen would help** — say "이미지가 필요한 작업인데 Gemini API 키가 없어요. 설정 → 계정 연결 → 🎨 Gemini API 키에서 등록하면 generate_image 활성화됩니다."
-- **Workspace structure improvements** ??if you notice missing .gitignore, no README, no CI config, missing tsconfig strict, etc., point it out briefly.
+- **Workspace structure improvements** —if you notice missing .gitignore, no README, no CI config, missing tsconfig strict, etc., point it out briefly.
 - **Capability requests** — if you literally CAN'T do something the user wants and a tool would fix it, ask: "X를 하려면 Y MCP가 필요한데 붙여드릴까요?" Don't silently fail.
-Be useful, not preachy. Don't mention this every turn ??only when relevant to the actual task.
+Be useful, not preachy. Don't mention this every turn —only when relevant to the actual task.
 
-RESPONSE STYLE ??mimic Claude Code CLI (critical)
-- Open with ONE short sentence stating what you are doing or what you found. No filler preamble ("좋은 질문입니다", "물론입니다", "알겠습니다" 금지).
-- Results first, reasoning only if the user asks why.
-- Keep it tight. Short paragraphs. No walls of text. If there are multiple points, bullet them ??each bullet one line.
-- **File references: always as markdown links** ??\`[filename.ts:42](src/filename.ts#L42)\` or \`[filename.ts:42-56](src/filename.ts#L42-L56)\`. NEVER bare paths like \`src/filename.ts\`.
-- End with a 1~2 sentence summary: what changed / what the user should do next. Nothing else — no "위에서 설명한 바와 같이" type closers.
-- No emojis unless the user uses them first.
-- Korean when the user writes in Korean. Direct tone — no apologies for "잘 모르겠습니다" style hedging.
+RESPONSE STYLE — Claude Code CLI 톤. WORK REPORT, not chat.
+- **Open with action verb**, not greeting. GOOD: "Read 3 files → X 발견". "Editing src/foo.ts:42 — 1줄 변경". "테스트 실패: Y 라인". BAD: "좋은 질문이에요", "확인해볼게요", "알겠습니다", "물론입니다", "도와드릴게요".
+- **Result FIRST, reasoning only if asked.** "왜?" 질문 받기 전엔 설명 X. 사용자가 명시적으로 "왜?", "이유?", "explain" 했을 때만 reasoning.
+- **Prose paragraphs banned for non-WHY questions.** 작업 요청·코드 질문엔 산문 X. 작업 보고·짧은 bullet·코드만.
+- **No filler closers.** 응답 끝에 "도와드릴까요?", "더 필요한 거 있으세요?", "위에서 설명한 바와 같이..." 금지. 끝은 항상 concrete: \`다음: npm test\` / \`확인 필요: X 동작\` / \`완료\`.
+- **File references = markdown links.** \`[filename.ts:42](src/filename.ts#L42)\`. NEVER bare \`src/filename.ts\`.
+- Korean when user writes Korean. Direct tone. No hedging ("잘 모르겠지만", "아마도", "가능할 것 같습니다" 금지 — 모르면 "확인 필요" 한 줄).
+- No emojis unless user uses them first.
+- 응답 길이: 단순 작업 = 3~5줄. 복잡 = 짧은 bullet 5~10개. 산문 paragraph 2개 이상 = 너무 김.
 
-OUTPUT FORMATTING ??STRICT RULES
-- NEVER write a long answer as one paragraph. Break thoughts into short paragraphs with blank lines between them.
-- Markdown block elements MUST be on their own line with a blank line above AND below:
-  - Headers:      \`\\n\\n## Header\\n\\n\`
-  - Code fences:  \`\\n\\n\\\`\\\`\\\`lang\\n...code...\\n\\\`\\\`\\\`\\n\\n\`
-  - Lists:        each bullet on its own line (\`- item\\n- item\`)
-  - Horizontal rule: \`\\n\\n---\\n\\n\`
-- Inline code uses single backticks.
-- Always fence code blocks with a language tag (\`ts\`, \`py\`, \`bash\`, \`json\`, etc.).
-- For comparisons / options, prefer a short markdown table over bullet-of-bullets.`
+OUTPUT FORMATTING — STRICT
+- Code → fenced block with language tag (\`ts\`, \`py\`, \`bash\`, \`json\`).
+- Markdown block elements (headers, fences, lists, hr) on own line with blank line above/below.
+- Bullets one line each.
+- Tables for comparison.
+- Inline \`code\` for symbols.`
 
   let localTools = ''
   if (model === 'codex' || model === 'gemini') {
+    const wsRoot = getWorkspaceRoot() ?? '(no workspace open)'
+    const wsBase = wsRoot !== '(no workspace open)' ? path.basename(wsRoot) : ''
     localTools = `
 
 LOCAL WORKSPACE TOOLS
@@ -702,8 +716,16 @@ Available tools:
 - replace_in_file: {"tool":"replace_in_file","path":"src/file.ts","oldText":"exact text","newText":"replacement"}
 - mcp: {"tool":"mcp","server":"serverName","name":"toolName","args":{"key":"value"}}
 
-Rules:
-- Use relative paths inside the workspace only.
+WORKSPACE ROOT (CRITICAL for path):
+${wsRoot}
+
+PATH RULES:
+- All paths are RELATIVE to the workspace root above.
+- Correct: "test/foo.md", "src/util.ts", "package.json"${wsBase ? `
+- WRONG:   "${wsBase}/test/foo.md", "/${wsBase}/src/util.ts" — that prefixes the workspace name and the file ends up at workspace/${wsBase}/${wsBase}/...` : ''}
+- Use list_files first if you're unsure of the structure.
+
+Other rules:
 - Prefer read_file before editing existing files.
 - Prefer replace_in_file for focused edits and write_file for new files or full rewrites.
 - Use mcp only when the user asks for external MCP-backed capabilities or the needed tool is not one of the local workspace tools.
@@ -718,20 +740,20 @@ Use them directly to read and modify the user's workspace. You can:
 - Edit/Write files to make changes (the system auto-accepts edits in auto-edit / smart-auto modes).
 - Run Bash commands for builds, tests, searches.
 
-Keep tool use purposeful ??each call should advance the task. After completing changes, summarize what changed with markdown links to the modified files.`
+Keep tool use purposeful —each call should advance the task. After completing changes, summarize what changed with markdown links to the modified files.`
   }
 
   // MCP 서버가 설정돼 있으면 사용 가능한 툴 목록을 프롬프트에 주입
   const mcpBlock = mcpTools && mcpTools.length > 0
     ? `\n\nMCP SERVERS AVAILABLE\n${
-        mcpTools.map(t => `- ${t.server}.${t.name}${t.description ? ` ??${t.description}` : ''}`).join('\n')
+        mcpTools.map(t => `- ${t.server}.${t.name}${t.description ? ` —${t.description}` : ''}`).join('\n')
       }\nCall with: {"tool":"mcp","server":"serverName","name":"toolName","args":{...}}`
     : ''
 
   let modeBlock = ''
   if (permissionMode === 'plan') {
     const ts = Date.now()
-    modeBlock = `\n\nPLAN MODE (STRICT ??user enabled)
+    modeBlock = `\n\nPLAN MODE (STRICT —user enabled)
 The user wants a plan BEFORE any file changes. You MUST NOT modify files yet.
 
 Required workflow:
@@ -758,8 +780,8 @@ read_file and list_files do not need confirmation. MCP tool calls do not need co
   } else if (permissionMode === 'smart-auto') {
     modeBlock = `\n\nSMART AUTO MODE (user enabled)
 Choose per action:
-- Trivial/reversible edits (adding a line, fixing typos, stylistic) ??execute immediately.
-- Risky changes (deleting code >10 lines, schema/config changes, security-relevant, irreversible) ??show diff first, ask confirmation.
+- Trivial/reversible edits (adding a line, fixing typos, stylistic) —execute immediately.
+- Risky changes (deleting code >10 lines, schema/config changes, security-relevant, irreversible) —show diff first, ask confirmation.
 - When in doubt, ask.`
   }
   // 'auto-edit'은 추가 지침 없음 (기본 동작)
@@ -773,7 +795,7 @@ Choose per action:
 The user has this file open:
 ${buildContextBlock(ctx)}
 ${ctx.cursorLine ? `Cursor at line ${ctx.cursorLine}.` : ''}
-${ctx.selectedText ? 'User has selected code ??prioritize that selection.' : ''}
+${ctx.selectedText ? 'User has selected code —prioritize that selection.' : ''}
 
 Answer questions about this file directly. Show modified code for edits.`
 }
@@ -1230,6 +1252,7 @@ class OrchestrAIViewProvider implements vscode.WebviewViewProvider, vscode.Dispo
     this._mcp.dispose()
     this._statusBarItem.dispose()
     void this._telegramBridge?.dispose()
+    disposeCodexMcpClient()
   }
 
   resolveWebviewView(webviewView: vscode.WebviewView) {
@@ -1338,7 +1361,7 @@ class OrchestrAIViewProvider implements vscode.WebviewViewProvider, vscode.Dispo
             await this._rollbackTurn(msg.userId)
             break
           case 'openFile':
-            await this._openWorkspaceFile(msg.path)
+            await this._openWorkspaceFile(msg.path, msg.line)
             break
           case 'reviewChanges':
             await this._reviewChanges(msg.turnId, msg.path)
@@ -1361,6 +1384,14 @@ class OrchestrAIViewProvider implements vscode.WebviewViewProvider, vscode.Dispo
   }
 
   private async _pushWebviewState(reason: string) {
+    // 메모리 _messages가 빈 배열인데 디스크에는 살아있을 수 있음 (resolveWebviewView race / SDK 초기화 timing).
+    // 매번 디스크에서 freshly 로드해서 메모리가 더 적으면 디스크 기준으로 sync.
+    const fresh = loadChatStorage(this._context)
+    if (fresh.messages.length > this._messages.length) {
+      log.warn('persist', `memory had ${this._messages.length} but disk has ${fresh.messages.length} — restoring from disk`)
+      this._messages = fresh.messages
+      this._compaction = fresh.compaction
+    }
     log.info('persist', `push webview state (${reason}) messages=${this._messages.length}, key=${this._chatKey}`)
     await this._sendAuthStatus()
     this._notifyContextChange()
@@ -1554,28 +1585,55 @@ class OrchestrAIViewProvider implements vscode.WebviewViewProvider, vscode.Dispo
     }
   }
 
-  private async _openWorkspaceFile(rawPath: string) {
+  private async _openWorkspaceFile(rawPath: string, line?: number | null) {
     try {
-      // 상대경로면 그대로, 절대경로면 워크스페이스 기준으로 해석
       const isAbsolute = /^[a-zA-Z]:[\\/]/.test(rawPath) || rawPath.startsWith('/') || rawPath.startsWith('\\\\')
-      let target: string
+      const root = getWorkspaceRoot() ?? process.cwd()
+
+      // 후보 경로 여러 개 시도 — 첫 번째 존재하는 파일 사용
+      const candidates: string[] = []
       if (isAbsolute) {
-        target = rawPath
+        candidates.push(rawPath)
       } else {
-        try {
-          target = resolveWorkspacePath(rawPath)
-        } catch {
-          // 워크스페이스 안에 없으면 현재 cwd 기준으로 시도
-          target = path.resolve(getWorkspaceRoot() ?? process.cwd(), rawPath)
+        const normalized = rawPath.replace(/^[\\/]+/, '').replace(/\\/g, '/')
+        // 1. 워크스페이스 루트 기준
+        candidates.push(path.resolve(root, normalized))
+        // 2. 첫 segment가 워크스페이스 폴더명과 같거나 비슷하면 그 segment 빼고 시도 (모델이 prefix 잘못 붙이는 케이스)
+        const parts = normalized.split('/')
+        if (parts.length > 1) {
+          const tail = parts.slice(1).join('/')
+          candidates.push(path.resolve(root, tail))
         }
+        // 3. 워크스페이스 부모 기준 (rare)
+        candidates.push(path.resolve(path.dirname(root), normalized))
+        // 4. cwd 기준 (절대경로 아닌데 위 다 fail 시)
+        candidates.push(path.resolve(process.cwd(), normalized))
       }
-      // 존재 확인 후 열기
-      if (!fs.existsSync(target)) {
-        this._post({ type: 'toast', message: `?뚯씪 ?놁쓬: ${target}` })
+
+      // 워크스페이스 boundary 존중 — 절대경로지만 워크스페이스 밖이면 거부
+      const target = candidates.find(p => {
+        if (!fs.existsSync(p)) return false
+        if (!isAbsolute) {
+          // 상대경로 후보는 워크스페이스 내부여야
+          const rel = path.relative(root, p)
+          if (rel.startsWith('..')) return false
+        }
+        return true
+      })
+
+      if (!target) {
+        this._post({ type: 'toast', message: `파일 없음: ${rawPath}` })
         return
       }
+
       const doc = await vscode.workspace.openTextDocument(target)
-      await vscode.window.showTextDocument(doc, { preview: false })
+      const editor = await vscode.window.showTextDocument(doc, { preview: false })
+      // 라인 정보 있으면 해당 라인으로 점프
+      if (typeof line === 'number' && line > 0) {
+        const pos = new vscode.Position(Math.max(0, line - 1), 0)
+        editor.selection = new vscode.Selection(pos, pos)
+        editor.revealRange(new vscode.Range(pos, pos), vscode.TextEditorRevealType.InCenter)
+      }
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err)
       this._post({ type: 'toast', message: `열기 실패: ${message}` })
@@ -1860,7 +1918,7 @@ class OrchestrAIViewProvider implements vscode.WebviewViewProvider, vscode.Dispo
       return
     }
     this._isSending = true
-    // ??generation ?쒖옉 ????abort controller
+    // 새 generation 시작 시 abort 가능하게 controller 초기화
     this._currentAbort = new AbortController()
     this._post({ type: 'generationStart' })  // UI: stop 버튼 켜기
 
@@ -2074,12 +2132,44 @@ class OrchestrAIViewProvider implements vscode.WebviewViewProvider, vscode.Dispo
     streamId: string,
     turnId?: string,
   ): Promise<{ content: string; inputTokens: number; outputTokens: number }> {
+    // native engine: codex.exe mcp-server 통해 호출. tool/path/auth 다 codex가 처리.
+    const engine = this._cfg<string>('codexEngine') ?? 'native'
+    if (engine === 'native') {
+      const client = getCodexMcpClient()
+      if (client.isAvailable()) {
+        const wsRoot = getWorkspaceRoot() ?? process.cwd()
+        const last = history[history.length - 1]
+        const prior = history.slice(0, -1)
+        const prompt = (prior.length
+          ? prior.map(m => `${m.role === 'user' ? 'User' : 'Assistant'}: ${m.content}`).join('\n\n') + '\n\n---\n\n'
+          : ''
+        ) + (last?.content ?? '')
+        try {
+          const result = await client.run({
+            prompt,
+            cwd: wsRoot,
+            baseInstructions: systemPrompt,
+            approvalPolicy: this._permissionMode === 'ask' ? 'on-request' : 'never',
+            onProgress: onChunk,
+            abortSignal: this._currentAbort?.signal,
+          })
+          return result
+        } catch (err) {
+          log.warn('codex', `native engine failed, falling back to legacy: ${err instanceof Error ? err.message : String(err)}`)
+          // legacy로 폴백
+        }
+      } else {
+        log.info('codex', 'native engine unavailable (Codex extension not installed?), using legacy')
+      }
+    }
+
     const agentHistory = [...history]
     let inputTokens = 0
     let outputTokens = 0
 
     for (let turn = 0; turn < MAX_CODEX_TOOL_TURNS; turn++) {
       if (this._currentAbort?.signal.aborted) throw new Error('aborted')
+      // chunk는 버리고 turn 끝나고 한 번에 처리 — Codex가 raw JSON/tool call을 텍스트로 노출하는 거 차단
       const result = await callCodex(
         agentHistory,
         effort,
@@ -2094,12 +2184,13 @@ class OrchestrAIViewProvider implements vscode.WebviewViewProvider, vscode.Dispo
 
       const toolCall = parseCodexToolCall(result.content)
       if (!toolCall) {
+        // 마지막 turn — 답변 텍스트를 깨끗하게 사용자에게 stream
         onChunk(result.content)
         return { content: result.content, inputTokens, outputTokens }
       }
 
       const label = formatCodexToolCall(toolCall)
-      this._post({ type: 'streamChunk', id: streamId, text: `\n\n  ??${label}\n` })
+      this._post({ type: 'streamChunk', id: streamId, text: `\n\n  ⏺ ${label}\n` })
 
       let toolResult: string
       try {
@@ -2157,7 +2248,7 @@ class OrchestrAIViewProvider implements vscode.WebviewViewProvider, vscode.Dispo
       }
 
       const label = formatCodexToolCall(toolCall)
-      this._post({ type: 'streamChunk', id: streamId, text: `\n\n  ??${label}\n` })
+      this._post({ type: 'streamChunk', id: streamId, text: `\n\n  ⏺ ${label}\n` })
 
       let toolResult: string
       try {
@@ -2282,32 +2373,76 @@ class OrchestrAIViewProvider implements vscode.WebviewViewProvider, vscode.Dispo
               geminiAvailable,
               geminiApiKey: geminiApiKey ?? undefined,
               workspacePath: getWorkspaceRoot() ?? process.cwd(),
-              onActivity: (text) => this._post({ type: 'streamChunk', id: assistantMsgId, text: `\n  ??${text}\n` }),
-              // 핵심: 단발 callCodex 대신 _runCodexAgent (툴 루프) 통째로 위임
+              onActivity: (text) => this._post({ type: 'streamChunk', id: assistantMsgId, text: `\n  ⏺ ${text}\n` }),
+              // 핵심: 동료 호출 시 별도 말풍선 생성 → 사용자가 Codex/Gemini 응답을 직접 보게
               runCodexAgent: codexToken ? async (task: string) => {
-                const sysPrompt = 'You are Codex (GPT-5), the implementer. Claude (architect) just delegated a focused task. Use workspace tools to ACTUALLY implement it (read_file, write_file, replace_in_file, list_files). After files are written, reply with concise summary of changes (file paths + what changed). Do not just describe ??actually call the tools.'
-                return this._runCodexAgent(
-                  [{ role: 'user', content: task }],
-                  'medium',
-                  codexToken,
-                  codexAccountId ?? undefined,
-                  sysPrompt,
-                  // worker side onChunk: 받은 청크는 hub의 streamChunk로 forward (UI에 보임)
-                  (text) => this._post({ type: 'streamChunk', id: assistantMsgId, text }),
-                  assistantMsgId,
-                  turnId,
-                )
+                const consultId = `consult-${Date.now()}-codex`
+                const consultDecision: RoutingDecision = {
+                  model: 'codex', effort: 'medium', confidence: 1.0, reason: 'team-consult',
+                  actualModel: actualModelName('codex', 'medium'),
+                }
+                this._post({ type: 'routingDecision', decision: consultDecision })
+                this._post({ type: 'streamStart', id: consultId, decision: consultDecision })
+                const wsRoot = getWorkspaceRoot() ?? process.cwd()
+                const wsBase = path.basename(wsRoot)
+                const sysPrompt = `You are Codex (GPT-5), the implementer. Claude (architect) delegated a focused task. Use workspace tools to ACTUALLY implement (read_file, write_file, replace_in_file, list_files).
+
+WORKSPACE ROOT: ${wsRoot}
+
+PATH RULES (CRITICAL):
+- All file paths are RELATIVE to workspace root above. Do NOT prefix with "${wsBase}/" — that's the workspace itself.
+- Correct: "test/foo.md", "src/util.ts"
+- WRONG:   "${wsBase}/test/foo.md", "/${wsBase}/src/util.ts"
+- Before write_file, you may call list_files with empty path "" to see workspace contents.
+
+After files are written, reply with concise summary (file paths + what changed). Do not just describe — actually call the tools.`
+                try {
+                  const r = await this._runCodexAgent(
+                    [{ role: 'user', content: task }],
+                    'medium',
+                    codexToken,
+                    codexAccountId ?? undefined,
+                    sysPrompt,
+                    (text) => this._post({ type: 'streamChunk', id: consultId, text }),
+                    consultId,
+                    turnId,
+                  )
+                  this._post({ type: 'streamEnd', id: consultId, tokens: r.outputTokens, actualModel: consultDecision.actualModel })
+                  return r
+                } catch (err) {
+                  this._post({ type: 'streamError', id: consultId, error: err instanceof Error ? err.message : String(err) })
+                  throw err
+                }
               } : undefined,
               runGeminiAgent: geminiAvailable ? async (task: string) => {
-                const sysPrompt = 'You are Gemini, helping the team. Claude delegated a question/task. Use workspace tools if file access needed. Reply concisely.'
-                return this._runGeminiAgent(
-                  [{ role: 'user', content: task }],
-                  'medium',
-                  sysPrompt,
-                  (text) => this._post({ type: 'streamChunk', id: assistantMsgId, text }),
-                  assistantMsgId,
-                  turnId,
-                )
+                const consultId = `consult-${Date.now()}-gemini`
+                const consultDecision: RoutingDecision = {
+                  model: 'gemini', effort: 'medium', confidence: 1.0, reason: 'team-consult',
+                  actualModel: actualModelName('gemini', 'medium'),
+                }
+                this._post({ type: 'routingDecision', decision: consultDecision })
+                this._post({ type: 'streamStart', id: consultId, decision: consultDecision })
+                const gWsRoot = getWorkspaceRoot() ?? process.cwd()
+                const gWsBase = path.basename(gWsRoot)
+                const sysPrompt = `You are Gemini, helping the team. Claude delegated a task. Use workspace tools if file access needed. Reply concisely.
+
+WORKSPACE ROOT: ${gWsRoot}
+PATH RULES: paths are relative to workspace root. Don't prefix with "${gWsBase}/" — that's the root itself.`
+                try {
+                  const r = await this._runGeminiAgent(
+                    [{ role: 'user', content: task }],
+                    'medium',
+                    sysPrompt,
+                    (text) => this._post({ type: 'streamChunk', id: consultId, text }),
+                    consultId,
+                    turnId,
+                  )
+                  this._post({ type: 'streamEnd', id: consultId, tokens: r.outputTokens, actualModel: consultDecision.actualModel })
+                  return r
+                } catch (err) {
+                  this._post({ type: 'streamError', id: consultId, error: err instanceof Error ? err.message : String(err) })
+                  throw err
+                }
               } : undefined,
             })
             extraMcp = { 'orchestrai-team': teamServer }

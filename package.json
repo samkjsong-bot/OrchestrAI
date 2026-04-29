@@ -128,6 +128,16 @@
           "maximum": 1,
           "description": "Pattern-route confidence threshold before skipping the LLM router."
         },
+        "orchestrai.codexEngine": {
+          "type": "string",
+          "default": "native",
+          "enum": ["native", "legacy"],
+          "enumDescriptions": [
+            "Native: spawn Codex CLI binary as MCP stdio server (recommended). Uses OpenAI-official tool handling, no path/hallucination issues. Requires Codex VSCode extension installed.",
+            "Legacy: direct fetch to chatgpt.com backend (older path). Use as fallback if native engine has issues."
+          ],
+          "description": "Codex 호출 엔진 선택. native = OpenAI 공식 codex.exe (권장), legacy = 우리 자체 fetch 구현."
+        },
         "orchestrai.mcpServers": {
           "type": "object",
           "default": {},
