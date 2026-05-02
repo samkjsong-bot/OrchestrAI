@@ -826,6 +826,7 @@
   .override-btn.active-argue { color: #f9a8d4; border-color: #f9a8d433; background: #f9a8d411; }
   .override-btn.active-team { color: #fbbf24; border-color: #fbbf2433; background: #fbbf2411; }
   .override-btn.active-loop { color: #34d399; border-color: #34d39933; background: #34d39911; }
+  .override-btn.active-boomerang { color: #c084fc; border-color: #c084fc33; background: #c084fc11; }
 
   /* 컨텍스트 게이지 (헤더 바로 아래) */
   .ctx-gauge {
@@ -1399,6 +1400,25 @@
   }
   .commit-btn:hover { color: var(--text); border-color: var(--border-bright); }
 
+  /* 백그라운드 작업 패널 — 입력창 위 */
+  .bg-tasks { display: flex; flex-direction: column; gap: 4px; margin: 0 12px 6px; flex-shrink: 0; }
+  .bg-tasks:empty { display: none; }
+  .bg-task {
+    display: flex; align-items: center; gap: 8px; padding: 5px 10px;
+    background: rgba(192,132,252,0.06); border: 1px solid rgba(192,132,252,0.2); border-radius: 5px;
+    font-family: 'JetBrains Mono', monospace; font-size: 10px; color: var(--text-dim);
+  }
+  .bg-task.running { border-left: 3px solid #c084fc; }
+  .bg-task.done    { border-left: 3px solid #34d399; opacity: 0.7; }
+  .bg-task.failed  { border-left: 3px solid #ef4444; opacity: 0.7; }
+  .bg-task-icon { flex-shrink: 0; }
+  .bg-task-text { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text); }
+  .bg-task-btn {
+    background: transparent; border: 1px solid var(--border); color: var(--text-muted);
+    border-radius: 3px; padding: 2px 6px; font: 9px 'JetBrains Mono', monospace; cursor: pointer;
+  }
+  .bg-task-btn:hover { color: #ef4444; border-color: #ef4444; }
+
   /* 메시지 큐 (작업 중 입력 대기) */
   .msg-queue {
     display: flex;
@@ -1916,6 +1936,9 @@
   <button class="progress-stop" onclick="stopGeneration()" title="중단">■</button>
 </div>
 
+<!-- 백그라운드 작업 패널 (실행 중인 bg task 목록) -->
+<div class="bg-tasks" id="bg-tasks"></div>
+
 <!-- 메시지 큐 (작업 중일 때 사용자가 친 메시지 대기열) -->
 <div class="msg-queue" id="msg-queue"></div>
 
@@ -2028,6 +2051,7 @@
     <button class="override-btn" onclick="setOverride(this,'argue')" title="등록된 모델들이 라운드 로빈으로 서로 보완·반박 (최대 6턴, 중간 확장 가능)">⚡ argue</button>
     <button class="override-btn" onclick="setOverride(this,'team')" title="작업 모드 — Claude 설계 → Codex 구현 → Gemini 리뷰 순차 실행">👥 team</button>
     <button class="override-btn" onclick="setOverride(this,'loop')" title="될 때까지 반복 (Ralph Wiggum 패턴) — 모델이 결과 검증 후 부족하면 자동 다음 iteration. max 5회">🔁 loop</button>
+    <button class="override-btn" onclick="setOverride(this,'boomerang')" title="큰 작업 자동 분할 → 여러 모델 병렬 위임 → 결과 종합 (Roo Code 스타일)">🪃 boom</button>
     <div style="flex:1"></div>
     <button class="ctx-btn active" id="ctx-btn" onclick="toggleContext(this)" title="현재 파일 컨텍스트 자동 주입">
       <span class="ctx-icon">📄</span>
@@ -2403,6 +2427,15 @@
       case 'ragRetrieved':
         showRagRetrieved(msg.chunks)
         break
+      case 'boomerangPlan':
+        showBoomerangPlan(msg.plan)
+        break
+      case 'backgroundTasks':
+        renderBackgroundTasks(msg.tasks)
+        break
+      case 'agentList':
+        showAgentList(msg.agents, msg.activeAgent)
+        break
       case 'generationEnd':
       case 'generationStopped':
         document.getElementById('gen-stop').classList.remove('visible')
@@ -2684,9 +2717,27 @@
       case 'index':   postToExtension({ type: 'requestIndexCodebase' }); return true
       case 'bg':
       case 'background': {
-        // /bg 작업내용 — 백그라운드로 실행, 완료 시 Telegram push
         if (!arg) { showToast('사용법: /bg <작업내용>'); return true }
         postToExtension({ type: 'sendBackground', text: arg })
+        return true
+      }
+      case 'agent': {
+        const [sub, ...rest] = arg.split(/\s+/)
+        const subArg = rest.join(' ')
+        if (sub === 'import') {
+          if (!subArg) { showToast('사용법: /agent import <gist URL>'); return true }
+          postToExtension({ type: 'agentImport', url: subArg })
+        } else if (sub === 'list') {
+          postToExtension({ type: 'agentList' })
+        } else if (sub === 'use') {
+          postToExtension({ type: 'agentSetActive', name: subArg })
+        } else if (sub === 'off' || sub === 'clear') {
+          postToExtension({ type: 'agentSetActive', name: '' })
+        } else if (sub === 'remove' || sub === 'rm') {
+          postToExtension({ type: 'agentRemove', name: subArg })
+        } else {
+          showToast('사용법: /agent import|list|use|off|remove')
+        }
         return true
       }
       case 'help': {
@@ -3216,6 +3267,58 @@
   }
   function runSuggested(script, command) {
     postToExtension({ type: 'runCommand', script, command })
+  }
+
+  // Agent 목록 모달
+  function showAgentList(agents, activeName) {
+    const html = agents.length === 0
+      ? '<p style="color:var(--text-muted);font-size:11px">등록된 agent 없음. <code>/agent import &lt;gist URL&gt;</code> 으로 추가</p>'
+      : agents.map(a => `<div style="padding:8px;border:1px solid var(--border);border-radius:5px;margin-bottom:6px;${a.name === activeName ? 'border-color:var(--accent);background:rgba(99,102,241,0.05)' : ''}">
+          <div style="font-weight:600;font-size:12px">${escapeHtml(a.name)} ${a.name === activeName ? '<span style="color:var(--accent);font-size:9px">● ACTIVE</span>' : ''}</div>
+          <div style="font-size:10px;color:var(--text-dim);margin:3px 0">${escapeHtml(a.description || '')}</div>
+          <div style="display:flex;gap:4px;margin-top:4px">
+            ${a.name !== activeName ? `<button onclick="postToExtension({type:'agentSetActive',name:'${a.name.replace(/'/g,"\\'")}'});document.getElementById('vibe-modal')?.remove()" style="background:var(--accent);color:white;border:none;border-radius:3px;padding:3px 10px;font-size:10px;cursor:pointer">사용</button>` : `<button onclick="postToExtension({type:'agentSetActive',name:''});document.getElementById('vibe-modal')?.remove()" style="background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:3px;padding:3px 10px;font-size:10px;cursor:pointer">해제</button>`}
+            <button onclick="postToExtension({type:'agentRemove',name:'${a.name.replace(/'/g,"\\'")}'})" style="background:transparent;border:1px solid var(--border);color:var(--text-muted);border-radius:3px;padding:3px 8px;font-size:10px;cursor:pointer">삭제</button>
+          </div>
+        </div>`).join('')
+    showModal('Agent Marketplace', html + '<p style="margin-top:10px;font-size:10px;color:var(--text-muted)"><code>/agent import &lt;URL&gt;</code> | <code>/agent use &lt;name&gt;</code> | <code>/agent off</code></p>')
+  }
+
+  // 백그라운드 작업 목록 렌더 (입력창 위 패널)
+  function renderBackgroundTasks(tasks) {
+    const el = document.getElementById('bg-tasks')
+    if (!el) return
+    if (!tasks || tasks.length === 0) { el.innerHTML = ''; return }
+    el.innerHTML = tasks.slice(-5).map(t => {
+      const icon = t.status === 'running' ? '🔄' : t.status === 'done' ? '✓' : '✗'
+      const showStop = t.status === 'running'
+        ? `<button class="bg-task-btn" onclick="postToExtension({type:'cancelBackgroundTask',id:'${t.id}'})" title="작업 취소">✕</button>`
+        : ''
+      return `<div class="bg-task ${t.status}">
+        <span class="bg-task-icon">${icon}</span>
+        <span class="bg-task-text" title="${escapeHtml(t.preview)}">${escapeHtml(t.preview)}</span>
+        ${showStop}
+      </div>`
+    }).join('')
+  }
+
+  // boomerang: 분할 plan 표시
+  function showBoomerangPlan(plan) {
+    const messages = document.getElementById('messages')
+    const card = document.createElement('div')
+    card.style.cssText = 'margin: 8px 12px; padding: 10px 14px; background: rgba(192,132,252,0.08); border: 1px solid rgba(192,132,252,0.3); border-radius: 6px; font-family: \'JetBrains Mono\', monospace; font-size: 11px;'
+    const groupHtml = plan.parallelGroups.map((g, i) => {
+      const tasks = g.map(id => plan.subTasks.find(t => t.id === id)).filter(Boolean)
+      return `<div style="margin: 4px 0; padding-left: 8px; border-left: 2px solid #c084fc;">
+        <span style="color:var(--text-muted);font-size:9px">Group ${i + 1} (parallel)</span><br/>
+        ${tasks.map(t => `<span style="display:inline-block;margin:2px 4px 2px 0;padding:2px 6px;background:var(--surface2);border-radius:3px;font-size:10px"><b>${escapeHtml(t.id)}</b> · ${escapeHtml(t.model)}/${escapeHtml(t.effort)} · ${escapeHtml(t.title)}</span>`).join('')}
+      </div>`
+    }).join('')
+    card.innerHTML = `<div style="color:#c084fc;font-weight:600;margin-bottom:6px;">🪃 Boomerang Plan</div>
+      <div style="color:var(--text);margin-bottom:6px;">${escapeHtml(plan.goal)}</div>
+      ${groupHtml}`
+    messages.appendChild(card)
+    scrollIfNearBottom(messages)
   }
 
   // RAG: 코드베이스에서 자동 검색된 chunk 표시 — 어떤 파일이 컨텍스트로 들어갔는지 명확히

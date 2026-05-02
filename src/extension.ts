@@ -8,6 +8,7 @@ import { Orchestrator, inferEffort, parseAllMentions } from './router/orchestrat
 import { callClaude } from './providers/claudeProvider'
 import { callCodex } from './providers/codexProvider'
 import { getCodexMcpClient, disposeCodexMcpClient } from './providers/codexMcpClient'
+import { OrchestrAICompletionProvider } from './providers/inlineCompletion'
 import { callGemini } from './providers/geminiProvider'
 import { ChatMessage, RouterMode, RoutingDecision, Model, Effort, ChangeSummary } from './router/types'
 import { AuthStorage } from './auth/storage'
@@ -20,6 +21,8 @@ import { log } from './util/log'
 import { buildTaggedHistory, setContextWindowPreset } from './util/history'
 import { buildIndex, loadIndex, reindexFile, type CodebaseIndex } from './util/codebaseIndex'
 import { retrieve } from './util/retriever'
+import { planBoomerang, type BoomerangPlan } from './util/boomerang'
+import { fetchAgentFromUrl, loadAgentStore, addAgent, removeAgent, setActiveAgent, getActiveAgent } from './util/agentMarketplace'
 import { isQuotaError, summarizeQuotaError } from './util/quota'
 import { TelegramBridge } from './telegram/bridge'
 import { TelegramClient } from './telegram/client'
@@ -43,10 +46,21 @@ function chatStateKey(): string {
   return `orchestrai.chat.${key}`
 }
 
+// Multi-IDE sync: setting으로 sync 폴더 지정 시 그쪽 사용
+function getStorageRoot(context: vscode.ExtensionContext): string {
+  const syncDir = vscode.workspace.getConfiguration('orchestrai').get<string>('syncDir')
+  if (syncDir && syncDir.trim()) {
+    const expanded = syncDir.replace(/^~/, process.env.USERPROFILE || process.env.HOME || '~')
+    try { fs.mkdirSync(expanded, { recursive: true }) } catch {}
+    if (fs.existsSync(expanded)) return expanded
+  }
+  return context.globalStorageUri.fsPath
+}
+
 function chatStateFilePath(context: vscode.ExtensionContext): string {
   const key = chatStateKey()
   const hash = require('crypto').createHash('sha1').update(key).digest('hex').slice(0, 16)
-  const dir = path.join(context.globalStorageUri.fsPath, 'chats')
+  const dir = path.join(getStorageRoot(context), 'chats')
   try { fs.mkdirSync(dir, { recursive: true }) } catch {}
   return path.join(dir, `${hash}.json`)
 }
@@ -834,6 +848,8 @@ class OrchestrAIViewProvider implements vscode.WebviewViewProvider, vscode.Dispo
   private _indexFileWatcher?: vscode.FileSystemWatcher
   private _reindexQueue = new Set<string>()
   private _reindexTimer?: NodeJS.Timeout
+  // 백그라운드 작업 상태 트래킹 (UI 패널용)
+  private _backgroundTasks = new Map<string, { id: string; preview: string; startedAt: number; status: 'running' | 'done' | 'failed'; result?: string; error?: string }>()
 
   constructor(
     private readonly _extensionUri: vscode.Uri,
@@ -894,6 +910,10 @@ class OrchestrAIViewProvider implements vscode.WebviewViewProvider, vscode.Dispo
         log.warn('index', `reindex failed for ${f}:`, err)
       }
     }
+  }
+
+  async getGeminiApiKey(): Promise<string | null> {
+    return this._authStorage.getGeminiApiKey()
   }
 
   // 명시적 인덱싱 트리거 (명령 또는 첫 사용 시)
@@ -1495,16 +1515,42 @@ class OrchestrAIViewProvider implements vscode.WebviewViewProvider, vscode.Dispo
             await this.indexCodebase()
             break
           case 'sendBackground': {
-            // 백그라운드 작업 — 사용자가 일반 메시지처럼 보내지만 완료 시 Telegram push
+            // 백그라운드 작업 — _isSending lock 안 걸리는 별도 큐. 여러 개 동시 가능
             const text = msg.text ?? ''
-            this._post({ type: 'toast', message: '🌙 백그라운드 작업 시작 — 완료 시 알림' })
-            void this._handleSend(text, []).then(() => {
-              this._notifyBackgroundDone(text)
-            }).catch(err => {
-              this._notifyBackgroundFail(text, err)
-            })
+            await this._startBackgroundTask(text)
             break
           }
+          case 'requestBackgroundTasks':
+            this._post({ type: 'backgroundTasks', tasks: [...this._backgroundTasks.values()] })
+            break
+          case 'cancelBackgroundTask':
+            this._cancelBackgroundTask(msg.id)
+            break
+          case 'agentImport': {
+            const url = msg.url ?? ''
+            try {
+              const agent = await fetchAgentFromUrl(url)
+              addAgent(getStorageRoot(this._context), agent)
+              setActiveAgent(getStorageRoot(this._context), agent.name)
+              this._post({ type: 'toast', message: `✓ Agent "${agent.name}" import + 활성화` })
+            } catch (err) {
+              this._post({ type: 'toast', message: `Agent import 실패: ${err instanceof Error ? err.message : String(err)}` })
+            }
+            break
+          }
+          case 'agentList': {
+            const store = loadAgentStore(getStorageRoot(this._context))
+            this._post({ type: 'agentList', agents: store.agents, activeAgent: store.activeAgent })
+            break
+          }
+          case 'agentSetActive':
+            setActiveAgent(getStorageRoot(this._context), msg.name || undefined)
+            this._post({ type: 'toast', message: msg.name ? `✓ Agent "${msg.name}" 활성화` : '활성 agent 해제' })
+            break
+          case 'agentRemove':
+            removeAgent(getStorageRoot(this._context), msg.name)
+            this._post({ type: 'toast', message: `Agent 삭제: ${msg.name}` })
+            break
           case 'multiModelReview':
             this._isSending = true
             this._currentAbort = new AbortController()
@@ -2323,6 +2369,120 @@ class OrchestrAIViewProvider implements vscode.WebviewViewProvider, vscode.Dispo
       return
     }
 
+    // ── boomerang 모드: 큰 작업 자동 분할 → 병렬 위임 → 종합 ──
+    if (this._override === 'boomerang') {
+      this._post({ type: 'toast', message: '🪃 boomerang: 작업 분할 중...' })
+      const plan = await planBoomerang(userText)
+      if (!plan || plan.subTasks.length === 0) {
+        this._post({ type: 'streamError', id: 'boomerang', error: 'boomerang plan 생성 실패. 일반 모드로 진행하려면 force를 auto로.' })
+        return
+      }
+      // plan을 사용자에게 표시
+      this._post({ type: 'boomerangPlan', plan })
+
+      // 각 sub-task 결과 누적
+      const results = new Map<string, string>()
+      for (const group of plan.parallelGroups) {
+        if (this._currentAbort?.signal.aborted) break
+        await Promise.all(group.map(async (taskId) => {
+          const task = plan.subTasks.find(t => t.id === taskId)
+          if (!task) return
+          // 의존성 결과를 task prompt에 prepend
+          const depResults = (task.dependsOn ?? []).map(d => `[${d} 결과]\n${results.get(d) ?? '(missing)'}`)
+            .join('\n\n')
+          const fullPrompt = depResults ? `${task.prompt}\n\n${depResults}` : task.prompt
+
+          const decision: RoutingDecision = {
+            model: task.model, effort: task.effort, confidence: 1, reason: 'boomerang-task',
+            ruleMatched: `${task.id} · ${task.title}`,
+            actualModel: actualModelName(task.model, task.effort),
+          }
+          const subMsgId = `boom-${task.id}-${Date.now()}`
+          this._postRoutingDecision(decision)
+          this._post({ type: 'streamStart', id: subMsgId, decision })
+          let collected = ''
+          const onChunk = (text: string) => {
+            collected += text
+            this._post({ type: 'streamChunk', id: subMsgId, text })
+          }
+          try {
+            const sysPrompt = `You are handling sub-task "${task.title}" of larger goal: "${plan.goal}". Be focused and concrete.`
+            let result: { content: string; inputTokens: number; outputTokens: number }
+            if (task.model === 'claude') {
+              const tok = await this._claudeAuth.getAccessToken()
+              if (!tok) throw new Error('Claude not logged in')
+              result = await callClaude([{ role: 'user', content: fullPrompt }], task.effort, tok, onChunk, sysPrompt, this._permissionMode, undefined, this._currentAbort?.signal)
+            } else if (task.model === 'codex') {
+              const tok = await this._codexAuth.getAccessToken()
+              const accountId = await this._codexAuth.getAccountId()
+              if (!tok) throw new Error('Codex not logged in')
+              result = await this._runCodexAgent([{ role: 'user', content: fullPrompt }], task.effort, tok, accountId ?? undefined, sysPrompt, onChunk, subMsgId, userMsg.id)
+            } else {
+              result = await this._runGeminiAgent([{ role: 'user', content: fullPrompt }], task.effort, sysPrompt, onChunk, subMsgId, userMsg.id)
+            }
+            this._post({ type: 'streamEnd', id: subMsgId, tokens: result.outputTokens, actualModel: decision.actualModel })
+            results.set(task.id, collected || result.content)
+            const assistantMsg: ChatMessage = {
+              id: subMsgId, role: 'assistant', content: collected || result.content,
+              model: task.model, effort: task.effort, actualModel: decision.actualModel,
+              routing: decision, timestamp: Date.now(),
+            }
+            this._messages.push(assistantMsg)
+          } catch (err) {
+            const errMsg = err instanceof Error ? err.message : String(err)
+            this._post({ type: 'streamError', id: subMsgId, error: errMsg })
+            results.set(task.id, `(failed: ${errMsg})`)
+          }
+        }))
+      }
+
+      // 종합 — 모든 sub-task 결과를 Claude(또는 Haiku)가 통합
+      const synthDecision: RoutingDecision = {
+        model: 'claude', effort: 'medium', confidence: 1, reason: 'boomerang-synthesis',
+        actualModel: 'claude-haiku-4-5',
+      }
+      const synthId = `boom-synth-${Date.now()}`
+      this._postRoutingDecision(synthDecision)
+      this._post({ type: 'streamStart', id: synthId, decision: synthDecision })
+      try {
+        const synthPrompt = `Original goal: ${plan.goal}\n\n` +
+          plan.subTasks.map(t => `## ${t.id}: ${t.title} (by ${t.model})\n${results.get(t.id) ?? '(no result)'}`).join('\n\n') +
+          `\n\nSynthesize: 1) what was accomplished, 2) any gaps, 3) next steps. Korean if user is Korean.`
+        const env = { ...process.env }; delete env.ANTHROPIC_API_KEY
+        const q = query({
+          prompt: synthPrompt,
+          options: {
+            model: 'claude-haiku-4-5',
+            systemPrompt: 'Synthesize parallel sub-task results into one coherent summary.',
+            tools: [],
+            maxTurns: 1,
+            persistSession: false,
+            cwd: getWorkspaceRoot() ?? process.cwd(),
+            env,
+            includePartialMessages: true,
+          },
+        })
+        let synthContent = ''
+        for await (const m of q) {
+          if (m.type === 'stream_event' && (m as any).event?.type === 'content_block_delta' && (m as any).event?.delta?.type === 'text_delta') {
+            const t = (m as any).event.delta.text
+            if (t) { synthContent += t; this._post({ type: 'streamChunk', id: synthId, text: t }) }
+          }
+        }
+        const synthMsg: ChatMessage = {
+          id: synthId, role: 'assistant', content: synthContent,
+          model: 'claude', effort: 'medium', actualModel: 'claude-haiku-4-5',
+          routing: synthDecision, timestamp: Date.now(),
+        }
+        this._messages.push(synthMsg)
+        this._post({ type: 'streamEnd', id: synthId, actualModel: 'claude-haiku-4-5' })
+      } catch (err) {
+        this._post({ type: 'streamError', id: synthId, error: err instanceof Error ? err.message : String(err) })
+      }
+      await this._persistMessages()
+      return
+    }
+
     // ── team 모드: Claude가 orchestrator. Codex(구현) / Gemini(텍스트·이미지) 동료를 툴로 호출 ──
     // 토큰 효율 ↑: Claude는 계획·검수만, 실제 코드는 Codex 구독으로, 이미지는 Gemini API로
     if (this._override === 'team') {
@@ -2621,6 +2781,11 @@ class OrchestrAIViewProvider implements vscode.WebviewViewProvider, vscode.Dispo
       // RAG: 관련 파일 컨텍스트 prepend
       const ragCtx = (this as any)._ragContextForCurrentTurn
       if (ragCtx) systemPrompt = `${ragCtx}\n\n${systemPrompt}`
+      // 활성 agent (marketplace) prepend — 사용자 커스텀 system prompt
+      const activeAgent = getActiveAgent(getStorageRoot(this._context))
+      if (activeAgent) {
+        systemPrompt = `# ACTIVE AGENT: ${activeAgent.name}\n${activeAgent.description}\n\n${activeAgent.systemPrompt}\n\n---\n\n${systemPrompt}`
+      }
       const trimmed = buildTaggedHistory(this._messages, currentModel, this._compaction)
       const history = trimmed.messages
 
@@ -3054,18 +3219,79 @@ Be concise. Korean if reviews are Korean.`
     await this._persistMessages()
   }
 
+  private _bgAborts = new Map<string, AbortController>()
+
+  // 새 백그라운드 작업 시작 — _handleSend의 _isSending lock과 별도로 동시 실행 가능
+  private async _startBackgroundTask(text: string) {
+    const id = `bg-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`
+    const preview = text.slice(0, 80)
+    const ctrl = new AbortController()
+    this._bgAborts.set(id, ctrl)
+    this._backgroundTasks.set(id, { id, preview, startedAt: Date.now(), status: 'running' })
+    this._post({ type: 'backgroundTasks', tasks: [...this._backgroundTasks.values()] })
+    this._post({ type: 'toast', message: `🌙 백그라운드 [${id.slice(-5)}] 시작` })
+
+    // 별도 컨텍스트로 _doSend 실행 (메인 _isSending 안 막음)
+    void (async () => {
+      try {
+        // 임시로 _currentAbort를 ctrl로 → kill switch 호환
+        const prevAbort = this._currentAbort
+        const prevSending = this._isSending
+        // 메인 작업 진행 중이면 큐에 둠 (단순 구현 — 메인 끝날 때까지 기다림)
+        const startWait = Date.now()
+        while (this._isSending && Date.now() - startWait < 60_000) {
+          if (ctrl.signal.aborted) throw new Error('aborted')
+          await new Promise(r => setTimeout(r, 500))
+        }
+        this._isSending = true
+        this._currentAbort = ctrl
+        this._post({ type: 'generationStart' })
+        try {
+          await this._doSend(text, [])
+        } finally {
+          this._isSending = prevSending
+          this._currentAbort = prevAbort
+          this._post({ type: 'generationEnd' })
+        }
+        // 마지막 assistant 메시지를 결과로
+        const last = this._messages[this._messages.length - 1]
+        const result = last?.role === 'assistant' ? last.content.slice(0, 500) : ''
+        this._backgroundTasks.set(id, { ...this._backgroundTasks.get(id)!, status: 'done', result })
+        this._post({ type: 'backgroundTasks', tasks: [...this._backgroundTasks.values()] })
+        this._notifyBackgroundDone(preview, result)
+      } catch (err) {
+        const errMsg = err instanceof Error ? err.message : String(err)
+        this._backgroundTasks.set(id, { ...this._backgroundTasks.get(id)!, status: 'failed', error: errMsg })
+        this._post({ type: 'backgroundTasks', tasks: [...this._backgroundTasks.values()] })
+        this._notifyBackgroundFail(preview, err)
+      } finally {
+        this._bgAborts.delete(id)
+      }
+    })()
+  }
+
+  private _cancelBackgroundTask(id: string) {
+    const ctrl = this._bgAborts.get(id)
+    if (ctrl) {
+      try { ctrl.abort() } catch {}
+      this._post({ type: 'toast', message: `백그라운드 [${id.slice(-5)}] 취소` })
+    }
+    const task = this._backgroundTasks.get(id)
+    if (task && task.status === 'running') {
+      this._backgroundTasks.set(id, { ...task, status: 'failed', error: 'cancelled by user' })
+      this._post({ type: 'backgroundTasks', tasks: [...this._backgroundTasks.values()] })
+    }
+  }
+
   // 백그라운드 작업 완료 알림 — VSCode notification + Telegram push
-  private async _notifyBackgroundDone(taskPreview: string) {
+  private async _notifyBackgroundDone(taskPreview: string, resultPreview = '') {
     const summary = `✓ 백그라운드 작업 완료: ${taskPreview.slice(0, 60)}${taskPreview.length > 60 ? '…' : ''}`
-    const last = this._messages[this._messages.length - 1]
-    const result = last?.role === 'assistant' ? last.content.slice(0, 300) : ''
     vscode.window.showInformationMessage(summary, '채팅 보기').then(choice => {
       if (choice === '채팅 보기') vscode.commands.executeCommand('orchestrai.openChat')
     })
-    // Telegram push (활성화돼있고 sendClient 있으면)
     if (this._telegramBridge) {
       try {
-        await this._telegramBridge.pushExternalNotification(`${summary}\n\n${result}`)
+        await this._telegramBridge.pushExternalNotification(`${summary}\n\n${resultPreview.slice(0, 500)}`)
       } catch {}
     }
     this._post({ type: 'toast', message: summary })
@@ -3371,6 +3597,15 @@ export function activate(context: vscode.ExtensionContext) {
     vscode.commands.registerCommand('orchestrai.restoreArchive', () => provider.restoreArchive()),
     vscode.commands.registerCommand('orchestrai.indexCodebase', () => provider.indexCodebase()),
     provider,
+  )
+
+  // Inline autocomplete (Cursor/Copilot 스타일 ghost text) — Gemini Flash
+  const completionProvider = new OrchestrAICompletionProvider(
+    () => provider.getGeminiApiKey(),
+    () => vscode.workspace.getConfiguration('orchestrai').get<boolean>('inlineCompletion') !== false,
+  )
+  context.subscriptions.push(
+    vscode.languages.registerInlineCompletionItemProvider({ pattern: '**' }, completionProvider),
   )
 }
 

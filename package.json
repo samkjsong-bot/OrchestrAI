@@ -142,6 +142,16 @@
           "default": true,
           "description": "파일 작성·수정 후 자동 미리보기. HTML은 Simple Browser로 즉시 열고, package.json/Python/Node 스크립트는 ▶ 실행 버튼 표시."
         },
+        "orchestrai.syncDir": {
+          "type": "string",
+          "default": "",
+          "description": "Multi-IDE 동기화 — 채팅·인덱스·registry를 클라우드 폴더(OneDrive/Dropbox/iCloud)에 저장. 빈값이면 기본 globalStorage. 같은 폴더 여러 PC에서 쓰면 자동 sync."
+        },
+        "orchestrai.inlineCompletion": {
+          "type": "boolean",
+          "default": false,
+          "description": "에디터 inline ghost text 자동완성 (Cursor/Copilot 스타일). Gemini 2.5 Flash 사용. 무료 티어 RPM 빨리 소진될 수 있어 default false. 활성 시 Gemini API 키 필요."
+        },
         "orchestrai.codebaseRag.enabled": {
           "type": "boolean",
           "default": true,
