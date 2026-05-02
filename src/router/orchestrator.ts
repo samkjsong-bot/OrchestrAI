@@ -72,6 +72,18 @@ export function inferEffort(input: string): Effort {
   const lower = text.toLowerCase()
   const compact = text.replace(/\s+/g, ' ')
 
+  // ── EXTRA-HIGH: 풀스케일 프로젝트/앱/게임 만들기 (모든 능력 풀가동) ──
+  if (/\b(make|build|create|implement|develop|generate|scaffold)\s+(?:a |the |an )?(?:full|complete|entire|whole|complex|polished|production)\b/i.test(text)) {
+    return 'extra-high'
+  }
+  if (/(게임|앱|어플|애플리케이션|웹사이트|사이트|서비스|프로그램|툴|확장|extension|game|app|website|service|program)\s*(?:을|를|좀|하나|좀\s*만들|만들|구현|짜|개발)/.test(text)) {
+    return 'extra-high'
+  }
+  if (/(만들어|구현해|짜줘|개발해|풀버전|전체|풀\s*스택|fullstack|full-stack|full\s+app)/.test(text) && compact.length > 30) {
+    return 'extra-high'
+  }
+
+  // ── HIGH: 코드 작성/수정/리팩토링/디버깅 — 모델의 깊은 사고 필요 ──
   if (/\b(high|deep|thorough|complex|architecture|architect|refactor|security|audit|optimize|debug)\b/i.test(text)) {
     return 'high'
   }
@@ -81,20 +93,32 @@ export function inferEffort(input: string): Effort {
   if (/```|<file\b|여러\s*파일|코드베이스|프로젝트\s*전체|전체\s*구조|long\s*context/i.test(text)) {
     return 'high'
   }
-  if (compact.length > 700) {
+  // ★ 코드 작업 키워드 — 단순 prompt도 high로 (구현/수정 계열은 mini로 보내면 결과 나쁨)
+  if (/\b(code|function|class|implement|write|add|fix|update|modify|change|edit|create file)\b/i.test(text)) {
+    return 'high'
+  }
+  if (/(코드|함수|클래스|메서드|컴포넌트|모듈|훅|hook|api|엔드포인트|로직|알고리즘|구조|패턴)\s*(?:를|을)?/.test(text)) {
+    return 'high'
+  }
+  if (/(추가|수정|고쳐|고치|바꿔|변경|개선|버그|에러|오류|디버그|fix it)/.test(text)) {
+    return 'high'
+  }
+  if (compact.length > 500) {
     return 'high'
   }
 
+  // ── LOW: 명백히 단순한 작업 ──
   if (/\b(low|quick|simple|short|brief|tl;dr|tldr|summary|summarize|typo)\b/i.test(text)) {
     return 'low'
   }
   if (/짧게|간단|빠르게|대충|한\s*줄|요약|정리|오타|커맨드|명령어/.test(text)) {
     return 'low'
   }
-  if (/\b(git|npm|yarn|pnpm|cmd|powershell|bash|shell)\b/i.test(lower)) {
+  if (/\b(git|npm|yarn|pnpm|cmd|powershell|bash|shell)\s+\w+/i.test(lower)) {
     return 'low'
   }
-  if (compact.length <= 120 && !/[?？].*[?？]/.test(compact)) {
+  // 매우 짧은 단순 질문만 low (코드 키워드 없을 때)
+  if (compact.length <= 60 && !/[?？]/.test(compact)) {
     return 'low'
   }
 

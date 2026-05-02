@@ -3259,29 +3259,33 @@
 
     // 라우터 이유 직역 표시 — 유저가 "왜 이 모델로 갔지?"를 즉시 이해
     const reasonMap = {
-      override: 'force',
-      mention: '@mention',
-      pattern: `pattern${decision.ruleMatched ? `: ${decision.ruleMatched}` : ''}`,
-      llm: 'llm routed',
-      fallback: 'fallback',
-      attachment: 'image',
+      override: '⚡ force',
+      mention: '@ mention',
+      pattern: `🎯 ${decision.ruleMatched || 'pattern'}`,
+      llm: '🧠 LLM 판단',
+      fallback: '↪ fallback',
+      attachment: '🖼 image',
       'collab-first': 'argue · 선공',
       'collab-reply': 'argue · 반박',
       'argue-open': 'argue · 선공',
       'argue-reply': 'argue · 반박',
+      'team-orchestrator': '👥 team orchestrator',
+      'team-consult': '👥 team consult',
+      'loop-start': '🔁 loop 시작',
     }
-    const reasonText = reasonMap[decision.reason] ?? decision.reason
+    const reasonText = reasonMap[decision.reason] ?? (decision.reason.startsWith('loop-iter-') ? `🔁 ${decision.reason.replace('loop-', '')}` : decision.reason)
     const conf = Math.round((decision.confidence ?? 0) * 100)
+    const actualModel = decision.actualModel ? `<code style="background:var(--bg);padding:1px 5px;border-radius:3px;margin-left:4px;font-size:9px;color:var(--text-dim)">${decision.actualModel}</code>` : ''
 
     const el = document.createElement('div')
     el.className = 'routing-event'
     el.innerHTML = `
       <div class="routing-line"></div>
-      <div class="routing-badge ${decision.model}" title="reason: ${decision.reason}${decision.ruleMatched ? '\nrule: '+decision.ruleMatched : ''}\nconfidence: ${conf}%">
+      <div class="routing-badge ${decision.model}" title="reason: ${decision.reason}${decision.ruleMatched ? '\nrule: '+decision.ruleMatched : ''}\nconfidence: ${conf}%${decision.actualModel ? '\nactual model: '+decision.actualModel : ''}">
         <div class="dot"></div>
-        ${decision.model} · ${decision.effort}
+        ${decision.model} · ${decision.effort}${actualModel}
         <div class="effort-pip">${pips}</div>
-        <span style="opacity:0.6;margin-left:6px;font-size:9px">${reasonText}</span>
+        <span style="opacity:0.7;margin-left:6px;font-size:9px">${reasonText}</span>
       </div>
       <div class="routing-line"></div>`
     messages.appendChild(el)

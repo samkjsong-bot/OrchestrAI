@@ -5,11 +5,12 @@
 import { Effort } from '../router/types'
 import { getCodexMcpClient } from './codexMcpClient'
 
+// Codex CLI에서 지원하는 모델 명시. codex-* 변종은 코딩 특화 (시스템 프롬프트 + RLHF 최적화).
 const MODEL_BY_EFFORT: Record<Effort, string | undefined> = {
-  low: undefined,            // codex CLI default 사용 (보통 gpt-5.2)
-  medium: undefined,
-  high: 'gpt-5.2-codex',     // 코딩 특화 모델
-  'extra-high': 'gpt-5.2-codex',
+  low: undefined,                // CLI default (gpt-5.2 또는 latest)
+  medium: 'gpt-5.2-codex',       // 코딩 특화
+  high: 'gpt-5.2-codex',
+  'extra-high': 'gpt-5.2-codex', // codex CLI native에서 가장 좋은 코딩 모델
 }
 
 export async function callCodexNative(

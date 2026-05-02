@@ -123,10 +123,10 @@
         },
         "orchestrai.confidenceThreshold": {
           "type": "number",
-          "default": 0.8,
+          "default": 0.92,
           "minimum": 0,
           "maximum": 1,
-          "description": "Pattern-route confidence threshold before skipping the LLM router."
+          "description": "Pattern router confidence가 이 값 이상이면 LLM 라우터 스킵. 낮을수록 LLM 라우터(Haiku)를 더 자주 사용해서 정확도 ↑ (Haiku 호출 비용 약간). default 0.92."
         },
         "orchestrai.autoOpenDiff": {
           "type": "boolean",

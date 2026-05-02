@@ -6,27 +6,26 @@ import * as vscode from 'vscode'
 import { query } from '@anthropic-ai/claude-agent-sdk'
 import { Effort } from '../router/types'
 
+// 코딩 작업이 많으니 Sonnet 4.6 default — 빠르고 정확. Opus는 풀스케일 reasoning만.
 const MODEL_BY_EFFORT: Record<Effort, string> = {
   low: 'claude-sonnet-4-6',
   medium: 'claude-sonnet-4-6',
-  high: 'claude-opus-4-6',
-  'extra-high': 'claude-opus-4-6',
+  high: 'claude-sonnet-4-6',         // high도 Sonnet — 코드 작업엔 Opus보다 빠르고 동등
+  'extra-high': 'claude-opus-4-6',   // 풀스케일 프로젝트만 Opus (큰 그림 + 위임)
 }
 
+// thinking budget 확대 — 깊은 reasoning 활용
 const THINKING_BUDGET: Record<Effort, number | undefined> = {
-  low: undefined,
-  medium: 3000,
-  high: 10000,
-  'extra-high': 32000,
+  low: undefined,                    // thinking 없음
+  medium: 5000,                      // 옛 3000 → 5000
+  high: 16000,                       // 옛 10000 → 16000 (코드 작업 깊이 ↑)
+  'extra-high': 64000,               // 옛 32000 → 64000 (Opus 4.6 thinking 한도)
 }
 
-// 'extra-high'까지 받을 수 있도록 — Opus + 최대 예산. claudeProvider에선 Effort 외 값도 들어올 수 있어 any로 풀어둠.
 function modelForEffort(effort: Effort | string): string {
-  if (effort === 'extra-high') return 'claude-opus-4-6'
   return MODEL_BY_EFFORT[effort as Effort] ?? 'claude-sonnet-4-6'
 }
 function thinkingBudgetFor(effort: Effort | string): number | undefined {
-  if (effort === 'extra-high') return 32000
   return THINKING_BUDGET[effort as Effort]
 }
 

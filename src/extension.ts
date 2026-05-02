@@ -859,6 +859,12 @@ class OrchestrAIViewProvider implements vscode.WebviewViewProvider, vscode.Dispo
     }
   }
 
+  // routingDecision post 시 actualModel 자동 주입 — UI에 항상 어떤 모델 변종 갔는지 보임
+  private _postRoutingDecision(d: RoutingDecision) {
+    const enriched = d.actualModel ? d : { ...d, actualModel: actualModelName(d.model, d.effort) }
+    this._post({ type: 'routingDecision', decision: enriched })
+  }
+
   // ?? Telegram ?????????????????????????????????????????????????????
 
   private async _autoStartTelegram(attempt = 0): Promise<void> {
@@ -2087,7 +2093,7 @@ class OrchestrAIViewProvider implements vscode.WebviewViewProvider, vscode.Dispo
           model, effort: inferredEffort, confidence: 1.0,
           reason: i === 0 ? 'argue-open' : 'argue-reply',
         }
-        this._post({ type: 'routingDecision', decision })
+        this._postRoutingDecision(decision)
         const prevLen = this._messages.length
         const ok = await this._runTurn(decision, fileCtx, i === 0 ? 'first' : 'reply', userMsg.id)
         if (!ok) {
@@ -2141,7 +2147,7 @@ class OrchestrAIViewProvider implements vscode.WebviewViewProvider, vscode.Dispo
           reason: iter === 1 ? 'loop-start' : `loop-iter-${iter}`,
           ruleMatched: `iteration ${iter}/${MAX_ITERATIONS}`,
         }
-        this._post({ type: 'routingDecision', decision })
+        this._postRoutingDecision(decision)
         const ok = await this._runTurn(decision, iter === 1 ? fileCtx : null, iter === 1 ? 'first' : 'reply', userMsg.id, undefined)
         if (!ok) break
 
@@ -2186,7 +2192,7 @@ class OrchestrAIViewProvider implements vscode.WebviewViewProvider, vscode.Dispo
       const decision: RoutingDecision = {
         model: 'claude', effort: inferredEffort, confidence: 1.0, reason: 'team-orchestrator',
       }
-      this._post({ type: 'routingDecision', decision })
+      this._postRoutingDecision(decision)
       await this._runTurn(decision, fileCtx, 'first', userMsg.id, 'architect')
       this._post({ type: 'teamEnd' })
       return
@@ -2213,7 +2219,7 @@ class OrchestrAIViewProvider implements vscode.WebviewViewProvider, vscode.Dispo
           reason: 'mention',
           ruleMatched: `@${model}`,
         }
-        this._post({ type: 'routingDecision', decision })
+        this._postRoutingDecision(decision)
         await this._runTurn(decision, fileCtx, model === mentionedModels[0] ? 'first' : 'reply', userMsg.id)
       }
       return
@@ -2227,13 +2233,13 @@ class OrchestrAIViewProvider implements vscode.WebviewViewProvider, vscode.Dispo
         reason: 'attachment',
         ruleMatched: 'image',
       }
-      this._post({ type: 'routingDecision', decision })
+      this._postRoutingDecision(decision)
       await this._runTurn(decision, fileCtx, undefined, userMsg.id)
       return
     }
 
     const decision = await orchestrator.route(routingInput, this._override)
-    this._post({ type: 'routingDecision', decision })
+    this._postRoutingDecision(decision)
 
     await this._runTurn(decision, fileCtx, undefined, userMsg.id)
   }
@@ -2483,7 +2489,7 @@ class OrchestrAIViewProvider implements vscode.WebviewViewProvider, vscode.Dispo
 
       // 폴백이면 라우터 결정을 유저에게 다시 알림
       if (attempt > 0) {
-        this._post({ type: 'routingDecision', decision: effectiveDecision })
+        this._postRoutingDecision(effectiveDecision)
       }
 
       assistantMsgId = (Date.now() + Math.floor(Math.random() * 10000)).toString()
@@ -2524,7 +2530,7 @@ class OrchestrAIViewProvider implements vscode.WebviewViewProvider, vscode.Dispo
                   model: 'codex', effort: 'medium', confidence: 1.0, reason: 'team-consult',
                   actualModel: actualModelName('codex', 'medium'),
                 }
-                this._post({ type: 'routingDecision', decision: consultDecision })
+                this._postRoutingDecision(consultDecision)
                 this._post({ type: 'streamStart', id: consultId, decision: consultDecision })
                 const wsRoot = getWorkspaceRoot() ?? process.cwd()
                 const wsBase = path.basename(wsRoot)
@@ -2563,7 +2569,7 @@ After files are written, reply with concise summary (file paths + what changed).
                   model: 'gemini', effort: 'medium', confidence: 1.0, reason: 'team-consult',
                   actualModel: actualModelName('gemini', 'medium'),
                 }
-                this._post({ type: 'routingDecision', decision: consultDecision })
+                this._postRoutingDecision(consultDecision)
                 this._post({ type: 'streamStart', id: consultId, decision: consultDecision })
                 const gWsRoot = getWorkspaceRoot() ?? process.cwd()
                 const gWsBase = path.basename(gWsRoot)
