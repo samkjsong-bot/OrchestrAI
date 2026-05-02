@@ -1033,6 +1033,17 @@ export class TelegramBridge implements vscode.Disposable {
     }
   }
 
+  // 외부에서 호출 — 백그라운드 작업 완료 등 push 알림. 자기 워크스페이스 topic으로
+  async pushExternalNotification(text: string) {
+    if (!this.sendClient) return
+    const thread_id = this.useTopics ? await this._threadIdFor(this.workspaceName, this.workspacePath) : undefined
+    try {
+      await this.sendClient.sendMessage(this.chatId, text.slice(0, 4096), { message_thread_id: thread_id })
+    } catch (err) {
+      log.warn('telegram', 'push notification failed:', err)
+    }
+  }
+
   async dispose() {
     if (this.disposed) return
     this.disposed = true

@@ -18,6 +18,8 @@ import { UsageTracker, PLAN_INFO } from './util/usage'
 import { judgeTurn } from './router/judge'
 import { log } from './util/log'
 import { buildTaggedHistory, setContextWindowPreset } from './util/history'
+import { buildIndex, loadIndex, reindexFile, type CodebaseIndex } from './util/codebaseIndex'
+import { retrieve } from './util/retriever'
 import { isQuotaError, summarizeQuotaError } from './util/quota'
 import { TelegramBridge } from './telegram/bridge'
 import { TelegramClient } from './telegram/client'
@@ -827,6 +829,11 @@ class OrchestrAIViewProvider implements vscode.WebviewViewProvider, vscode.Dispo
   private _currentAbort?: AbortController  // 현재 진행 중인 generation 중단용
   private _statusBarItem: vscode.StatusBarItem
   private _telegramBridge?: TelegramBridge
+  private _codebaseIndex: CodebaseIndex | null = null
+  private _indexing = false
+  private _indexFileWatcher?: vscode.FileSystemWatcher
+  private _reindexQueue = new Set<string>()
+  private _reindexTimer?: NodeJS.Timeout
 
   constructor(
     private readonly _extensionUri: vscode.Uri,
@@ -849,6 +856,94 @@ class OrchestrAIViewProvider implements vscode.WebviewViewProvider, vscode.Dispo
     )
     // 이전에 연결됐던 Telegram 봇 자동 재접속 (cfg가 SecretStorage에 있으면)
     void this._autoStartTelegram()
+
+    // 코드베이스 인덱스 로드 (이미 인덱싱돼있으면 즉시 사용 가능)
+    const root = getWorkspaceRoot()
+    if (root) {
+      this._codebaseIndex = loadIndex(_context.globalStorageUri.fsPath, root)
+      if (this._codebaseIndex) {
+        log.info('index', `loaded ${this._codebaseIndex.totalChunks} chunks (${this._codebaseIndex.totalFiles} files)`)
+      }
+      // 파일 변경 감지 → 자동 re-index (debounced, RAG 활성 시만)
+      this._indexFileWatcher = vscode.workspace.createFileSystemWatcher('**/*.{ts,tsx,js,jsx,mjs,cjs,py,rb,go,rs,java,kt,swift,c,cc,cpp,h,hpp,cs,html,css,scss,vue,svelte,md,mdx,json,yaml,yml,toml,sh,ps1,sql}')
+      const onChanged = (uri: vscode.Uri) => {
+        if (!this._codebaseIndex) return
+        if (this._cfg<boolean>('codebaseRag.autoIndex') === false) return
+        this._reindexQueue.add(uri.fsPath)
+        if (this._reindexTimer) clearTimeout(this._reindexTimer)
+        this._reindexTimer = setTimeout(() => void this._processReindexQueue(), 3000)
+      }
+      this._indexFileWatcher.onDidChange(onChanged)
+      this._indexFileWatcher.onDidCreate(onChanged)
+      this._indexFileWatcher.onDidDelete(onChanged)
+      this._subscriptions.push(this._indexFileWatcher)
+    }
+  }
+
+  // 변경된 파일들 batched re-index
+  private async _processReindexQueue() {
+    if (!this._codebaseIndex || this._indexing) return
+    const apiKey = await this._authStorage.getGeminiApiKey()
+    if (!apiKey) return
+    const files = [...this._reindexQueue]
+    this._reindexQueue.clear()
+    for (const f of files) {
+      try {
+        this._codebaseIndex = await reindexFile(this._codebaseIndex, f, apiKey, this._context.globalStorageUri.fsPath)
+      } catch (err) {
+        log.warn('index', `reindex failed for ${f}:`, err)
+      }
+    }
+  }
+
+  // 명시적 인덱싱 트리거 (명령 또는 첫 사용 시)
+  async indexCodebase() {
+    const root = getWorkspaceRoot()
+    if (!root) {
+      vscode.window.showWarningMessage('워크스페이스가 열려있지 않습니다.')
+      return
+    }
+    const apiKey = await this._authStorage.getGeminiApiKey()
+    if (!apiKey) {
+      vscode.window.showWarningMessage('코드베이스 인덱싱에는 Gemini API 키가 필요합니다. 설정 → 계정 연결 → Gemini API 키.')
+      return
+    }
+    if (this._indexing) {
+      vscode.window.showInformationMessage('이미 인덱싱 진행 중입니다.')
+      return
+    }
+    this._indexing = true
+    const ctrl = new AbortController()
+    try {
+      await vscode.window.withProgress({
+        location: vscode.ProgressLocation.Notification,
+        title: 'OrchestrAI: 코드베이스 인덱싱 중...',
+        cancellable: true,
+      }, async (progress, token) => {
+        token.onCancellationRequested(() => ctrl.abort())
+        this._codebaseIndex = await buildIndex(
+          root,
+          this._context.globalStorageUri.fsPath,
+          apiKey,
+          (p) => {
+            const msg = p.phase === 'scanning' ? `파일 스캔 중 (${p.files ?? 0})`
+              : p.phase === 'chunking' ? `청크 생성 중 (${p.files} 파일)`
+              : p.phase === 'embedding' ? `임베딩 중 ${p.embeddedChunks}/${p.chunks}`
+              : p.phase === 'saving' ? '저장 중...'
+              : '완료'
+            const pct = p.phase === 'embedding' && p.chunks ? (p.embeddedChunks ?? 0) / p.chunks * 100 : undefined
+            progress.report({ message: msg, increment: pct })
+          },
+          ctrl.signal,
+        )
+      })
+      vscode.window.showInformationMessage(`✓ 코드베이스 인덱싱 완료 — ${this._codebaseIndex?.totalChunks ?? 0} chunks (${this._codebaseIndex?.totalFiles ?? 0} files)`)
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      if (msg !== 'aborted') vscode.window.showErrorMessage(`인덱싱 실패: ${msg}`)
+    } finally {
+      this._indexing = false
+    }
   }
 
   private _applyContextWindow() {
@@ -1395,6 +1490,32 @@ class OrchestrAIViewProvider implements vscode.WebviewViewProvider, vscode.Dispo
             break
           case 'gitShowCommit':
             await this._gitShowCommit(msg.hash)
+            break
+          case 'requestIndexCodebase':
+            await this.indexCodebase()
+            break
+          case 'sendBackground': {
+            // 백그라운드 작업 — 사용자가 일반 메시지처럼 보내지만 완료 시 Telegram push
+            const text = msg.text ?? ''
+            this._post({ type: 'toast', message: '🌙 백그라운드 작업 시작 — 완료 시 알림' })
+            void this._handleSend(text, []).then(() => {
+              this._notifyBackgroundDone(text)
+            }).catch(err => {
+              this._notifyBackgroundFail(text, err)
+            })
+            break
+          }
+          case 'multiModelReview':
+            this._isSending = true
+            this._currentAbort = new AbortController()
+            this._post({ type: 'generationStart' })
+            try {
+              await this.runMultiModelReview(msg.scope ?? 'lastCommit')
+            } finally {
+              this._isSending = false
+              this._currentAbort = undefined
+              this._post({ type: 'generationEnd' })
+            }
             break
           case 'reviewChanges':
             await this._reviewChanges(msg.turnId, msg.path)
@@ -2037,6 +2158,28 @@ class OrchestrAIViewProvider implements vscode.WebviewViewProvider, vscode.Dispo
     // 유저가 수동 override 있으면 그거 우선, 없으면 본문에서 추론
     const inferredEffort: Effort = this._effortOverride ?? inferEffort(userText)
 
+    // RAG: 코드베이스 인덱스가 있으면 관련 파일 자동 검색 → 시스템 프롬프트에 첨부
+    let ragContext = ''
+    if (this._codebaseIndex && this._cfg<boolean>('codebaseRag.enabled') !== false) {
+      const apiKey = await this._authStorage.getGeminiApiKey()
+      if (apiKey) {
+        try {
+          const result = await retrieve(this._codebaseIndex, userText, apiKey, { topK: 6 })
+          if (result.contextBlock) {
+            ragContext = result.contextBlock
+            this._post({
+              type: 'ragRetrieved',
+              chunks: result.chunks.map(c => ({ path: c.path, startLine: c.startLine, endLine: c.endLine, score: c.score })),
+            })
+          }
+        } catch (err) {
+          log.warn('rag', `retrieve failed:`, err)
+        }
+      }
+    }
+    // ragContext는 system prompt에 첨부됨 (buildSystemPrompt + 별도 prepend로)
+    ;(this as any)._ragContextForCurrentTurn = ragContext
+
     if (fileCtx) {
       this._post({
         type: 'contextUsed',
@@ -2472,9 +2615,12 @@ class OrchestrAIViewProvider implements vscode.WebviewViewProvider, vscode.Dispo
       const mcpTools = (currentModel === 'codex' || currentModel === 'gemini')
         ? await this._mcp.listTools().catch(() => [])
         : undefined
-      const systemPrompt = buildSystemPrompt(
+      let systemPrompt = buildSystemPrompt(
         fileCtx, currentModel, collabHint, mcpTools, this._permissionMode, teamRole,
       )
+      // RAG: 관련 파일 컨텍스트 prepend
+      const ragCtx = (this as any)._ragContextForCurrentTurn
+      if (ragCtx) systemPrompt = `${ragCtx}\n\n${systemPrompt}`
       const trimmed = buildTaggedHistory(this._messages, currentModel, this._compaction)
       const history = trimmed.messages
 
@@ -2732,6 +2878,205 @@ PATH RULES: paths are relative to workspace root. Don't prefix with "${gWsBase}/
     } catch {
       // git extension API 없으면 단순 toast
       this._post({ type: 'toast', message: `commit: ${hash.slice(0, 7)}` })
+    }
+  }
+
+  // /review — 멀티모델 자동 코드 리뷰. git diff (staged 또는 HEAD~1) 추출 → 3 모델 병렬 리뷰 → Haiku가 종합
+  async runMultiModelReview(scope: 'staged' | 'lastCommit' = 'lastCommit') {
+    const root = getWorkspaceRoot()
+    if (!root) {
+      this._post({ type: 'streamError', id: 'review', error: '워크스페이스 없음' })
+      return
+    }
+    if (!fs.existsSync(path.join(root, '.git'))) {
+      this._post({ type: 'streamError', id: 'review', error: 'git 저장소가 아닙니다' })
+      return
+    }
+
+    const userMsgId = Date.now().toString()
+    const userMsg: ChatMessage = {
+      id: userMsgId,
+      role: 'user',
+      content: scope === 'staged' ? '/review (staged changes)' : '/review (last commit)',
+      timestamp: Date.now(),
+    }
+    this._messages.push(userMsg)
+    this._post({ type: 'userMessage', message: userMsg })
+
+    const { spawn } = require('child_process') as typeof import('child_process')
+    const run = (args: string[]): Promise<string> => new Promise((resolve) => {
+      const p = spawn('git', args, { cwd: root })
+      let stdout = ''
+      p.stdout.on('data', (c: Buffer) => stdout += c.toString('utf8'))
+      p.on('exit', () => resolve(stdout))
+      p.on('error', () => resolve(''))
+    })
+
+    const diff = await run(scope === 'staged' ? ['diff', '--cached'] : ['diff', 'HEAD~1', 'HEAD'])
+    if (!diff.trim()) {
+      this._post({ type: 'streamError', id: userMsgId, error: '변경 사항이 없습니다' })
+      return
+    }
+    if (diff.length > 50000) {
+      this._post({ type: 'toast', message: '⚠ diff가 50KB 넘어 일부만 리뷰' })
+    }
+    const diffBlock = diff.slice(0, 50000)
+
+    const reviewPrompt = `Review the following code changes. Focus on:
+1. Correctness — bugs, edge cases, error handling
+2. Security — injection, auth, secret leaks
+3. Performance — obvious inefficiencies
+4. Readability — naming, structure, comments
+
+\`\`\`diff
+${diffBlock}
+\`\`\`
+
+Respond as concise markdown:
+## Critical issues
+- ...
+## Suggestions
+- ...
+## Overall (0-10)
+N — one line summary`
+
+    const status = await this._authStorage.getStatus()
+    const reviewers: Model[] = (['claude', 'codex', 'gemini'] as Model[]).filter(m => status[m])
+    if (reviewers.length === 0) {
+      this._post({ type: 'streamError', id: userMsgId, error: '로그인된 모델이 없습니다' })
+      return
+    }
+
+    this._post({ type: 'toast', message: `🔍 ${reviewers.length}개 모델 병렬 리뷰 시작...` })
+
+    // 각 모델 병렬 호출
+    const reviewMessages: Array<{ role: 'user' | 'assistant'; content: string }> = [{ role: 'user', content: reviewPrompt }]
+    const reviews = await Promise.all(reviewers.map(async (m) => {
+      const decision: RoutingDecision = {
+        model: m, effort: 'high', confidence: 1, reason: 'review',
+        actualModel: actualModelName(m, 'high'),
+      }
+      const msgId = `review-${m}-${Date.now()}`
+      this._postRoutingDecision(decision)
+      this._post({ type: 'streamStart', id: msgId, decision })
+      const onChunk = (text: string) => this._post({ type: 'streamChunk', id: msgId, text })
+      try {
+        let result: { content: string; inputTokens: number; outputTokens: number }
+        const sysPrompt = 'You are a senior code reviewer. Be specific, terse, and actionable.'
+        if (m === 'claude') {
+          const tok = await this._claudeAuth.getAccessToken()
+          if (!tok) throw new Error('Claude not logged in')
+          result = await callClaude(reviewMessages, 'high', tok, onChunk, sysPrompt, 'auto-edit', undefined, this._currentAbort?.signal)
+        } else if (m === 'codex') {
+          const tok = await this._codexAuth.getAccessToken()
+          const accountId = await this._codexAuth.getAccountId()
+          if (!tok) throw new Error('Codex not logged in')
+          result = await callCodex(reviewMessages, 'high', tok, onChunk, sysPrompt, accountId ?? undefined, this._currentAbort?.signal)
+        } else {
+          result = await callGemini(reviewMessages, 'high', onChunk, sysPrompt, this._currentAbort?.signal)
+        }
+        const assistantMsg: ChatMessage = {
+          id: msgId, role: 'assistant', content: result.content,
+          model: m, effort: 'high', actualModel: decision.actualModel,
+          tokens: result.inputTokens + result.outputTokens, routing: decision, timestamp: Date.now(),
+        }
+        this._messages.push(assistantMsg)
+        this._post({ type: 'streamEnd', id: msgId, tokens: assistantMsg.tokens, actualModel: decision.actualModel })
+        return { model: m, content: result.content }
+      } catch (err) {
+        const errMsg = err instanceof Error ? err.message : String(err)
+        this._post({ type: 'streamError', id: msgId, error: errMsg })
+        return { model: m, content: `(review failed: ${errMsg})` }
+      }
+    }))
+
+    // Haiku 종합
+    const synthesisPrompt = `Three AI reviewers reviewed the same code change. Synthesize their reviews into ONE final verdict:
+
+${reviews.map(r => `## ${r.model.toUpperCase()} review:\n${r.content}`).join('\n\n')}
+
+Output:
+## Consensus (issues all reviewers agreed)
+- ...
+## Disagreements (one flagged but others didn't — investigate)
+- ...
+## Final verdict (0-10)
+N — one short line.
+
+Be concise. Korean if reviews are Korean.`
+
+    const synthDecision: RoutingDecision = {
+      model: 'claude', effort: 'medium', confidence: 1, reason: 'review-synthesis',
+      actualModel: 'claude-haiku-4-5',
+    }
+    const synthId = `review-synth-${Date.now()}`
+    this._postRoutingDecision(synthDecision)
+    this._post({ type: 'streamStart', id: synthId, decision: synthDecision })
+    try {
+      const tok = await this._claudeAuth.getAccessToken()
+      if (!tok) throw new Error('Claude not logged in')
+      // Haiku로 종합 (낮은 비용 + 빠름)
+      // claudeProvider는 effort로 모델 결정 — Haiku 직접 부르려면 별도 query
+      const { query } = await import('@anthropic-ai/claude-agent-sdk')
+      const env = { ...process.env }
+      delete env.ANTHROPIC_API_KEY
+      const q = query({
+        prompt: synthesisPrompt,
+        options: {
+          model: 'claude-haiku-4-5',
+          systemPrompt: 'Synthesize multiple code reviews into one consensus.',
+          tools: [],
+          maxTurns: 1,
+          persistSession: false,
+          cwd: root,
+          env,
+          includePartialMessages: true,
+        },
+      })
+      let synthContent = ''
+      for await (const m of q) {
+        if (m.type === 'stream_event' && (m as any).event?.type === 'content_block_delta' && (m as any).event?.delta?.type === 'text_delta') {
+          const t = (m as any).event.delta.text
+          if (t) { synthContent += t; this._post({ type: 'streamChunk', id: synthId, text: t }) }
+        }
+      }
+      const synthMsg: ChatMessage = {
+        id: synthId, role: 'assistant', content: synthContent,
+        model: 'claude', effort: 'medium', actualModel: 'claude-haiku-4-5',
+        routing: synthDecision, timestamp: Date.now(),
+      }
+      this._messages.push(synthMsg)
+      this._post({ type: 'streamEnd', id: synthId, actualModel: 'claude-haiku-4-5' })
+    } catch (err) {
+      this._post({ type: 'streamError', id: synthId, error: err instanceof Error ? err.message : String(err) })
+    }
+
+    await this._persistMessages()
+  }
+
+  // 백그라운드 작업 완료 알림 — VSCode notification + Telegram push
+  private async _notifyBackgroundDone(taskPreview: string) {
+    const summary = `✓ 백그라운드 작업 완료: ${taskPreview.slice(0, 60)}${taskPreview.length > 60 ? '…' : ''}`
+    const last = this._messages[this._messages.length - 1]
+    const result = last?.role === 'assistant' ? last.content.slice(0, 300) : ''
+    vscode.window.showInformationMessage(summary, '채팅 보기').then(choice => {
+      if (choice === '채팅 보기') vscode.commands.executeCommand('orchestrai.openChat')
+    })
+    // Telegram push (활성화돼있고 sendClient 있으면)
+    if (this._telegramBridge) {
+      try {
+        await this._telegramBridge.pushExternalNotification(`${summary}\n\n${result}`)
+      } catch {}
+    }
+    this._post({ type: 'toast', message: summary })
+  }
+
+  private async _notifyBackgroundFail(taskPreview: string, err: any) {
+    const errMsg = err instanceof Error ? err.message : String(err)
+    const summary = `❌ 백그라운드 작업 실패: ${taskPreview.slice(0, 60)} — ${errMsg.slice(0, 100)}`
+    vscode.window.showWarningMessage(summary)
+    if (this._telegramBridge) {
+      try { await this._telegramBridge.pushExternalNotification(summary) } catch {}
     }
   }
 
@@ -3024,6 +3369,7 @@ export function activate(context: vscode.ExtensionContext) {
     vscode.commands.registerCommand('orchestrai.showLogs', () => log.show()),
     vscode.commands.registerCommand('orchestrai.openArchives', () => provider.openArchives()),
     vscode.commands.registerCommand('orchestrai.restoreArchive', () => provider.restoreArchive()),
+    vscode.commands.registerCommand('orchestrai.indexCodebase', () => provider.indexCodebase()),
     provider,
   )
 }

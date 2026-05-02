@@ -2400,6 +2400,9 @@
       case 'previewSuggest':
         showPreviewSuggest(msg.script, msg.command)
         break
+      case 'ragRetrieved':
+        showRagRetrieved(msg.chunks)
+        break
       case 'generationEnd':
       case 'generationStopped':
         document.getElementById('gen-stop').classList.remove('visible')
@@ -2677,6 +2680,15 @@
       case 'team':    setOverrideToMode('team'); return true
       case 'argue':   setOverrideToMode('argue'); return true
       case 'effort':  setEffortOverride(arg); return true
+      case 'review':  postToExtension({ type: 'multiModelReview', scope: arg === 'staged' ? 'staged' : 'lastCommit' }); return true
+      case 'index':   postToExtension({ type: 'requestIndexCodebase' }); return true
+      case 'bg':
+      case 'background': {
+        // /bg 작업내용 — 백그라운드로 실행, 완료 시 Telegram push
+        if (!arg) { showToast('사용법: /bg <작업내용>'); return true }
+        postToExtension({ type: 'sendBackground', text: arg })
+        return true
+      }
       case 'help': {
         showHelpDialog()
         return true
@@ -3204,6 +3216,19 @@
   }
   function runSuggested(script, command) {
     postToExtension({ type: 'runCommand', script, command })
+  }
+
+  // RAG: 코드베이스에서 자동 검색된 chunk 표시 — 어떤 파일이 컨텍스트로 들어갔는지 명확히
+  function showRagRetrieved(chunks) {
+    if (!chunks || chunks.length === 0) return
+    const messages = document.getElementById('messages')
+    const card = document.createElement('div')
+    card.style.cssText = 'margin: 6px 12px; padding: 6px 10px; background: rgba(96, 165, 250, 0.06); border-left: 3px solid var(--gemini); border-radius: 4px; font-family: \'JetBrains Mono\', monospace; font-size: 10px; color: var(--text-dim);'
+    card.innerHTML = `🧭 RAG: ${chunks.length}개 관련 chunk 자동 첨부 — ` +
+      chunks.slice(0, 5).map(c => `<a class="file-link" onclick="postToExtension({type:'openFile',path:'${c.path.replace(/'/g,"\\'")}',line:${c.startLine}})">${escapeHtml(c.path)}:${c.startLine}-${c.endLine}</a> <span style="color:var(--text-muted)">(${(c.score*100).toFixed(0)}%)</span>`).join(' · ') +
+      (chunks.length > 5 ? ` ...+${chunks.length - 5}` : '')
+    messages.appendChild(card)
+    scrollIfNearBottom(messages)
   }
 
   function finalizeMessage(id, tokens, changedFiles = [], actualModel = '', changeSummary = null, commitShort = '', commitHash = '') {

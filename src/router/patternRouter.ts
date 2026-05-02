@@ -60,12 +60,12 @@ const RULES: Rule[] = [
     label: 'code-impl',
   },
   {
-    pattern: /(?:add|create|write|implement)\s+(?:a |an |the )?(function|method|class|component|hook|module|api|endpoint|file)/i,
+    pattern: /(?:add|create|write|implement|build|make)\s+(?:a |an |the )?(?:[\w\- ]{0,30}?\b)?(function|method|class|component|hook|module|api|endpoint|file|route|handler|controller|service|model)/i,
     model: 'codex', effort: 'high', confidence: 0.92,
     label: 'code-impl-en',
   },
   {
-    pattern: /버그|에러|오류|exception|crash|안\s*돼|안\s*됨|fix\s*it|fix bug|debug/i,
+    pattern: /버그|에러|오류|exception|crash|안\s*돼|안\s*됨|fix\s*it|fix bug|debug|\bfix\b.{0,30}?\b(bug|error|issue|problem|crash|broken)\b/i,
     model: 'codex', effort: 'high', confidence: 0.88,
     label: 'bug-fix',
   },
@@ -90,7 +90,7 @@ const RULES: Rule[] = [
     label: 'terminal-cli',
   },
   {
-    pattern: /타이포|typo\s*고/i,
+    pattern: /\b타이포\b|\btypo\b/i,
     model: 'codex', effort: 'low', confidence: 0.95,
     label: 'typo',
   },
