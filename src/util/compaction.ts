@@ -17,10 +17,11 @@ export interface CompactionState {
   summaryTokens: number       // 요약 후 토큰 추정
 }
 
-// 압축 트리거 조건
-const TRIGGER_TOKENS = 15_000   // 압축 대상 영역의 토큰이 이 정도면 압축
-const KEEP_RECENT = 10          // 최근 N개 메시지는 절대 압축 안 함 (원문 유지)
-const MIN_OLDER = 10            // 압축할 메시지 수가 이만큼 있어야 의미 있음
+// 압축 트리거 — Claude Code 수준으로 매우 늦게. 모델 context 한계 가까워질 때만.
+// Claude 1M / Codex 256k / Gemini 1M 기준으로 ~150k 도달 시에만 트리거 (전체 안전마진).
+const TRIGGER_TOKENS = 150_000  // 압축 대상 토큰량 (옛 15k → 50k → 150k)
+const KEEP_RECENT = 100         // 최근 verbatim 보존 (옛 10 → 30 → 100)
+const MIN_OLDER = 30            // 그 이전에 최소 이만큼 있어야 압축 의미 있음
 
 const SUMMARIZER_SYSTEM = `You are compacting a multi-turn AI coding assistant chat history to save tokens. The conversation will continue after this summary, so include everything a future assistant would need to continue coherently.
 

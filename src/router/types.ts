@@ -45,4 +45,6 @@ export interface ChatMessage {
   tokens?: number
   routing?: RoutingDecision
   timestamp: number
+  commitHash?: string         // 자동 git commit 후 hash (이 턴 → 그 commit 으로 revert 가능)
+  commitShort?: string        // 사용자 표시용 7자
 }

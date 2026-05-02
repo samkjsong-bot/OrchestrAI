@@ -30,12 +30,13 @@ function thinkingBudgetFor(effort: Effort | string): number | undefined {
   return THINKING_BUDGET[effort as Effort]
 }
 
-// 응답 출력 max tokens — 명시 안 하면 SDK 기본(8192)에서 응답 잘림. Sonnet 4.6은 64k, Opus는 32k까지.
+// 응답 출력 max tokens — 한 턴에 큰 프로그램 통째로 만들 수 있게 모두 모델 한계까지.
+// Sonnet 4.6: 64k 한도, Opus 4.6: 32k 한도. SDK 기본(8192)이면 응답 잘림.
 const MAX_OUTPUT: Record<Effort, number> = {
-  low: 16000,
-  medium: 32000,
+  low: 64000,           // 옛 16k → 64k (Sonnet 한도까지). 한 페이지 짜리도 잘림 없이.
+  medium: 64000,        // 옛 32k → 64k
   high: 64000,
-  'extra-high': 32000,  // Opus는 32k가 상한
+  'extra-high': 32000,  // Opus 한도
 }
 function maxOutputFor(effort: Effort | string): number {
   return MAX_OUTPUT[effort as Effort] ?? 32000
@@ -176,6 +177,22 @@ export async function callClaude(
         throw new Error(`Claude 응답 실패: ${detail}`)
       }
     }
+  }
+
+  // Claude Max 5-hour limit 도달 시 SDK가 정상 result로 끝내면서 텍스트로 안내문 줌.
+  // is_error=false 이지만 실제로는 quota 파산 → throw해서 폴백 트리거
+  const QUOTA_PATTERNS = [
+    /usage limit reached/i,
+    /your limit will reset/i,
+    /5-hour limit/i,
+    /usage_limit_exceeded/i,
+    /rate.limit reached/i,
+    /quota.{0,30}exceeded/i,
+    /Claude.{0,30}usage limit/i,
+    /제한.{0,10}도달|쿼터.{0,10}소진|사용량.{0,10}한도/,
+  ]
+  if (QUOTA_PATTERNS.some(re => re.test(fullContent))) {
+    throw new Error(`rate_limit reached: ${fullContent.slice(0, 200)}`)
   }
 
   return { content: fullContent, inputTokens, outputTokens }

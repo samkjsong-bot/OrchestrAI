@@ -5,12 +5,23 @@
 import { Model, ChatMessage } from '../router/types'
 import type { CompactionState } from './compaction'
 
-// 모델별 최대 메시지 수 (user+assistant 합쳐서). user/assistant 짝이니 짝수로.
-// Claude는 중간, Codex는 작게(토큰 비용), Gemini는 크게(롱컨텍스트 강점).
-const MAX_MESSAGES: Record<Model, number> = {
-  claude: 20,
-  codex: 10,
-  gemini: 40,
+// 모델별 최대 메시지 수. Claude Code / Codex CLI 가 자체적으로 거의 무제한 보내는 패턴 따라감.
+// compaction이 토큰 한계 가까워지면 알아서 압축하니 메시지 수 limit은 안전망 역할만.
+// Claude Sonnet 4.6: 1M window, Opus 4.6: 200k. 메시지 1개 평균 ~500토큰이면 1000개=500k.
+// Codex (gpt-5): 256k. Gemini 2.5 Flash: 1M, Pro: 2M.
+const PRESETS: Record<'narrow' | 'default' | 'wide', Record<Model, number>> = {
+  narrow:  { claude: 60, codex: 40, gemini: 100 },     // 토큰 절약 원할 때
+  default: { claude: 500, codex: 300, gemini: 1000 },  // Claude Code/Codex 수준 — 사실상 무제한
+  wide:    { claude: 2000, codex: 1500, gemini: 5000 },// 진짜 긴 작업 (큰 코드베이스 단위)
+}
+
+// VSCode setting `orchestrai.contextWindow` 로 결정. 안 받아오면 default.
+let _activePreset: 'narrow' | 'default' | 'wide' = 'default'
+export function setContextWindowPreset(preset: 'narrow' | 'default' | 'wide') {
+  _activePreset = preset
+}
+function getMaxMessages(forModel: Model): number {
+  return PRESETS[_activePreset][forModel]
 }
 
 export interface TrimmedHistory {
@@ -36,7 +47,7 @@ export function buildTaggedHistory(
   compaction?: CompactionState,
 ): TrimmedHistory {
   const relevant = messages.filter(m => m.role === 'user' || m.role === 'assistant')
-  const limit = MAX_MESSAGES[forModel]
+  const limit = getMaxMessages(forModel)
 
   // 압축된 부분 이후만 작업 영역으로
   const startIdx = compaction?.summarizedUpTo ?? 0

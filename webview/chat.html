@@ -1364,6 +1364,41 @@
     to   { transform: translateX(0); opacity: 1; }
   }
 
+  /* 자동 git commit chip — assistant 메시지 끝에 */
+  .commit-chip {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 8px 0 0;
+    padding: 5px 10px;
+    background: rgba(52, 211, 153, 0.07);
+    border: 1px solid rgba(52, 211, 153, 0.25);
+    border-radius: 5px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+  }
+  .commit-icon { color: #34d399; font-size: 13px; flex-shrink: 0; }
+  .commit-label { flex: 1; color: var(--text-dim); }
+  .commit-label code {
+    background: var(--bg);
+    color: #34d399;
+    padding: 1px 6px;
+    border-radius: 3px;
+    font-size: 9px;
+  }
+  .commit-btn {
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--text-muted);
+    border-radius: 3px;
+    padding: 2px 8px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 9px;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .commit-btn:hover { color: var(--text); border-color: var(--border-bright); }
+
   /* 메시지 큐 (작업 중 입력 대기) */
   .msg-queue {
     display: flex;
@@ -2338,7 +2373,7 @@
         appendChunk(msg.id, msg.text)
         break
       case 'streamEnd':
-        finalizeMessage(msg.id, msg.tokens, msg.changedFiles || [], msg.actualModel, msg.changeSummary)
+        finalizeMessage(msg.id, msg.tokens, msg.changedFiles || [], msg.actualModel, msg.changeSummary, msg.commitShort, msg.commitHash)
         break
       case 'streamError':
         showStreamError(msg.id, msg.error)
@@ -3171,7 +3206,7 @@
     postToExtension({ type: 'runCommand', script, command })
   }
 
-  function finalizeMessage(id, tokens, changedFiles = [], actualModel = '', changeSummary = null) {
+  function finalizeMessage(id, tokens, changedFiles = [], actualModel = '', changeSummary = null, commitShort = '', commitHash = '') {
     setSendLocked(false)
     const tokEl = document.getElementById(`tok-${id}`)
     if (tokEl) tokEl.textContent = `${tokens?.toLocaleString() ?? '?'} tok`
@@ -3189,12 +3224,29 @@
     const el = document.getElementById(`content-${id}`)
     if (el && streamBuffers[id]) {
       el.className = 'msg-content md'
-      el.innerHTML = renderMarkdown(streamBuffers[id]) + renderChangedFiles(changedFiles, changeSummary)
+      el.innerHTML = renderMarkdown(streamBuffers[id]) + renderChangedFiles(changedFiles, changeSummary) + renderCommitChip(commitShort, commitHash)
     }
     updateReviewBar(changeSummary)
 
     const messages = document.getElementById('messages')
     scrollIfNearBottom(messages)
+  }
+
+  function renderCommitChip(short, hash) {
+    if (!short || !hash) return ''
+    return `<div class="commit-chip">
+      <span class="commit-icon">⎇</span>
+      <span class="commit-label">checkpoint <code>${short}</code></span>
+      <button class="commit-btn" onclick="revertToCommitParent('${hash}')" title="이 턴 변경을 되돌림 (parent commit으로 reset)">↶ 이 턴 되돌리기</button>
+      <button class="commit-btn" onclick="showCommitDiff('${hash}')" title="이 commit의 변경 보기">diff</button>
+    </div>`
+  }
+  function revertToCommitParent(hash) {
+    if (!confirm('이 턴 작업을 되돌리고 이전 상태로 reset 하시겠어요? (git reset --hard ' + hash + '^)')) return
+    postToExtension({ type: 'gitRevertToCommitParent', hash })
+  }
+  function showCommitDiff(hash) {
+    postToExtension({ type: 'gitShowCommit', hash })
   }
 
   function appendRoutingBadge(decision) {

@@ -37,6 +37,9 @@ interface ActiveStream {
   modelLabel?: string
   targetName: string
   done: boolean
+  chunkStart: number          // 현재 placeholder가 보여주는 buffer 영역의 시작 index
+  threadOpt?: { message_thread_id?: number }  // 새 placeholder send할 때 사용
+  rolling: boolean             // 새 placeholder 만드는 중 (race 방지)
 }
 
 export class TelegramBridge implements vscode.Disposable {
@@ -669,6 +672,9 @@ export class TelegramBridge implements vscode.Disposable {
       observer,
       targetName,
       done: false,
+      chunkStart: 0,
+      threadOpt,
+      rolling: false,
     }
 
     try {
@@ -696,13 +702,35 @@ export class TelegramBridge implements vscode.Disposable {
     } catch { return }
 
     let buffer = ''
+    let chunkStart = 0           // 현재 placeholder가 보여주는 buffer 영역 시작
     let lastEdit = Date.now()
+    let currentMessageId = placeholder.message_id
+    const header = `🎯 ${target.workspaceName}\n\n`
+    const limit = TG_MAX - header.length - 100
+
     const edit = async (body: string) => {
-      await this.client!.editMessageText(
-        this.chatId,
-        placeholder!.message_id,
-        `🎯 ${target.workspaceName}\n\n${body}`,
-      )
+      await this.client!.editMessageText(this.chatId, currentMessageId, `${header}${body}`).catch(() => undefined)
+    }
+
+    // 4000자 도달 시 새 placeholder 자동 roll
+    const maybeRoll = async () => {
+      const tail = buffer.slice(chunkStart)
+      if (tail.length <= limit) return false
+      const splitAt = (() => {
+        const tryNL = tail.lastIndexOf('\n', limit)
+        return tryNL > limit - 500 ? tryNL : limit
+      })()
+      const firstPart = tail.slice(0, splitAt)
+      try {
+        await this.client!.editMessageText(this.chatId, currentMessageId, `${header}${firstPart}\n\n…(이어짐 ↓)`)
+      } catch {}
+      try {
+        const next = await this.client!.sendMessage(this.chatId, '⏳ ...', threadOpt)
+        currentMessageId = next.message_id
+        chunkStart += firstPart.length
+        lastEdit = 0
+      } catch {}
+      return true
     }
 
     try {
@@ -730,10 +758,11 @@ export class TelegramBridge implements vscode.Disposable {
             const data = JSON.parse(line.slice(6))
             if (typeof data.chunk === 'string') {
               buffer += data.chunk
+              const rolled = await maybeRoll()
               const now = Date.now()
-              if (now - lastEdit > EDIT_INTERVAL_MS) {
+              if (rolled || now - lastEdit > EDIT_INTERVAL_MS) {
                 lastEdit = now
-                await edit(buffer.slice(0, TG_MAX - 200))
+                await edit(buffer.slice(chunkStart))
               }
             } else if (data.done) {
               if (!data.ok) lastErr = data.error ?? 'unknown error'
@@ -743,10 +772,30 @@ export class TelegramBridge implements vscode.Disposable {
         }
       }
 
+      // 마무리: 남은 chunk 분할 발송
       if (lastErr) {
         await edit(`❌ ${lastErr}`)
       } else {
-        await edit(buffer.slice(0, TG_MAX - 200) || '(빈 응답)')
+        const remaining = buffer.slice(chunkStart)
+        if (remaining.length <= limit) {
+          await edit(remaining || '(빈 응답)')
+        } else {
+          // 첫 part는 현재 placeholder, 나머지는 새 메시지로
+          const firstPart = remaining.slice(0, limit)
+          await edit(firstPart + '\n\n…(이어짐 ↓)')
+          let rest = remaining.slice(limit)
+          let partNum = 2
+          while (rest.length > 0) {
+            const chunkLimit = TG_MAX - 60
+            let splitAt = rest.length <= chunkLimit ? rest.length :
+              (rest.lastIndexOf('\n', chunkLimit) > chunkLimit - 500 ? rest.lastIndexOf('\n', chunkLimit) : chunkLimit)
+            const part = rest.slice(0, splitAt)
+            rest = rest.slice(splitAt).trimStart()
+            const tag = rest.length > 0 ? `(part ${partNum} ↓)` : `(part ${partNum} · 끝)`
+            try { await this.client!.sendMessage(this.chatId, `${tag}\n\n${part}`, threadOpt) } catch {}
+            partNum++
+          }
+        }
       }
     } catch (err) {
       await edit(`❌ 통신 실패: ${err instanceof Error ? err.message : String(err)}`)
@@ -862,15 +911,56 @@ export class TelegramBridge implements vscode.Disposable {
 
   private async _editStream(text: string) {
     if (!this.activeStream || !this.client) return
-    await this.client.editMessageText(this.chatId, this.activeStream.messageId, text || '(empty)')
+    await this.client.editMessageText(this.chatId, this.activeStream.messageId, text || '(empty)').catch(() => undefined)
   }
 
+  // 현재 placeholder가 보여주는 영역 (chunkStart부터). TG_MAX 한도 도달하면 새 placeholder로 rolling.
   private _maybeEdit() {
-    if (!this.activeStream) return
+    if (!this.activeStream || !this.client) return
+    const stream = this.activeStream
+    const tail = stream.buffer.slice(stream.chunkStart)
+    const header = this._header(stream)
+    const limit = TG_MAX - header.length - 100  // 100 buffer for "...(이어짐 ↓)" 등
+
+    // 현재 placeholder 한도 도달 → 마무리 + 새 placeholder
+    if (tail.length > limit && !stream.rolling) {
+      stream.rolling = true
+      void this._rollNewPlaceholder(stream, header, limit).finally(() => {
+        if (this.activeStream === stream) stream.rolling = false
+      })
+      return
+    }
+
+    if (stream.rolling) return  // rolling 중엔 update 스킵 (race 방지)
     const now = Date.now()
-    if (now - this.activeStream.lastEdit < EDIT_INTERVAL_MS) return
-    this.activeStream.lastEdit = now
-    void this._editStream(this._header() + this.activeStream.buffer.slice(0, TG_MAX - 200))
+    if (now - stream.lastEdit < EDIT_INTERVAL_MS) return
+    stream.lastEdit = now
+    void this._editStream(header + tail)
+  }
+
+  // 현재 placeholder를 첫 part로 마무리 + 새 placeholder send + chunkStart 갱신
+  private async _rollNewPlaceholder(stream: ActiveStream, header: string, limit: number) {
+    if (!this.client) return
+    const tail = stream.buffer.slice(stream.chunkStart)
+    const splitAt = (() => {
+      const tryNL = tail.lastIndexOf('\n', limit)
+      return tryNL > limit - 500 ? tryNL : limit
+    })()
+    const firstPart = tail.slice(0, splitAt)
+    try {
+      await this.client.editMessageText(
+        this.chatId, stream.messageId,
+        header + firstPart + '\n\n…(이어짐 ↓)',
+      )
+    } catch {}
+    try {
+      const next = await this.client.sendMessage(this.chatId, '⏳ ...', stream.threadOpt)
+      stream.messageId = next.message_id
+      stream.chunkStart += firstPart.length
+      stream.lastEdit = 0  // 새 placeholder 즉시 update 가능
+    } catch (err) {
+      log.warn('telegram', 'rolling new placeholder failed:', err)
+    }
   }
 
   private _finalize(): string {
@@ -884,41 +974,40 @@ export class TelegramBridge implements vscode.Disposable {
     return header + (text || '(빈 응답)')
   }
 
-  // 긴 응답: placeholder는 첫 part로 마무리, 나머지는 새 메시지로 분할 발송
+  // 긴 응답 마무리: rolling 동안 chunkStart까지는 이미 placeholder로 보냈음.
+  // 현재 placeholder에 chunkStart부터 끝까지 채우고, 한도 넘으면 추가 메시지로 분할.
   private async _finalizeAndSplit(stream: ActiveStream, threadOpt?: { message_thread_id?: number }) {
     if (!this.client) return
     const header = this._header(stream)
-    const body = stream.buffer
-    const placeholderLimit = TG_MAX - header.length - 60
-    if (body.length <= placeholderLimit) {
-      // 짧으면 기존 동작
-      const text = header + (body || '(빈 응답)')
+    const remaining = stream.buffer.slice(stream.chunkStart)
+    const limit = TG_MAX - header.length - 60
+
+    if (remaining.length <= limit) {
+      // 한 placeholder에 다 들어감
+      const text = header + (remaining || '(빈 응답)')
       await this.client.editMessageText(this.chatId, stream.messageId, text).catch(() => undefined)
       return
     }
-    // 첫 part: placeholder edit
-    const firstPart = body.slice(0, placeholderLimit)
-    const continuationNote = '\n\n…(이어짐 ↓)'
+
+    // 첫 part: 현재 placeholder edit
+    const firstPart = remaining.slice(0, limit)
     await this.client.editMessageText(
       this.chatId, stream.messageId,
-      header + firstPart + continuationNote,
+      header + firstPart + '\n\n…(이어짐 ↓)',
     ).catch(() => undefined)
 
-    // 나머지: 새 메시지로 분할 (줄바꿈 우선 split)
-    let remaining = body.slice(placeholderLimit)
+    // 나머지: 새 메시지로 분할
+    let rest = remaining.slice(limit)
     let partNum = 2
-    while (remaining.length > 0) {
+    while (rest.length > 0) {
       const chunkLimit = TG_MAX - 60
-      let splitAt: number
-      if (remaining.length <= chunkLimit) {
-        splitAt = remaining.length
-      } else {
-        splitAt = remaining.lastIndexOf('\n', chunkLimit)
-        if (splitAt < chunkLimit - 500) splitAt = chunkLimit
-      }
-      const part = remaining.slice(0, splitAt)
-      remaining = remaining.slice(splitAt).trimStart()
-      const tag = remaining.length > 0 ? `(part ${partNum} ↓)` : `(part ${partNum} · 끝)`
+      let splitAt = rest.length <= chunkLimit ? rest.length :
+        Math.max(rest.lastIndexOf('\n', chunkLimit), chunkLimit - 500) > chunkLimit - 500
+          ? rest.lastIndexOf('\n', chunkLimit) : chunkLimit
+      if (splitAt <= 0) splitAt = Math.min(chunkLimit, rest.length)
+      const part = rest.slice(0, splitAt)
+      rest = rest.slice(splitAt).trimStart()
+      const tag = rest.length > 0 ? `(part ${partNum} ↓)` : `(part ${partNum} · 끝)`
       try {
         await this.client.sendMessage(this.chatId, `${tag}\n\n${part}`, threadOpt)
       } catch {}

@@ -17,7 +17,7 @@ import { GeminiAuth } from './auth/geminiAuth'
 import { UsageTracker, PLAN_INFO } from './util/usage'
 import { judgeTurn } from './router/judge'
 import { log } from './util/log'
-import { buildTaggedHistory } from './util/history'
+import { buildTaggedHistory, setContextWindowPreset } from './util/history'
 import { isQuotaError, summarizeQuotaError } from './util/quota'
 import { TelegramBridge } from './telegram/bridge'
 import { TelegramClient } from './telegram/client'
@@ -128,7 +128,7 @@ function saveChatStorage(context: vscode.ExtensionContext, storage: ChatStorage)
 }
 
 // ── 컨텍스트 수집 ─────────────────────────────────
-const MAX_FILE_CHARS = 8000
+const MAX_FILE_CHARS = 80000   // 큰 파일도 통째로 컨텍스트 (옛 8k → 80k, ~2500줄)
 
 interface FileContext {
   fileName: string
@@ -840,8 +840,23 @@ class OrchestrAIViewProvider implements vscode.WebviewViewProvider, vscode.Dispo
     this._mcp = new McpManager(() => this._cfg<Record<string, McpServerConfig>>('mcpServers') ?? {})
     this._statusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 99)
     this._statusBarItem.command = 'orchestrai.openChat'
+    // 컨텍스트 윈도우 setting 적용 + 변경 감지
+    this._applyContextWindow()
+    this._subscriptions.push(
+      vscode.workspace.onDidChangeConfiguration(e => {
+        if (e.affectsConfiguration('orchestrai.contextWindow')) this._applyContextWindow()
+      }),
+    )
     // 이전에 연결됐던 Telegram 봇 자동 재접속 (cfg가 SecretStorage에 있으면)
     void this._autoStartTelegram()
+  }
+
+  private _applyContextWindow() {
+    const preset = this._cfg<string>('contextWindow') ?? 'default'
+    if (preset === 'narrow' || preset === 'default' || preset === 'wide') {
+      setContextWindowPreset(preset)
+      log.info('context', `window preset = ${preset}`)
+    }
   }
 
   // ?? Telegram ?????????????????????????????????????????????????????
@@ -1369,6 +1384,12 @@ class OrchestrAIViewProvider implements vscode.WebviewViewProvider, vscode.Dispo
             term.sendText(msg.command)
             break
           }
+          case 'gitRevertToCommitParent':
+            await this._gitRevertToCommitParent(msg.hash)
+            break
+          case 'gitShowCommit':
+            await this._gitShowCommit(msg.hash)
+            break
           case 'reviewChanges':
             await this._reviewChanges(msg.turnId, msg.path)
             break
@@ -1961,6 +1982,39 @@ class OrchestrAIViewProvider implements vscode.WebviewViewProvider, vscode.Dispo
     this._currentAbort = new AbortController()
     this._post({ type: 'generationStart' })  // UI: stop 버튼 켜기
 
+    // 자동 diff: send 동안 변경된 첫 파일을 git.openChange로 띄움 (engine 무관)
+    const autoDiff = this._cfg<boolean>('autoOpenDiff') !== false
+    let watcher: vscode.FileSystemWatcher | undefined
+    let diffOpenedThisTurn = false
+    if (autoDiff) {
+      try {
+        watcher = vscode.workspace.createFileSystemWatcher('**')
+        const tryOpenDiff = async (uri: vscode.Uri) => {
+          if (diffOpenedThisTurn) return
+          if (uri.scheme !== 'file') return
+          const root = getWorkspaceRoot()
+          if (!root) return
+          // 워크스페이스 안 파일만
+          const rel = path.relative(root, uri.fsPath)
+          if (rel.startsWith('..') || path.isAbsolute(rel)) return
+          // node_modules / .git 등 무시
+          if (/(?:^|[\\/])(node_modules|\.git|dist|out|\.vscode)[\\/]/.test(rel)) return
+          diffOpenedThisTurn = true
+          try {
+            await vscode.commands.executeCommand('git.openChange', uri)
+            log.info('diff', `auto-opened diff for ${rel}`)
+          } catch (err) {
+            log.warn('diff', `git.openChange failed (no git? falling back to file open):`, err)
+            try { await vscode.commands.executeCommand('vscode.open', uri) } catch {}
+          }
+        }
+        watcher.onDidChange(tryOpenDiff)
+        watcher.onDidCreate(tryOpenDiff)
+      } catch (err) {
+        log.warn('diff', 'failed to create file watcher:', err)
+      }
+    }
+
     try {
       await this._doSend(userText, attachments)
     } finally {
@@ -1968,6 +2022,7 @@ class OrchestrAIViewProvider implements vscode.WebviewViewProvider, vscode.Dispo
       this._currentAbort = undefined
       this._post({ type: 'sendUnlocked' })
       this._post({ type: 'generationEnd' })  // UI: stop 버튼 끄기
+      if (watcher) watcher.dispose()
     }
   }
 
@@ -2565,17 +2620,21 @@ PATH RULES: paths are relative to workspace root. Don't prefix with "${gWsBase}/
         finalError = err
 
         const nextModel = fallbackChain[attempt + 1]
-        const canFallback = isQuotaError(err) && !sentAny && nextModel
+        // quota 에러면 첫 청크 보낸 후라도 폴백 허용 (Claude가 quota 메시지 텍스트로 stream하는 케이스).
+        // 단, 다음 모델 있고, 이번이 마지막이 아닐 때.
+        const isQuota = isQuotaError(err)
+        const canFallback = !!nextModel && isQuota
         if (canFallback) {
-          // 폴백 시도 — 이전 시도의 에러 마커로 표시
+          // 이미 화면에 quota 메시지가 흘러나갔을 수 있으니 새 streamStart로 새 말풍선 열기 전에 알림
           this._post({
             type: 'streamError',
             id: assistantMsgId,
             error: `⚠ ${currentModel} 쿼터 파산 (${summarizeQuotaError(err)}) — ${nextModel}로 자동 전환`
           })
+          // 다음 iteration 시 자동으로 새 assistantMsgId + streamStart 발생 (위 루프 시작부)
           continue
         }
-        // 폴백 불가 (이미 첫 청크 출력 중 / 쿼터 외 에러 / 마지막 모델)
+        // 폴백 불가 (쿼터 외 에러 / 마지막 모델)
         this._post({ type: 'streamError', id: assistantMsgId, error: errMsg })
         return false
       }
@@ -2608,6 +2667,16 @@ PATH RULES: paths are relative to workspace root. Don't prefix with "${gWsBase}/
     this._messages.push(assistantMsg)
     this._usage.record(effectiveDecision.model, result.inputTokens, result.outputTokens, this._inArgue)
     this._updateUsageStatusBar()
+
+    // 자동 git commit (체크포인트) — 변경 파일 있으면 commit + hash 메시지에 첨부
+    if (changedFiles && changedFiles.length > 0) {
+      const commit = await this._maybeAutoGitCommit(changedFiles, result.content)
+      if (commit) {
+        assistantMsg.commitHash = commit.hash
+        assistantMsg.commitShort = commit.short
+      }
+    }
+
     await this._persistMessages()
     this._post({
       type: 'streamEnd',
@@ -2616,12 +2685,112 @@ PATH RULES: paths are relative to workspace root. Don't prefix with "${gWsBase}/
       actualModel,
       changedFiles,
       changeSummary,
+      commitHash: assistantMsg.commitHash,
+      commitShort: assistantMsg.commitShort,
     })
     // 결과 자동 미리보기 (HTML → Simple Browser, dev script 있으면 안내)
     void this._maybeAutoPreview(changedFiles)
     // 백그라운드 압축 — 대화가 늘나고 한계치면 Haiku로 요약 (다음 턴 input 절약)
     void this._maybeCompact()
     return true
+  }
+
+  // 특정 commit 부모로 hard reset (이 턴 변경 되돌림)
+  private async _gitRevertToCommitParent(hash: string) {
+    const root = getWorkspaceRoot()
+    if (!root) {
+      this._post({ type: 'toast', message: '워크스페이스 없음' })
+      return
+    }
+    const { spawn } = require('child_process') as typeof import('child_process')
+    const run = (args: string[]): Promise<{ stdout: string; stderr: string; code: number }> => new Promise((resolve) => {
+      const p = spawn('git', args, { cwd: root })
+      let stdout = '', stderr = ''
+      p.stdout.on('data', (c: Buffer) => stdout += c.toString('utf8'))
+      p.stderr.on('data', (c: Buffer) => stderr += c.toString('utf8'))
+      p.on('exit', (code: number | null) => resolve({ stdout, stderr, code: code ?? 1 }))
+      p.on('error', () => resolve({ stdout: '', stderr: 'git spawn failed', code: 1 }))
+    })
+    const r = await run(['reset', '--hard', `${hash}^`])
+    if (r.code === 0) {
+      this._post({ type: 'toast', message: `✓ ${hash.slice(0, 7)}^ 으로 되돌림` })
+    } else {
+      this._post({ type: 'toast', message: `되돌리기 실패: ${r.stderr.slice(0, 100)}` })
+    }
+  }
+
+  // commit 변경 내용 보기 (Source Control diff)
+  private async _gitShowCommit(hash: string) {
+    try {
+      await vscode.commands.executeCommand('git.viewCommit', hash)
+    } catch {
+      // git extension API 없으면 단순 toast
+      this._post({ type: 'toast', message: `commit: ${hash.slice(0, 7)}` })
+    }
+  }
+
+  // 매 턴 자동 git commit — 변경 파일 추적 + 한 턴씩 즉시 revert 가능
+  private async _maybeAutoGitCommit(
+    changedFiles: ChangedFile[],
+    aiContent: string,
+  ): Promise<{ hash: string; short: string } | null> {
+    if (this._cfg<boolean>('autoGitCommit') === false) return null
+    const root = getWorkspaceRoot()
+    if (!root) return null
+    // git 저장소가 아니면 silent skip
+    if (!fs.existsSync(path.join(root, '.git'))) return null
+
+    const { spawn } = require('child_process') as typeof import('child_process')
+    const run = (args: string[]): Promise<{ stdout: string; stderr: string; code: number }> => new Promise((resolve) => {
+      const p = spawn('git', args, { cwd: root })
+      let stdout = '', stderr = ''
+      p.stdout.on('data', (c: Buffer) => stdout += c.toString('utf8'))
+      p.stderr.on('data', (c: Buffer) => stderr += c.toString('utf8'))
+      p.on('exit', (code: number | null) => resolve({ stdout, stderr, code: code ?? 1 }))
+      p.on('error', () => resolve({ stdout: '', stderr: 'git spawn failed', code: 1 }))
+    })
+
+    try {
+      // 변경된 파일들만 add (전체 add는 위험)
+      const adds = changedFiles
+        .filter(f => f.kind !== 'deleted')
+        .map(f => f.path)
+      const dels = changedFiles
+        .filter(f => f.kind === 'deleted')
+        .map(f => f.path)
+
+      if (adds.length > 0) {
+        await run(['add', '--', ...adds])
+      }
+      if (dels.length > 0) {
+        await run(['rm', '--cached', '--', ...dels]).catch(() => undefined)
+      }
+
+      // staged 변경 있는지 확인
+      const status = await run(['diff', '--cached', '--name-only'])
+      if (!status.stdout.trim()) return null  // 변경 없음
+
+      // commit 메시지 — AI 응답 첫 줄 (또는 prompt 요약)
+      const firstLine = aiContent.split('\n').find(l => l.trim()) ?? 'OrchestrAI changes'
+      const subject = firstLine.replace(/[#*`]/g, '').slice(0, 70)
+      const fileCount = changedFiles.length
+      const commitMsg = `[OrchestrAI] ${subject}\n\nFiles: ${fileCount}\nChanged: ${changedFiles.map(f => f.path).slice(0, 10).join(', ')}${changedFiles.length > 10 ? '...' : ''}`
+
+      const commitResult = await run(['commit', '-m', commitMsg, '--no-verify'])
+      if (commitResult.code !== 0) {
+        log.warn('git', `auto-commit failed: ${commitResult.stderr.slice(0, 200)}`)
+        return null
+      }
+      const hashResult = await run(['rev-parse', 'HEAD'])
+      const hash = hashResult.stdout.trim()
+      if (!hash) return null
+      const short = hash.slice(0, 7)
+      log.info('git', `auto-committed ${short}: ${subject.slice(0, 50)}`)
+      return { hash, short }
+    } catch (err) {
+      log.warn('git', 'auto-commit error:', err)
+      return null
+    }
   }
 
   // 변경 파일 중 미리보기 가능한 게 있으면 자동으로 띄우기
@@ -2732,6 +2901,14 @@ PATH RULES: paths are relative to workspace root. Don't prefix with "${gWsBase}/
   }
 
   async sendFromExternal(text: string, attachments: ImageAttachment[] = []): Promise<void> {
+    // 텔레그램 등 외부에서 들어온 메시지: 다른 작업 진행 중이면 잠시 대기 후 진행 (max 90초)
+    const start = Date.now()
+    while (this._isSending) {
+      if (Date.now() - start > 90_000) {
+        throw new Error('이전 작업이 90초 넘게 진행 중입니다. 잠시 후 다시 시도해주세요.')
+      }
+      await new Promise(r => setTimeout(r, 300))
+    }
     return this._handleSend(text, attachments)
   }
 

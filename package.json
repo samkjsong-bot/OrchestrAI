@@ -138,6 +138,22 @@
           "default": true,
           "description": "파일 작성·수정 후 자동 미리보기. HTML은 Simple Browser로 즉시 열고, package.json/Python/Node 스크립트는 ▶ 실행 버튼 표시."
         },
+        "orchestrai.autoGitCommit": {
+          "type": "boolean",
+          "default": true,
+          "description": "매 턴 끝나면 자동으로 git commit (체크포인트). 망쳐도 이 턴 되돌리기 버튼으로 즉시 복구. git 저장소 안에서만 동작."
+        },
+        "orchestrai.contextWindow": {
+          "type": "string",
+          "default": "default",
+          "enum": ["narrow", "default", "wide"],
+          "enumDescriptions": [
+            "Narrow: 최근 메시지 매우 적게 (Claude 20, Codex 10, Gemini 40). 토큰 절약 최대치.",
+            "Default: 적당히 보존 (Claude 60, Codex 40, Gemini 100). 권장.",
+            "Wide: 디테일 최대 보존 (Claude 120, Codex 80, Gemini 200). 긴 작업·복잡한 컨텍스트용. 토큰 사용 ↑."
+          ],
+          "description": "각 모델에 보낼 최근 verbatim 메시지 수. 더 오래된 메시지는 자동 압축됨."
+        },
         "orchestrai.codexEngine": {
           "type": "string",
           "default": "native",

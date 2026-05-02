@@ -76,6 +76,7 @@ async function runOnce(
     system: systemPrompt ?? 'You are an expert coding assistant.',
     messages: messages.map(toGeminiMessage),
     abortSignal,
+    maxOutputTokens: 65536,  // Gemini 2.5 한도까지 — 한 턴에 큰 프로그램도
     onError: ({ error }: { error: unknown }) => {
       console.error('[Gemini streamText error]', error)
     },
