@@ -46,13 +46,8 @@ const RULES: Rule[] = [
     model: 'claude', effort: 'high', confidence: 0.90,
     label: 'review',
   },
-  {
-    pattern: /왜|어떻게\s*동작|이해|설명해|원리|why|explain|understand|개념\s*설명/i,
-    model: 'claude', effort: 'medium', confidence: 0.85,
-    label: 'explain-reason',
-  },
-
-  // ── 코드 구현/수정 (Codex) — 가장 흔한 케이스 ──
+  // ── 코드 구현/수정 (Codex) — 가장 흔한 케이스. bug-fix를 explain보다 앞에 둬서
+  //    "안 돼 왜 그래" 같은 거가 codex로 가게 (explain-reason의 "왜"가 잡지 않게) ──
   // 코드 키워드 명시되면 무조건 Codex high
   {
     pattern: /(?:함수|메서드|클래스|컴포넌트|훅|hook|모듈|파일|api|엔드포인트)\s*(?:를|을)?\s*(?:만들|구현|작성|짜|추가)/,
@@ -93,6 +88,13 @@ const RULES: Rule[] = [
     pattern: /\b타이포\b|\btypo\b/i,
     model: 'codex', effort: 'low', confidence: 0.95,
     label: 'typo',
+  },
+
+  // explain-reason — code-impl/bug-fix 보다 뒤. "왜 안 돼" 같은 거가 bug-fix로 잡히게
+  {
+    pattern: /왜|어떻게\s*동작|이해|설명해|원리|why|explain|understand|개념\s*설명/i,
+    model: 'claude', effort: 'medium', confidence: 0.85,
+    label: 'explain-reason',
   },
 
   // ── Long context / multimodal / 요약 (Gemini) ──

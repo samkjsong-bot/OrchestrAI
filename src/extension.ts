@@ -9,7 +9,7 @@ import { callClaude } from './providers/claudeProvider'
 import { callCodex } from './providers/codexProvider'
 import { getCodexMcpClient, disposeCodexMcpClient } from './providers/codexMcpClient'
 import { OrchestrAICompletionProvider } from './providers/inlineCompletion'
-import { callGemini } from './providers/geminiProvider'
+import { callGemini, setGeminiFallbackNotifier } from './providers/geminiProvider'
 import { ChatMessage, RouterMode, RoutingDecision, Model, Effort, ChangeSummary } from './router/types'
 import { AuthStorage } from './auth/storage'
 import { ClaudeAuth } from './auth/claudeAuth'
@@ -405,7 +405,7 @@ async function executeCodexTool(
     return `replaced text in ${call.path}`
   }
 
-  throw new Error(`吏?먰븯吏 ?딅뒗 ?꾧뎄?낅땲?? ${call.tool}`)
+  throw new Error(`지원하지 않는 도구입니다: ${call.tool}`)
 }
 
 function stringifyMcpResult(result: any): string {
@@ -470,9 +470,13 @@ class McpManager implements vscode.Disposable {
     return tools
   }
 
-  async callTool(server: string, name: string, args: Record<string, unknown>): Promise<string> {
+  async callTool(server: string, name: string, args: Record<string, unknown>, timeoutMs = 30_000): Promise<string> {
     const client = await this.getClient(server)
-    const result = await client.callTool({ name, arguments: args })
+    // MCP 서버가 hang 시 익스텐션 전체 멈추는 거 차단 — Promise.race로 timeout 강제
+    const result = await Promise.race([
+      client.callTool({ name, arguments: args }),
+      new Promise<never>((_, reject) => setTimeout(() => reject(new Error(`MCP timeout after ${timeoutMs}ms (server=${server}, tool=${name})`)), timeoutMs)),
+    ])
     return stringifyMcpResult(result)
   }
 
@@ -872,6 +876,11 @@ class OrchestrAIViewProvider implements vscode.WebviewViewProvider, vscode.Dispo
     )
     // 이전에 연결됐던 Telegram 봇 자동 재접속 (cfg가 SecretStorage에 있으면)
     void this._autoStartTelegram()
+
+    // Gemini 폴백 발생 시 webview에 명확히 알림 (사용자가 어떤 모델 답했는지 모르는 거 방지)
+    setGeminiFallbackNotifier((from, to, reason) => {
+      this._post({ type: 'modelFallback', from, to, reason, model: 'gemini' })
+    })
 
     // 코드베이스 인덱스 로드 (이미 인덱싱돼있으면 즉시 사용 가능)
     const root = getWorkspaceRoot()

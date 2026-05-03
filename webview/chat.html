@@ -2436,6 +2436,9 @@
       case 'agentList':
         showAgentList(msg.agents, msg.activeAgent)
         break
+      case 'modelFallback':
+        showModelFallbackBadge(msg.from, msg.to, msg.reason, msg.model)
+        break
       case 'generationEnd':
       case 'generationStopped':
         document.getElementById('gen-stop').classList.remove('visible')
@@ -3267,6 +3270,16 @@
   }
   function runSuggested(script, command) {
     postToExtension({ type: 'runCommand', script, command })
+  }
+
+  // 모델 폴백 알림 — 응답 도중 Pro→Flash 같이 자동 전환됐을 때 사용자에게 명확히 표시
+  function showModelFallbackBadge(from, to, reason, model) {
+    const messages = document.getElementById('messages')
+    const card = document.createElement('div')
+    card.style.cssText = 'margin: 6px 12px; padding: 5px 10px; background: rgba(251,191,36,0.08); border-left: 3px solid #fbbf24; border-radius: 4px; font-family: \'JetBrains Mono\', monospace; font-size: 10px; color: var(--text-dim);'
+    card.innerHTML = `⚠ <strong>${escapeHtml(model)}</strong> 모델 자동 전환: <code>${escapeHtml(from)}</code> → <code>${escapeHtml(to)}</code> · 사유: ${escapeHtml(reason)}`
+    messages.appendChild(card)
+    scrollIfNearBottom(messages)
   }
 
   // Agent 목록 모달

@@ -14,9 +14,23 @@
     "url": "https://github.com/samkjsong-bot/OrchestrAI.git"
   },
   "keywords": [
-    "ai", "claude", "gpt", "gpt-5", "gemini", "anthropic", "openai",
-    "multi-model", "orchestration", "agent", "rag", "code-review",
-    "autocomplete", "copilot", "cursor", "telegram", "mcp"
+    "ai",
+    "claude",
+    "gpt",
+    "gpt-5",
+    "gemini",
+    "anthropic",
+    "openai",
+    "multi-model",
+    "orchestration",
+    "agent",
+    "rag",
+    "code-review",
+    "autocomplete",
+    "copilot",
+    "cursor",
+    "telegram",
+    "mcp"
   ],
   "engines": {
     "vscode": "^1.98.0"
@@ -180,7 +194,11 @@
         "orchestrai.contextWindow": {
           "type": "string",
           "default": "default",
-          "enum": ["narrow", "default", "wide"],
+          "enum": [
+            "narrow",
+            "default",
+            "wide"
+          ],
           "enumDescriptions": [
             "Narrow: 최근 메시지 매우 적게 (Claude 20, Codex 10, Gemini 40). 토큰 절약 최대치.",
             "Default: 적당히 보존 (Claude 60, Codex 40, Gemini 100). 권장.",
@@ -191,7 +209,10 @@
         "orchestrai.codexEngine": {
           "type": "string",
           "default": "native",
-          "enum": ["native", "legacy"],
+          "enum": [
+            "native",
+            "legacy"
+          ],
           "enumDescriptions": [
             "Native: spawn Codex CLI binary as MCP stdio server (recommended). Uses OpenAI-official tool handling, no path/hallucination issues. Requires Codex VSCode extension installed.",
             "Legacy: direct fetch to chatgpt.com backend (older path). Use as fallback if native engine has issues."
@@ -243,14 +264,17 @@
     "build": "esbuild src/extension.ts --bundle --outfile=dist/extension.js --external:vscode --external:@anthropic-ai/claude-agent-sdk --external:ai --external:ai-sdk-provider-gemini-cli --external:@google/gemini-cli-core --external:zod --platform=node --format=cjs",
     "watch": "npm run build -- --watch",
     "dev": "npm run watch",
-    "package": "npm run build && vsce package -o orchestrai.vsix"
+    "package": "npm run build && vsce package -o orchestrai.vsix",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "devDependencies": {
     "@types/node": "^20.0.0",
     "@types/vscode": "^1.98.0",
     "@vscode/vsce": "^3.9.1",
     "esbuild": "^0.20.0",
-    "typescript": "^5.4.0"
+    "typescript": "^5.4.0",
+    "vitest": "^1.6.1"
   },
   "dependencies": {
     "@anthropic-ai/claude-agent-sdk": "^0.1.0",
@@ -259,4 +283,3 @@
     "ai-sdk-provider-gemini-cli": "^2.0.1"
   }
 }
-

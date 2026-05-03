@@ -62,6 +62,12 @@ function toGeminiMessage(m: { role: 'user' | 'assistant'; content: string }): an
   }
 }
 
+// 호출자가 폴백 발생 시 사용자에게 알릴 수 있게 콜백 받음
+let _fallbackNotifier: ((from: string, to: string, reason: string) => void) | undefined
+export function setGeminiFallbackNotifier(fn: typeof _fallbackNotifier) {
+  _fallbackNotifier = fn
+}
+
 async function runOnce(
   modelName: string,
   messages: Array<{ role: 'user' | 'assistant'; content: string }>,
@@ -181,6 +187,7 @@ export async function callGemini(
   if (res.error && isQuotaError(res.error) && primaryModel !== FALLBACK_MODEL) {
     if (abortSignal?.aborted) throw new Error('aborted')
     log.warn('gemini', `${primaryModel} quota exhausted, falling back to ${FALLBACK_MODEL}`)
+    _fallbackNotifier?.(primaryModel, FALLBACK_MODEL, 'quota')
     res = await runOnce(FALLBACK_MODEL, messages, onChunk, systemPrompt, abortSignal)
   }
 
@@ -190,6 +197,7 @@ export async function callGemini(
   if ((isEmptyResponse || isFinishStopEmpty) && primaryModel !== FALLBACK_MODEL) {
     if (abortSignal?.aborted) throw new Error('aborted')
     log.warn('gemini', `${primaryModel} empty response, falling back to ${FALLBACK_MODEL}`)
+    _fallbackNotifier?.(primaryModel, FALLBACK_MODEL, 'empty response (safety filter?)')
     res = await runOnce(FALLBACK_MODEL, messages, onChunk, systemPrompt, abortSignal)
   }
 

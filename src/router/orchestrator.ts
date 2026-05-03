@@ -83,6 +83,11 @@ export function inferEffort(input: string): Effort {
     return 'extra-high'
   }
 
+  // ── LOW (선순위): typo / 오타 — high 키워드 매칭 전에 가로채야. 단순 작업이라 mini 사용 OK ──
+  if (/\btypo\b|타이포|오타/i.test(text)) {
+    return 'low'
+  }
+
   // ── HIGH: 코드 작성/수정/리팩토링/디버깅 — 모델의 깊은 사고 필요 ──
   if (/\b(high|deep|thorough|complex|architecture|architect|refactor|security|audit|optimize|debug)\b/i.test(text)) {
     return 'high'
@@ -108,10 +113,10 @@ export function inferEffort(input: string): Effort {
   }
 
   // ── LOW: 명백히 단순한 작업 ──
-  if (/\b(low|quick|simple|short|brief|tl;dr|tldr|summary|summarize|typo)\b/i.test(text)) {
+  if (/\b(low|quick|simple|short|brief|tl;dr|tldr|summary|summarize)\b/i.test(text)) {
     return 'low'
   }
-  if (/짧게|간단|빠르게|대충|한\s*줄|요약|정리|오타|커맨드|명령어/.test(text)) {
+  if (/짧게|간단|빠르게|대충|한\s*줄|요약|정리|커맨드|명령어/.test(text)) {
     return 'low'
   }
   if (/\b(git|npm|yarn|pnpm|cmd|powershell|bash|shell)\s+\w+/i.test(lower)) {
