@@ -1,13 +1,23 @@
 {
   "name": "orchestrai",
   "displayName": "OrchestrAI",
-  "description": "Claude + Codex + Gemini subscription router with argue mode, workspace tools, rollback, image attachments, and MCP.",
+  "description": "Multi-model orchestrator — Claude + Codex + Gemini in one VSCode panel. Auto-routing, argue/team/loop/boomerang modes, codebase RAG, multi-model code review, Telegram bridge. Zero API billing (uses your existing subscriptions).",
   "version": "0.1.0",
   "publisher": "samkj",
+  "license": "MIT",
+  "homepage": "https://github.com/samkjsong-bot/OrchestrAI",
+  "bugs": {
+    "url": "https://github.com/samkjsong-bot/OrchestrAI/issues"
+  },
   "repository": {
     "type": "git",
     "url": "https://github.com/samkjsong-bot/OrchestrAI.git"
   },
+  "keywords": [
+    "ai", "claude", "gpt", "gpt-5", "gemini", "anthropic", "openai",
+    "multi-model", "orchestration", "agent", "rag", "code-review",
+    "autocomplete", "copilot", "cursor", "telegram", "mcp"
+  ],
   "engines": {
     "vscode": "^1.98.0"
   },
