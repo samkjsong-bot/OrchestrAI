@@ -1,26 +1,110 @@
-# OrchestrAI
+<div align="center">
 
-VSCode 익스텐션 — **Claude(Max 구독) + Codex(ChatGPT Pro) + Gemini(OAuth)** 셋을 한 사이드바에서 라우팅·협업시키는 오케스트레이터.
+# 🎼 OrchestrAI
 
-**핵심 원칙: 추가 API 과금 0원.** 모든 텍스트 모델 호출은 사용자가 이미 쓰는 구독·무료 티어를 통해 우회 — Claude는 로컬 `claude` CLI 인증 재사용, Codex는 chatgpt.com 백엔드 직접 호출, Gemini는 로컬 `gemini` CLI OAuth.
+### **Claude · Codex · Gemini** — 한 사이드바에서 자동 라우팅·협업·토론
 
-## ✨ 주요 기능
+`auto-route` · `argue ⚡` · `team 👥` · `loop 🔁` · `boomerang 🪃` · `RAG 🧭` · `Telegram 📱` · `zero billing 💰`
 
-- **자동 라우팅** — 입력 분석해서 가장 적합한 모델로 자동 선택 (pattern → llm 단계)
-- **모드 6종** — `auto` / `claude` / `codex` / `gemini` 강제, `argue`(라운드 로빈 토론, Haiku 채점), `team`(Claude 설계 → Codex 구현 → Gemini 리뷰)
-- **권한 모드 4종** — `ask` / `auto-edit` / `plan` / `smart-auto` (Claude Code SDK 호환)
-- **컨텍스트 압축** — 한계치 도달 시 Haiku로 자동 요약, 모델별 윈도우 트리밍
-- **MCP 서버 지원** — 사용자 설정 MCP 도구 자동 주입 (Codex/Gemini는 프롬프트, Claude는 SDK 직접)
-- **Telegram 브릿지** — 외부에서 봇으로 명령. Hub/Worker 멀티 인스턴스, 워크스페이스별 Topic 분리
-- **이미지 생성** — Gemini API 키로 (모델 폴백 체인: 2.5 Flash → 2.0 Flash exp → Imagen 3)
-- **변경 사항 카드** — 파일 수정한 턴마다 diff preview + 파일 열기 / diff 보기 버튼
-- **Kill switch** — 진행 중 모든 LLM 호출·툴 루프 즉시 중단
+추가 API 과금 없음 — 모두 사용자 자체 구독·무료 티어로 우회
+
+**[📦 Releases](https://github.com/samkjsong-bot/OrchestrAI/releases)** · [📖 CODEMAP](./CODEMAP.md) · [🐛 Issues](https://github.com/samkjsong-bot/OrchestrAI/issues)
+
+</div>
+
+---
+
+## ✨ 한눈에
+
+| | OrchestrAI | Cursor | Continue | Cline/Roo | Copilot |
+|---|---|---|---|---|---|
+| 멀티모델 자동 라우팅 | ✅ pattern + LLM | ❌ 수동 | ❌ 수동 | ❌ 수동 | ❌ 수동 |
+| **모델 토론** (argue) | ✅ 0~10 채점 | ❌ | ❌ | ❌ | ❌ |
+| **Team mode** Claude→Codex/Gemini 위임 | ✅ | ❌ | ❌ | Roo만 | ❌ |
+| **Boomerang task** 자동 분할·병렬 | ✅ | ❌ | ❌ | Roo만 | ❌ |
+| **Ralph Wiggum loop** 될 때까지 | ✅ | ❌ | ❌ | ❌ | ❌ |
+| 코드베이스 RAG | ✅ | ✅ | ✅ | ❌ | △ |
+| **멀티모델 코드 리뷰** | ✅ | ❌ | ❌ | ❌ | ❌ |
+| **Telegram 폰 통합** Hub/Worker | ✅ | ❌ | ❌ | ❌ | ❌ |
+| Background agent + push 알림 | ✅ + Telegram | ✅ | ❌ | ❌ | ❌ |
+| Multi-IDE sync (OneDrive/Dropbox) | ✅ | △ | ❌ | ❌ | △ |
+| **Agent marketplace** (Gist 기반) | ✅ | ❌ | ❌ | ❌ | ❌ |
+| Inline ghost text 자동완성 | ✅ | ✅ | ✅ | ❌ | ✅ |
+| 자동 git commit 체크포인트 | ✅ | ✅ | ❌ | ❌ | ❌ |
+| 자동 IDE diff (engine 무관) | ✅ | ✅ | △ | ❌ | △ |
+| 자동 미리보기 HTML→Browser | ✅ | ❌ | ❌ | ❌ | ❌ |
+| 자동 quota 폴백 (모델 간) | ✅ | N/A | N/A | N/A | N/A |
+| **API 과금 0원** (자체 구독 우회) | ✅ | ❌ | ❌ | ❌ | △ 구독 |
+
+---
+
+## 🎛 라우팅 모드 6+1종
+
+| | 동작 |
+|---|---|
+| `auto` | pattern → LLM(Haiku) 순 자동 라우팅 |
+| `claude` / `codex` / `gemini` | 모델 강제 |
+| `argue` ⚡ | 모델들이 라운드 로빈 토론, Haiku가 0~10점 채점 |
+| `team` 👥 | Claude orchestrator → Codex/Gemini 위임 (consult tool) |
+| `loop` 🔁 | "될 때까지" 반복 (Ralph Wiggum 패턴, max 5회) |
+| `boomerang` 🪃 | 큰 작업 자동 분할 → 병렬 위임 → 종합 |
+
+## 🧰 권한 모드 4종
+
+`ask` / `auto-edit` / `plan` / `smart-auto` — Claude SDK의 `permissionMode`로 매핑.
+
+## 🚀 핵심 기능
+
+### 자동 인덱싱 + RAG
+질문하면 코드베이스에서 관련 chunk를 자동 검색해 컨텍스트로 첨부. Cursor/Continue 수준.
+```
+/index   ← 첫 번째 인덱싱
+이후 자동
+```
+
+### 멀티모델 코드 리뷰
+세 모델이 각자 리뷰 → Haiku가 종합 점수.
+```
+/review            (last commit)
+/review staged     (staged changes)
+```
+
+### 백그라운드 에이전트 + Telegram push
+큰 작업 던지고 자거나 외출. 완료되면 폰으로 알림.
+```
+/bg 좀비 서바이벌 게임 풀버전 만들어줘
+```
+
+### Agent marketplace
+GitHub Gist 기반 system prompt 공유. 누구나 만들고 누구나 import.
+```
+/agent import https://gist.github.com/USER/HASH
+/agent list
+/agent use vibe-game-builder
+/agent off
+```
+
+### Telegram 브릿지 (폰 통합)
+설정 → Telegram 연결 → DM/Topics 모드.
+- Topics 모드: 그룹 안에서 워크스페이스별 자동 분리
+- 폰에서 명령 → VSCode가 처리 → 응답 폰으로 stream
+- 4096자 넘으면 자동 분할 발송
+
+### 자동 git commit (체크포인트)
+매 턴 끝나면 자동 commit. 망쳐도 한 턴씩 즉시 revert.
+
+### 자동 미리보기
+HTML 만들면 → Simple Browser 자동 열림  
+package.json dev script → ▶ 실행 버튼  
+Python/Node → ▶ run
+
+---
 
 ## 📦 설치
 
-### VSIX로 설치 (권장)
-1. [Releases](https://github.com/samkjsong-bot/OrchestrAI/releases) 에서 최신 `.vsix` 다운로드 또는 직접 빌드
-2. VSCode → 확장 → `…` → "VSIX에서 설치..." → 파일 선택
+### 빠른 설치 (권장)
+1. [Releases](https://github.com/samkjsong-bot/OrchestrAI/releases)에서 `orchestrai.vsix` 다운로드
+2. VSCode → 확장 패널 → `…` → "VSIX에서 설치"
 
 또는 터미널:
 ```bash
@@ -29,62 +113,59 @@ code --install-extension orchestrai.vsix
 
 ### 직접 빌드
 ```bash
-git clone https://github.com/<your>/orchestrai.git
-cd orchestrai
+git clone https://github.com/samkjsong-bot/OrchestrAI.git
+cd OrchestrAI
 npm install
 npm run package
 code --install-extension orchestrai.vsix
 ```
 
-## 🔧 사전 준비
+## 🔐 사전 준비
 
-OrchestrAI 자체엔 API 키가 필요 없지만, 각 모델별 인증이 필요:
+OrchestrAI 자체엔 API 키 0개 필요. 각 모델별 인증만:
 
-| 모델 | 필요한 것 | 무료 가능? |
-|------|----------|------------|
-| Claude | 로컬 `claude` CLI 설치 + 로그인 | Max 구독 필요 |
+| 모델 | 필요한 것 | 무료? |
+|---|---|---|
+| Claude | 로컬 `claude` CLI 로그인 | Max 구독 필요 |
 | Codex | OrchestrAI 안에서 ChatGPT OAuth | ChatGPT Pro 구독 필요 |
-| Gemini | 로컬 `gemini` CLI 설치 + 로그인 | ✅ Google 무료 티어 |
-| 이미지 생성 (선택) | Gemini API 키 | 무료 / Paid (모델별) |
+| Gemini | 로컬 `gemini` CLI 로그인 | ✅ Google 무료 |
+| 이미지 생성 (옵션) | Gemini API 키 | △ |
 
-설치 후 사이드바 → ⚙ 설정 → 계정 연결에서 각 모델 로그인.
+설치 후: 사이드바 → ⚙ 설정 → 계정 연결.
 
-## 🎛 사용법
+## 💡 사용 팁
 
-설치 후 Activity Bar에 OrchestrAI 아이콘(3원 Venn) 등장 → 클릭하면 사이드바 채팅 패널.
+- **단순 질문**: 그냥 입력 → auto 라우팅
+- **앱/게임 만들기**: `🪃 boom` 모드 → 자동 분할 + 병렬
+- **모델 의견 비교**: `⚡ argue` 모드 → 토론 + 채점
+- **될 때까지 반복**: `🔁 loop` 모드
+- **외출 작업**: `/bg <작업>` + 폰 텔레그램 대기
+- **PR 리뷰**: `/review`
 
-- **자동 라우팅**: 그냥 질문하면 적절한 모델로 자동
-- **강제 모델**: `@claude` / `@codex` / `@gemini` 멘션 또는 force 버튼
-- **토론**: force `argue` — 모델들이 서로 반박/보완
-- **협업**: force `team` — Claude가 plan 짜고 Codex 구현, Gemini 리뷰
+## 🏗 스택
 
-자세한 구조는 [CODEMAP.md](./CODEMAP.md) 참조.
-
-## 🏗 아키텍처
-
-```
-[VSCode webview UI]
-  ↓ postMessage
-[OrchestrAIViewProvider — extension.ts]
-  ↓ Orchestrator.route()
-[router/]: pattern → llm → decision
-  ↓
-[providers/]: claudeProvider | codexProvider | geminiProvider
-  ↓ streaming chunks
-[webview]: tool boxes, change cards, diffs
-```
-
-스택:
-- TypeScript + esbuild bundle
+- TypeScript + esbuild
 - `@anthropic-ai/claude-agent-sdk` (Claude tool loop)
 - `ai` + `ai-sdk-provider-gemini-cli` (Gemini ESM)
-- 자체 fetch 기반 Codex SSE / Telegram polling
+- `codex.exe mcp-server` (Codex CLI 네이티브 MCP)
+- 자체 Telegram polling, 자체 fetch SSE
 
-## 📜 라이선스
+자세한 구조: [CODEMAP.md](./CODEMAP.md)
+
+## 🤝 라이선스
 
 MIT (예정)
 
-## 🙏 Inspired by
+## 🙏 영감
 
-- Claude Code for VSCode — UI/UX 참고
+- Claude Code for VSCode — UI/UX 일부 참고
 - Codex CLI — fingerprint 우회 경로
+- Roo Code — boomerang task 패턴
+- Cursor — RAG/checkpoint 아이디어
+- Geoffrey Huntley — Ralph Wiggum loop 명명
+
+---
+
+<div align="center">
+<sub>made for vibe coders · zero billing · open source</sub>
+</div>

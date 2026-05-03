@@ -1,0 +1,78 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 640" width="1280" height="640">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#0d0d0f"/>
+      <stop offset="50%" stop-color="#141418"/>
+      <stop offset="100%" stop-color="#0d0d0f"/>
+    </linearGradient>
+    <radialGradient id="glow1" cx="0.25" cy="0.5" r="0.4">
+      <stop offset="0%" stop-color="#cc785c" stop-opacity="0.18"/>
+      <stop offset="100%" stop-color="#cc785c" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="glow2" cx="0.5" cy="0.3" r="0.4">
+      <stop offset="0%" stop-color="#e5e7eb" stop-opacity="0.12"/>
+      <stop offset="100%" stop-color="#e5e7eb" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="glow3" cx="0.78" cy="0.55" r="0.4">
+      <stop offset="0%" stop-color="#60a5fa" stop-opacity="0.18"/>
+      <stop offset="100%" stop-color="#60a5fa" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="title" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#cc785c"/>
+      <stop offset="50%" stop-color="#e5e7eb"/>
+      <stop offset="100%" stop-color="#60a5fa"/>
+    </linearGradient>
+  </defs>
+
+  <!-- 배경 -->
+  <rect width="1280" height="640" fill="url(#bg)"/>
+  <rect width="1280" height="640" fill="url(#glow1)"/>
+  <rect width="1280" height="640" fill="url(#glow2)"/>
+  <rect width="1280" height="640" fill="url(#glow3)"/>
+
+  <!-- 3-circle Venn (왼쪽 정렬, 큰 사이즈) -->
+  <g transform="translate(140, 140)" style="mix-blend-mode: screen;">
+    <circle cx="80"  cy="180" r="100" fill="#cc785c" opacity="0.78"/>
+    <circle cx="200" cy="180" r="100" fill="#60a5fa" opacity="0.78"/>
+    <circle cx="140" cy="80"  r="100" fill="#e5e7eb" opacity="0.72"/>
+  </g>
+
+  <!-- 메인 타이틀 -->
+  <g transform="translate(490, 220)">
+    <text x="0" y="0" font-family="'JetBrains Mono', 'Menlo', monospace" font-size="92" font-weight="700" fill="url(#title)" letter-spacing="-2">OrchestrAI</text>
+    <text x="0" y="48" font-family="Inter, system-ui, sans-serif" font-size="22" font-weight="500" fill="#9ca3af">Claude  +  Codex  +  Gemini  ·  in one VSCode panel</text>
+    <text x="0" y="80" font-family="Inter, system-ui, sans-serif" font-size="16" font-weight="400" fill="#6b7280">Multi-model orchestration with auto-routing, argue/team/loop modes, RAG, Telegram bridge — zero API billing.</text>
+  </g>
+
+  <!-- 핵심 기능 칩 (하단) -->
+  <g transform="translate(140, 480)" font-family="'JetBrains Mono', 'Menlo', monospace" font-size="13" font-weight="500">
+    <g transform="translate(0, 0)">
+      <rect width="155" height="38" rx="6" fill="rgba(204,120,92,0.12)" stroke="rgba(204,120,92,0.4)" stroke-width="1"/>
+      <text x="77" y="25" text-anchor="middle" fill="#cc785c">🧠 auto-route</text>
+    </g>
+    <g transform="translate(165, 0)">
+      <rect width="155" height="38" rx="6" fill="rgba(249,168,212,0.12)" stroke="rgba(249,168,212,0.4)" stroke-width="1"/>
+      <text x="77" y="25" text-anchor="middle" fill="#f9a8d4">⚡ argue · team</text>
+    </g>
+    <g transform="translate(330, 0)">
+      <rect width="155" height="38" rx="6" fill="rgba(52,211,153,0.12)" stroke="rgba(52,211,153,0.4)" stroke-width="1"/>
+      <text x="77" y="25" text-anchor="middle" fill="#34d399">🔁 loop · 🪃 boom</text>
+    </g>
+    <g transform="translate(495, 0)">
+      <rect width="155" height="38" rx="6" fill="rgba(96,165,250,0.12)" stroke="rgba(96,165,250,0.4)" stroke-width="1"/>
+      <text x="77" y="25" text-anchor="middle" fill="#60a5fa">🧭 codebase RAG</text>
+    </g>
+    <g transform="translate(660, 0)">
+      <rect width="155" height="38" rx="6" fill="rgba(192,132,252,0.12)" stroke="rgba(192,132,252,0.4)" stroke-width="1"/>
+      <text x="77" y="25" text-anchor="middle" fill="#c084fc">📱 Telegram bridge</text>
+    </g>
+    <g transform="translate(825, 0)">
+      <rect width="155" height="38" rx="6" fill="rgba(251,191,36,0.12)" stroke="rgba(251,191,36,0.4)" stroke-width="1"/>
+      <text x="77" y="25" text-anchor="middle" fill="#fbbf24">💰 zero billing</text>
+    </g>
+  </g>
+
+  <!-- 우측 상단 corner -->
+  <text x="1240" y="50" text-anchor="end" font-family="'JetBrains Mono', monospace" font-size="11" fill="#3d3d50">v0.1.0  ·  open source</text>
+</svg>
