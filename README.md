@@ -154,7 +154,7 @@ OrchestrAI 자체엔 API 키 0개 필요. 각 모델별 인증만:
 
 ## 🤝 라이선스
 
-MIT (예정)
+[MIT](./LICENSE)
 
 ## 🙏 영감
 
