@@ -2621,12 +2621,23 @@ class OrchestrAIViewProvider implements vscode.WebviewViewProvider, vscode.Dispo
 
     for (let turn = 0; turn < MAX_CODEX_TOOL_TURNS; turn++) {
       if (this._currentAbort?.signal.aborted) throw new Error('aborted')
-      // chunk는 버리고 turn 끝나고 한 번에 처리 — Codex가 raw JSON/tool call을 텍스트로 노출하는 거 차단
+      // chunk를 buffer에 누적하면서 forward. tool call 패턴(`{"to":...,"code":...`) 감지되면 그 시점부터 멈춰서 사용자에게 raw json 노출 안 함.
+      let bufferedRaw = ''
+      let toolCallSeen = false
+      const onCodexChunk = (text: string) => {
+        bufferedRaw += text
+        // tool call JSON 시작 패턴 — `{"to":` 또는 `<orchestrai-tool>` 또는 ```json {"tool":
+        if (!toolCallSeen && /\{\s*"(?:to|tool)"\s*:/i.test(bufferedRaw)) {
+          toolCallSeen = true
+          return  // 그 시점부터 stream 끊음
+        }
+        if (!toolCallSeen) onChunk(text)
+      }
       const result = await callCodex(
         agentHistory,
         effort,
         accessToken,
-        () => {},
+        onCodexChunk,
         systemPrompt,
         accountId,
         this._currentAbort?.signal,
@@ -2636,8 +2647,7 @@ class OrchestrAIViewProvider implements vscode.WebviewViewProvider, vscode.Dispo
 
       const toolCall = parseCodexToolCall(result.content)
       if (!toolCall) {
-        // 마지막 turn — 답변 텍스트를 깨끗하게 사용자에게 stream
-        onChunk(result.content)
+        // tool 호출 없음. 이미 chunk forward 끝남.
         return { content: result.content, inputTokens, outputTokens }
       }
 
@@ -2683,10 +2693,21 @@ class OrchestrAIViewProvider implements vscode.WebviewViewProvider, vscode.Dispo
 
     for (let turn = 0; turn < MAX_CODEX_TOOL_TURNS; turn++) {
       if (this._currentAbort?.signal.aborted) throw new Error('aborted')
+      // Gemini도 동일 — buffer + tool call 시작 패턴 감지로 끊기
+      let bufferedRaw = ''
+      let toolCallSeen = false
+      const onGeminiChunk = (text: string) => {
+        bufferedRaw += text
+        if (!toolCallSeen && /\{\s*"(?:to|tool)"\s*:/i.test(bufferedRaw)) {
+          toolCallSeen = true
+          return
+        }
+        if (!toolCallSeen) onChunk(text)
+      }
       const result = await callGemini(
         agentHistory,
         effort,
-        () => {},
+        onGeminiChunk,
         systemPrompt,
         this._currentAbort?.signal,
       )
@@ -2695,7 +2716,6 @@ class OrchestrAIViewProvider implements vscode.WebviewViewProvider, vscode.Dispo
 
       const toolCall = parseCodexToolCall(result.content)
       if (!toolCall) {
-        onChunk(result.content)
         return { content: result.content, inputTokens, outputTokens }
       }
 

@@ -177,10 +177,19 @@ export async function callGemini(
   const primaryModel = MODEL_BY_EFFORT[effort]
   let res = await runOnce(primaryModel, messages, onChunk, systemPrompt, abortSignal)
 
-  // Pro 쿼터 터졌으면 Flash로 폴백. (Flash도 터지면 그대로 에러)
+  // Pro 쿼터 터졌으면 Flash로 폴백
   if (res.error && isQuotaError(res.error) && primaryModel !== FALLBACK_MODEL) {
     if (abortSignal?.aborted) throw new Error('aborted')
-    console.warn(`[Gemini] ${primaryModel} quota exhausted, falling back to ${FALLBACK_MODEL}`)
+    log.warn('gemini', `${primaryModel} quota exhausted, falling back to ${FALLBACK_MODEL}`)
+    res = await runOnce(FALLBACK_MODEL, messages, onChunk, systemPrompt, abortSignal)
+  }
+
+  // 빈 응답 (Pro의 thinking 모델이 long-context에서 종종 발생) → Flash 자동 폴백
+  const isEmptyResponse = !res.error && !res.content
+  const isFinishStopEmpty = res.error instanceof Error && /빈 응답.*finishReason: stop/.test(res.error.message)
+  if ((isEmptyResponse || isFinishStopEmpty) && primaryModel !== FALLBACK_MODEL) {
+    if (abortSignal?.aborted) throw new Error('aborted')
+    log.warn('gemini', `${primaryModel} empty response, falling back to ${FALLBACK_MODEL}`)
     res = await runOnce(FALLBACK_MODEL, messages, onChunk, systemPrompt, abortSignal)
   }
 
