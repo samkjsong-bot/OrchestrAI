@@ -5,8 +5,8 @@ import * as fs from 'fs'
 import { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js'
 import { Orchestrator, inferEffort, parseAllMentions } from './router/orchestrator'
-import { callClaude } from './providers/claudeProvider'
-import { callCodex } from './providers/codexProvider'
+import { callClaude, setClaudeFallbackNotifier } from './providers/claudeProvider'
+import { callCodex, setCodexFallbackNotifier } from './providers/codexProvider'
 import { getCodexMcpClient, disposeCodexMcpClient } from './providers/codexMcpClient'
 import { OrchestrAICompletionProvider } from './providers/inlineCompletion'
 import { callGemini, setGeminiFallbackNotifier } from './providers/geminiProvider'
@@ -877,9 +877,15 @@ class OrchestrAIViewProvider implements vscode.WebviewViewProvider, vscode.Dispo
     // 이전에 연결됐던 Telegram 봇 자동 재접속 (cfg가 SecretStorage에 있으면)
     void this._autoStartTelegram()
 
-    // Gemini 폴백 발생 시 webview에 명확히 알림 (사용자가 어떤 모델 답했는지 모르는 거 방지)
+    // 모델 내부 폴백(intra-provider) 발생 시 webview에 알림 — 어떤 모델이 답했는지 명확히
     setGeminiFallbackNotifier((from, to, reason) => {
       this._post({ type: 'modelFallback', from, to, reason, model: 'gemini' })
+    })
+    setClaudeFallbackNotifier((from, to, reason) => {
+      this._post({ type: 'modelFallback', from, to, reason, model: 'claude' })
+    })
+    setCodexFallbackNotifier((from, to, reason) => {
+      this._post({ type: 'modelFallback', from, to, reason, model: 'codex' })
     })
 
     // 코드베이스 인덱스 로드 (이미 인덱싱돼있으면 즉시 사용 가능)
@@ -2787,6 +2793,7 @@ class OrchestrAIViewProvider implements vscode.WebviewViewProvider, vscode.Dispo
     let result: { content: string; inputTokens: number; outputTokens: number } | null = null
     let assistantMsgId = ''
     let finalError: unknown = null
+    let retriedThisAttempt = false  // 같은 모델로 1회 retry — quota 에러에서 즉시 폴백 안 하고 잠시 대기 후 같은 모델 한 번 더
 
     for (let attempt = 0; attempt < fallbackChain.length; attempt++) {
       const currentModel = fallbackChain[attempt]
@@ -2966,18 +2973,42 @@ PATH RULES: paths are relative to workspace root. Don't prefix with "${gWsBase}/
         finalError = err
 
         const nextModel = fallbackChain[attempt + 1]
-        // quota 에러면 첫 청크 보낸 후라도 폴백 허용 (Claude가 quota 메시지 텍스트로 stream하는 케이스).
-        // 단, 다음 모델 있고, 이번이 마지막이 아닐 때.
         const isQuota = isQuotaError(err)
-        const canFallback = !!nextModel && isQuota
-        if (canFallback) {
-          // 이미 화면에 quota 메시지가 흘러나갔을 수 있으니 새 streamStart로 새 말풍선 열기 전에 알림
+
+        // 1차: 같은 모델로 retry (이번 attempt에서 처음 quota이면 4초 대기 후 한 번 더)
+        // _retriedThisAttempt 가 false 면 retry 시도. 안 되면 fallback.
+        if (isQuota && !retriedThisAttempt) {
+          retriedThisAttempt = true
           this._post({
             type: 'streamError',
             id: assistantMsgId,
-            error: `⚠ ${currentModel} 쿼터 파산 (${summarizeQuotaError(err)}) — ${nextModel}로 자동 전환`
+            error: `⚠ ${currentModel} rate limit — 4초 후 재시도 (${summarizeQuotaError(err)})`
           })
-          // 다음 iteration 시 자동으로 새 assistantMsgId + streamStart 발생 (위 루프 시작부)
+          await new Promise(r => setTimeout(r, 4000))
+          if (this._currentAbort?.signal.aborted) {
+            this._post({ type: 'streamError', id: assistantMsgId, error: '취소됨' })
+            return false
+          }
+          attempt-- // 같은 attempt 다시 — for 루프의 attempt++ 가 다시 0으로 보내줌
+          continue
+        }
+
+        // 2차: 다음 모델로 폴백
+        const canFallback = !!nextModel && isQuota
+        if (canFallback) {
+          retriedThisAttempt = false  // 다음 모델은 새로 retry 가능
+          this._post({
+            type: 'modelFallback',
+            from: actualModelName(currentModel, decision.effort),
+            to: actualModelName(nextModel, decision.effort),
+            reason: `quota: ${summarizeQuotaError(err)}`,
+            model: currentModel,
+          })
+          this._post({
+            type: 'streamError',
+            id: assistantMsgId,
+            error: `⚠ ${currentModel} 쿼터 파산 — ${nextModel}로 자동 전환`
+          })
           continue
         }
         // 폴백 불가 (쿼터 외 에러 / 마지막 모델)

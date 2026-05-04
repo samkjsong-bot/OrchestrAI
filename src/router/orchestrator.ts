@@ -135,6 +135,37 @@ function parseMention(input: string): Model | null {
   return all.length === 1 ? all[0] : null
 }
 
+// LLM 라우팅 캐시 — 같은 prompt가 들어오면 Haiku 재호출 방지 (TTL 5분, LRU 100)
+interface CacheEntry { decision: RoutingDecision; ts: number }
+const LLM_ROUTE_CACHE = new Map<string, CacheEntry>()
+const CACHE_TTL_MS = 5 * 60 * 1000
+const CACHE_MAX = 100
+
+function cacheKey(input: string): string {
+  return input.trim().toLowerCase().replace(/\s+/g, ' ').slice(0, 500)
+}
+
+function readCache(key: string): RoutingDecision | null {
+  const entry = LLM_ROUTE_CACHE.get(key)
+  if (!entry) return null
+  if (Date.now() - entry.ts > CACHE_TTL_MS) {
+    LLM_ROUTE_CACHE.delete(key)
+    return null
+  }
+  // LRU touch
+  LLM_ROUTE_CACHE.delete(key)
+  LLM_ROUTE_CACHE.set(key, entry)
+  return entry.decision
+}
+
+function writeCache(key: string, decision: RoutingDecision): void {
+  if (LLM_ROUTE_CACHE.size >= CACHE_MAX) {
+    const oldestKey = LLM_ROUTE_CACHE.keys().next().value
+    if (oldestKey !== undefined) LLM_ROUTE_CACHE.delete(oldestKey)
+  }
+  LLM_ROUTE_CACHE.set(key, { decision, ts: Date.now() })
+}
+
 export class Orchestrator {
   constructor(private config: RouterConfig) {}
 
@@ -164,7 +195,15 @@ export class Orchestrator {
       return patternResult
     }
 
-    return llmRoute(input, this.config, patternResult ?? undefined)
+    const key = cacheKey(input)
+    const cached = readCache(key)
+    if (cached) {
+      return { ...cached, reason: 'llm-cache' }
+    }
+
+    const decision = await llmRoute(input, this.config, patternResult ?? undefined)
+    if (decision.reason === 'llm') writeCache(key, decision)
+    return decision
   }
 
   getModelParams(effort: Effort) {

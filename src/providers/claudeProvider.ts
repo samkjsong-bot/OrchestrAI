@@ -29,6 +29,13 @@ function thinkingBudgetFor(effort: Effort | string): number | undefined {
   return THINKING_BUDGET[effort as Effort]
 }
 
+// 모델 자동 전환(예: extra-high opus → quota파산 후 sonnet) 시 UI에 띄울 콜백.
+// extension.ts에서 등록 — webview에 modelFallback 메시지를 쏨.
+let _claudeFallbackNotifier: ((from: string, to: string, reason: string) => void) | undefined
+export function setClaudeFallbackNotifier(fn: typeof _claudeFallbackNotifier) {
+  _claudeFallbackNotifier = fn
+}
+
 // 응답 출력 max tokens — 한 턴에 큰 프로그램 통째로 만들 수 있게 모두 모델 한계까지.
 // Sonnet 4.6: 64k 한도, Opus 4.6: 32k 한도. SDK 기본(8192)이면 응답 잘림.
 const MAX_OUTPUT: Record<Effort, number> = {
@@ -90,6 +97,11 @@ function formatToolCall(name: string, input: any): string {
   }
 }
 
+function isClaudeQuotaError(err: unknown): boolean {
+  const s = String(err instanceof Error ? err.message : err ?? '')
+  return /rate.?limit|usage.?limit|usage_limit_exceeded|quota.{0,30}exceeded|5-hour limit/i.test(s)
+}
+
 export async function callClaude(
   messages: Array<{ role: 'user' | 'assistant'; content: string }>,
   effort: Effort,
@@ -99,6 +111,7 @@ export async function callClaude(
   permissionMode: ClaudePermissionMode = 'auto-edit',
   extraMcpServers?: Record<string, any>,  // team 모드 등에서 동료 호출 툴 주입용
   abortSignal?: AbortSignal,
+  modelOverride?: string,  // 내부 폴백용 — extra-high opus 쿼터 파산 시 sonnet으로 재시도
 ): Promise<{ content: string; inputTokens: number; outputTokens: number }> {
   const promptText = messages.length === 1
     ? messages[0].content
@@ -106,10 +119,11 @@ export async function callClaude(
         m.role === 'user' ? `User: ${m.content}` : `Assistant: ${m.content}`
       ).join('\n\n')
 
+  const activeModel = modelOverride ?? modelForEffort(effort)
   const q = query({
     prompt: promptText,
     options: {
-      model: modelForEffort(effort),
+      model: activeModel,
       systemPrompt: systemPrompt ?? 'You are an expert coding assistant. Be concise and practical.',
       includePartialMessages: true,
       // 기본 Claude Code 툴셋 활성 — Read/Edit/Write/Bash/Grep/Glob 등 워크스페이스 조작 가능

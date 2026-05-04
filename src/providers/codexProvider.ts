@@ -18,6 +18,18 @@ const MODEL_BY_EFFORT: Record<Effort, string> = {
   'extra-high': 'gpt-5.5',
 }
 
+// 모델 자동 전환(예: 5.5 quota → 5.4) 시 UI 알림 콜백.
+// extension.ts에서 등록 — webview에 modelFallback 메시지를 쏨.
+let _codexFallbackNotifier: ((from: string, to: string, reason: string) => void) | undefined
+export function setCodexFallbackNotifier(fn: typeof _codexFallbackNotifier) {
+  _codexFallbackNotifier = fn
+}
+
+function isCodexQuotaError(status: number, text: string): boolean {
+  if (status === 429) return true
+  return /rate.?limit|quota|usage.?limit|exhausted/i.test(text)
+}
+
 interface SSEEvent {
   type?: string
   delta?: string
@@ -63,40 +75,54 @@ export async function callCodex(
     throw new Error('Codex 계정 ID가 없습니다. 다시 로그인해주세요.')
   }
 
-  const body = {
-    model: MODEL_BY_EFFORT[effort],
-    instructions: systemPrompt ?? 'You are an expert coding assistant.',
-    input: messages.map(m => ({ role: m.role, content: m.content })),
-    stream: true,
-    store: false,
-    reasoning: { effort },
+  const primaryModel = MODEL_BY_EFFORT[effort]
+  const FALLBACK_MODEL = 'gpt-5.4-mini'
+
+  // 한 모델로 fetch 시도 (429/5xx 지수 백오프 재시도 포함, 스트림 시작 전까지)
+  async function tryFetch(model: string): Promise<{ res: Response | null; lastErr: { status: number; text: string } | null }> {
+    const body = {
+      model,
+      instructions: systemPrompt ?? 'You are an expert coding assistant.',
+      input: messages.map(m => ({ role: m.role, content: m.content })),
+      stream: true,
+      store: false,
+      reasoning: { effort },
+    }
+    const MAX_ATTEMPTS = 3
+    let lastErr: { status: number; text: string } | null = null
+    for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
+      const r = await fetch(ENDPOINT, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+          'Accept': 'text/event-stream',
+          'User-Agent': USER_AGENT,
+          'ChatGPT-Account-ID': accountId,
+          'OpenAI-Beta': 'responses=experimental',
+          'originator': ORIGINATOR,
+        },
+        body: JSON.stringify(body),
+        signal: abortSignal,
+      })
+      if (r.ok) return { res: r, lastErr: null }
+
+      const isRetryable = r.status === 429 || r.status >= 500
+      lastErr = { status: r.status, text: await r.text().catch(() => '') }
+      if (!isRetryable || attempt === MAX_ATTEMPTS - 1) break
+      await new Promise((s) => setTimeout(s, 1000 * 2 ** attempt))
+    }
+    return { res: null, lastErr }
   }
 
-  // 429/5xx엔 지수 백오프 재시도 (스트림 시작 전까지만)
-  const MAX_ATTEMPTS = 3
-  let res: Response | null = null
-  let lastErr: { status: number; text: string } | null = null
-  for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
-    const r = await fetch(ENDPOINT, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${accessToken}`,
-        'Content-Type': 'application/json',
-        'Accept': 'text/event-stream',
-        'User-Agent': USER_AGENT,
-        'ChatGPT-Account-ID': accountId,
-        'OpenAI-Beta': 'responses=experimental',
-        'originator': ORIGINATOR,
-      },
-      body: JSON.stringify(body),
-      signal: abortSignal,  // kill switch 누르면 fetch 취소
-    })
-    if (r.ok) { res = r; break }
+  let { res, lastErr } = await tryFetch(primaryModel)
 
-    const isRetryable = r.status === 429 || r.status >= 500
-    lastErr = { status: r.status, text: await r.text().catch(() => '') }
-    if (!isRetryable || attempt === MAX_ATTEMPTS - 1) break
-    await new Promise((s) => setTimeout(s, 1000 * 2 ** attempt))
+  // Pro 플랜 모델(gpt-5.5)이 quota 파산이면 mini로 폴백 (모든 챗GPT 구독 공통 가능)
+  if (!res && lastErr && primaryModel !== FALLBACK_MODEL && isCodexQuotaError(lastErr.status, lastErr.text)) {
+    _codexFallbackNotifier?.(primaryModel, FALLBACK_MODEL, `quota (${lastErr.status})`)
+    const retry = await tryFetch(FALLBACK_MODEL)
+    res = retry.res
+    if (!res) lastErr = retry.lastErr
   }
 
   if (!res) {
