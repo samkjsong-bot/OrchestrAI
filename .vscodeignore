@@ -51,3 +51,21 @@ node_modules/@types/**
 node_modules/**/*.wasm.map
 
 # NOTE: Claude Agent SDK의 vendor/ripgrep은 포함해야 Grep·Glob 툴 동작함. 제외 금지.
+
+# 사용 안 하는 거대한 transitive deps (gemini-cli-core / claude-agent-sdk가 lazy로 가져왔는데 우리 코드는 안 씀)
+node_modules/googleapis/**
+node_modules/googleapis-common/**
+node_modules/@opentelemetry/**
+node_modules/node-pty/**
+node_modules/tree-sitter-bash/**
+node_modules/web-tree-sitter/**
+node_modules/@img/**
+# Native 빌드 도구
+node_modules/node-gyp-build/**
+node_modules/@mapbox/node-pre-gyp/**
+node_modules/prebuild-install/**
+# Sourcemap·debug 관련
+node_modules/**/*.d.ts
+node_modules/**/*.flow
+node_modules/**/Makefile
+node_modules/**/binding.gyp
