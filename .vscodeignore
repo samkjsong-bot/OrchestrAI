@@ -55,11 +55,19 @@ node_modules/**/*.wasm.map
 # 사용 안 하는 거대한 transitive deps (gemini-cli-core / claude-agent-sdk가 lazy로 가져왔는데 우리 코드는 안 씀)
 node_modules/googleapis/**
 node_modules/googleapis-common/**
-node_modules/@opentelemetry/**
 node_modules/node-pty/**
 node_modules/tree-sitter-bash/**
 node_modules/web-tree-sitter/**
 node_modules/@img/**
+# @opentelemetry: ai 패키지가 @opentelemetry/api 만 import하므로 무거운 sub만 제외
+# (api 2.6M / api-logs 524K / core / resources 등은 유지)
+node_modules/@opentelemetry/exporter-*/**
+node_modules/@opentelemetry/sdk-*/**
+node_modules/@opentelemetry/otlp-*/**
+node_modules/@opentelemetry/semantic-conventions/**
+node_modules/@opentelemetry/instrumentation*/**
+node_modules/@opentelemetry/propagator-*/**
+node_modules/@opentelemetry/resource-detector*/**
 # Native 빌드 도구
 node_modules/node-gyp-build/**
 node_modules/@mapbox/node-pre-gyp/**
