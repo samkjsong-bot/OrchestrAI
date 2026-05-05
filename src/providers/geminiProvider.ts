@@ -4,6 +4,7 @@
 
 import { Effort } from '../router/types'
 import { log } from '../util/log'
+import { isQuotaError } from '../util/quota'
 
 // 무료 티어: Pro는 5 RPM·100 RPD로 빡빡, Flash는 10 RPM·500 RPD로 여유.
 // medium은 Flash로 두고 Pro는 high에서만. 429 뜨면 자동 Flash 폴백.
@@ -15,11 +16,6 @@ const MODEL_BY_EFFORT: Record<Effort, string> = {
 }
 const FALLBACK_MODEL = 'gemini-2.5-flash'
 const IMAGE_RE = /<image name="([^"]*)" mime="([^"]*)">(data:[^<]+)<\/image>/g
-
-function isQuotaError(err: unknown): boolean {
-  const s = String(err instanceof Error ? err.message : JSON.stringify(err))
-  return /RESOURCE_EXHAUSTED|rateLimitExceeded|429|exhausted your capacity/i.test(s)
-}
 
 // esbuild는 static import / 분석가능한 dynamic import를 require()로 치환함.
 // Function으로 감싸면 런타임까지 import() 그대로 남아 Node가 ESM으로 로드함.

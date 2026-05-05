@@ -36,18 +36,6 @@ export function setClaudeFallbackNotifier(fn: typeof _claudeFallbackNotifier) {
   _claudeFallbackNotifier = fn
 }
 
-// 응답 출력 max tokens — 한 턴에 큰 프로그램 통째로 만들 수 있게 모두 모델 한계까지.
-// Sonnet 4.6: 64k 한도, Opus 4.6: 32k 한도. SDK 기본(8192)이면 응답 잘림.
-const MAX_OUTPUT: Record<Effort, number> = {
-  low: 64000,           // 옛 16k → 64k (Sonnet 한도까지). 한 페이지 짜리도 잘림 없이.
-  medium: 64000,        // 옛 32k → 64k
-  high: 64000,
-  'extra-high': 32000,  // Opus 한도
-}
-function maxOutputFor(effort: Effort | string): number {
-  return MAX_OUTPUT[effort as Effort] ?? 32000
-}
-
 // OrchestrAI의 permission mode → Claude Agent SDK의 permissionMode로 매핑
 export type ClaudePermissionMode = 'ask' | 'auto-edit' | 'plan' | 'smart-auto'
 function sdkPermissionMode(m: ClaudePermissionMode): 'default' | 'acceptEdits' | 'plan' | 'bypassPermissions' {
@@ -97,11 +85,6 @@ function formatToolCall(name: string, input: any): string {
   }
 }
 
-function isClaudeQuotaError(err: unknown): boolean {
-  const s = String(err instanceof Error ? err.message : err ?? '')
-  return /rate.?limit|usage.?limit|usage_limit_exceeded|quota.{0,30}exceeded|5-hour limit/i.test(s)
-}
-
 export async function callClaude(
   messages: Array<{ role: 'user' | 'assistant'; content: string }>,
   effort: Effort,
@@ -138,7 +121,6 @@ export async function callClaude(
       maxTurns: 100,         // 사실상 무제한 — 무한 루프 방지용 상한만
       persistSession: false,
       maxThinkingTokens: thinkingBudgetFor(effort),
-      maxTokens: maxOutputFor(effort),  // 응답 잘림 방지 — SDK 기본 8192보다 크게
       cwd: vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? process.cwd(),
       env: subscriptionEnv(),
     },

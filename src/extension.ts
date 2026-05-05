@@ -2,6 +2,7 @@
 import * as vscode from 'vscode'
 import * as path from 'path'
 import * as fs from 'fs'
+import { query } from '@anthropic-ai/claude-agent-sdk'
 import { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js'
 import { Orchestrator, inferEffort, parseAllMentions } from './router/orchestrator'
@@ -185,7 +186,7 @@ interface FileSnapshot {
 interface ChangedFile {
   turnId: string
   path: string
-  status: 'added' | 'modified'
+  status: 'added' | 'modified' | 'deleted'
   additions: number
   deletions: number
   preview: Array<{
@@ -3390,10 +3391,10 @@ Be concise. Korean if reviews are Korean.`
     try {
       // 변경된 파일들만 add (전체 add는 위험)
       const adds = changedFiles
-        .filter(f => f.kind !== 'deleted')
+        .filter(f => f.status !== 'deleted')
         .map(f => f.path)
       const dels = changedFiles
-        .filter(f => f.kind === 'deleted')
+        .filter(f => f.status === 'deleted')
         .map(f => f.path)
 
       if (adds.length > 0) {
@@ -3436,7 +3437,7 @@ Be concise. Korean if reviews are Korean.`
     if (!changedFiles || changedFiles.length === 0) return
 
     // 1. HTML 파일 만들었거나 수정했으면 → Simple Browser
-    const html = changedFiles.find(f => /\.html?$/i.test(f.path) && f.kind !== 'deleted')
+    const html = changedFiles.find(f => /\.html?$/i.test(f.path) && f.status !== 'deleted')
     if (html) {
       try {
         const fullPath = resolveWorkspacePath(html.path)
@@ -3466,13 +3467,13 @@ Be concise. Korean if reviews are Korean.`
     }
 
     // 3. Python 스크립트 새로 만들었으면 ▶ 버튼 안내
-    const py = changedFiles.find(f => /\.py$/i.test(f.path) && f.kind === 'added')
+    const py = changedFiles.find(f => /\.py$/i.test(f.path) && f.status === 'added')
     if (py) {
       this._post({ type: 'previewSuggest', script: 'python', command: `python ${py.path}` })
     }
 
     // 4. Node 스크립트
-    const js = changedFiles.find(f => /\.(m?js|ts)$/i.test(f.path) && f.kind === 'added')
+    const js = changedFiles.find(f => /\.(m?js|ts)$/i.test(f.path) && f.status === 'added')
     if (js && !html && !pkg) {
       const isTs = js.path.endsWith('.ts')
       this._post({ type: 'previewSuggest', script: isTs ? 'tsx' : 'node', command: `${isTs ? 'tsx' : 'node'} ${js.path}` })

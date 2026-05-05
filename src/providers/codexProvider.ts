@@ -74,6 +74,7 @@ export async function callCodex(
   if (!accountId) {
     throw new Error('Codex 계정 ID가 없습니다. 다시 로그인해주세요.')
   }
+  const verifiedAccountId: string = accountId  // closure에서 type narrowing 유지
 
   const primaryModel = MODEL_BY_EFFORT[effort]
   const FALLBACK_MODEL = 'gpt-5.4-mini'
@@ -98,7 +99,7 @@ export async function callCodex(
           'Content-Type': 'application/json',
           'Accept': 'text/event-stream',
           'User-Agent': USER_AGENT,
-          'ChatGPT-Account-ID': accountId,
+          'ChatGPT-Account-ID': verifiedAccountId,
           'OpenAI-Beta': 'responses=experimental',
           'originator': ORIGINATOR,
         },
