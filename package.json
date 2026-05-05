@@ -5,6 +5,7 @@
   "version": "0.1.0",
   "publisher": "samkj",
   "license": "MIT",
+  "icon": "resources/icon.png",
   "homepage": "https://github.com/samkjsong-bot/OrchestrAI",
   "bugs": {
     "url": "https://github.com/samkjsong-bot/OrchestrAI/issues"
