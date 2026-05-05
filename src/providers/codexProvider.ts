@@ -4,6 +4,7 @@
 
 import * as os from 'os'
 import { Effort } from '../router/types'
+import { log } from '../util/log'
 
 const ENDPOINT = 'https://chatgpt.com/backend-api/codex/responses'
 const ORIGINATOR = 'codex_cli_rs'
@@ -136,6 +137,7 @@ export async function callCodex(
   let fullContent = ''
   let inputTokens = 0
   let outputTokens = 0
+  const seenEventTypes: Record<string, number> = {}  // 디버그용 이벤트 타입 카운트
 
   const reader = res.body.getReader()
   const decoder = new TextDecoder()
@@ -159,16 +161,37 @@ export async function callCodex(
       const data = line.slice(6).trim()
       if (!data || data === '[DONE]') continue
 
-      let event: SSEEvent
+      let event: SSEEvent & { text?: string; output_text?: string; content?: any }
       try { event = JSON.parse(data) } catch { continue }
 
+      if (event.type) seenEventTypes[event.type] = (seenEventTypes[event.type] ?? 0) + 1
+
+      // 1차: 표준 delta 이벤트
       if (event.type === 'response.output_text.delta') {
         const delta = sanitizeCodexDelta(event.delta ?? '')
         if (delta) {
           fullContent += delta
           onChunk(delta)
         }
-      } else if (event.type === 'response.output_item.added' && event.item?.type === 'function_call') {
+      }
+      // 2차: 모델/버전에 따라 final text가 .done 이벤트로 한 번에 올 때
+      else if (event.type === 'response.output_text.done' && (event as any).text) {
+        const finalText = sanitizeCodexDelta(String((event as any).text))
+        if (finalText && !fullContent.endsWith(finalText)) {
+          fullContent += finalText
+          onChunk(finalText)
+        }
+      }
+      // 3차: content part로 text가 들어오는 케이스 (gpt-5.5 reasoning 모델 일부 변형)
+      else if (event.type === 'response.content_part.added' || event.type === 'response.content_part.done') {
+        const part = (event as any).part
+        const partText = typeof part?.text === 'string' ? part.text : null
+        if (partText) {
+          const sanitized = sanitizeCodexDelta(partText)
+          if (sanitized) { fullContent += sanitized; onChunk(sanitized) }
+        }
+      }
+      else if (event.type === 'response.output_item.added' && event.item?.type === 'function_call') {
         // 툴 호출 시작 — 박스 한 줄로 표시 (Claude provider와 같은 ⏺ 형식)
         const name = event.item.name ?? 'unknown'
         const line = `\n\n  ⏺ ${name}\n`
@@ -196,8 +219,36 @@ export async function callCodex(
           inputTokens = usage.input_tokens ?? 0
           outputTokens = usage.output_tokens ?? 0
         }
+        // response.completed 안의 output 배열에 최종 텍스트가 통째로 담길 때 회수
+        // (delta가 빠진 reasoning-only 응답이거나 stream 변형 케이스)
+        if (!fullContent) {
+          const outputs = (event.response as any)?.output
+          if (Array.isArray(outputs)) {
+            for (const item of outputs) {
+              const parts = item?.content
+              if (Array.isArray(parts)) {
+                for (const p of parts) {
+                  const text = typeof p?.text === 'string' ? p.text : null
+                  if (text) {
+                    const sanitized = sanitizeCodexDelta(text)
+                    if (sanitized) { fullContent += sanitized; onChunk(sanitized) }
+                  }
+                }
+              }
+            }
+          }
+        }
       }
     }
+  }
+
+  log.info('codex', `events=${JSON.stringify(seenEventTypes)} content_len=${fullContent.length} out_tok=${outputTokens}`)
+
+  // 토큰은 썼는데 본문이 비었으면 fallback 트리거 (catch 분기에서 다음 모델로)
+  if (!fullContent && outputTokens > 0) {
+    throw new Error(
+      `Codex 빈 응답 (output_tokens=${outputTokens}). 받은 SSE 이벤트: ${Object.keys(seenEventTypes).join(', ') || 'none'}`,
+    )
   }
 
   return { content: fullContent, inputTokens, outputTokens }

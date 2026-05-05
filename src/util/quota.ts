@@ -41,7 +41,10 @@ export function isQuotaError(err: unknown): boolean {
     // 한국어 안내 (모델이 한국어로 quota 안내 출력하는 경우)
     blob.includes('제한에 도달') ||
     blob.includes('쿼터 소진') ||
-    blob.includes('사용량 한도')
+    blob.includes('사용량 한도') ||
+    // 빈 응답 — 토큰은 썼는데 본문 못 받은 경우. 진짜 quota는 아니지만 다음 모델로 폴백하는 게 UX에 낫다.
+    blob.includes('빈 응답') ||
+    blob.includes('empty response')
   )
 }
 

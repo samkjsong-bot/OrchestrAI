@@ -165,9 +165,11 @@ export async function callClaude(
         inputTokens = msg.usage.input_tokens ?? 0
         outputTokens = msg.usage.output_tokens ?? 0
       }
-      if (msg.is_error) {
-        // SDK union에서 errors 필드는 일부 variant에만 있어서 직접 접근하면 type 좁아짐.
-        // any로 풀어서 키워드 노출 — subtype + errors[0] 둘 다 담아야 isQuotaError가 매칭함.
+      // SDK가 가끔 is_error: true 인데 subtype: 'success' 같은 모순된 result 보냄
+      // (예: 정상 응답이지만 stream 일부 abort, retry 등). subtype이 명확한 에러일 때만 throw.
+      if (msg.is_error && msg.subtype !== 'success') {
+        // SDK union에서 errors 필드는 일부 variant에만 있어서 any로 풀어 키워드 노출.
+        // subtype + errors[0] 둘 다 담아야 isQuotaError 가 매칭함.
         const errPayload = (msg as any).errors?.[0]
         const errStr = errPayload != null
           ? (typeof errPayload === 'string' ? errPayload : JSON.stringify(errPayload))
