@@ -28,7 +28,20 @@ export function isQuotaError(err: unknown): boolean {
     blob.includes('exhausted your quota') ||
     blob.includes('quotaexceeded') ||
     blob.includes('overloaded') ||
-    blob.includes('quota')
+    blob.includes('quota') ||
+    // Claude Max — SDK가 result.is_error=true subtype='usage_limit_exceeded' 또는 텍스트로 안내문 보냄
+    blob.includes('usage_limit_exceeded') ||
+    blob.includes('usage limit') ||
+    blob.includes('5-hour limit') ||
+    blob.includes('your limit will reset') ||
+    // Codex/OpenAI — 'insufficient_quota' / 'tokens-per-minute' 등 흔한 변형
+    blob.includes('insufficient_quota') ||
+    blob.includes('tokens per minute') ||
+    blob.includes('tpm') ||
+    // 한국어 안내 (모델이 한국어로 quota 안내 출력하는 경우)
+    blob.includes('제한에 도달') ||
+    blob.includes('쿼터 소진') ||
+    blob.includes('사용량 한도')
   )
 }
 

@@ -166,9 +166,13 @@ export async function callClaude(
         outputTokens = msg.usage.output_tokens ?? 0
       }
       if (msg.is_error) {
-        const detail = msg.subtype === 'error_during_execution'
-          ? (msg.errors?.[0] ?? 'unknown')
-          : msg.subtype
+        // SDK union에서 errors 필드는 일부 variant에만 있어서 직접 접근하면 type 좁아짐.
+        // any로 풀어서 키워드 노출 — subtype + errors[0] 둘 다 담아야 isQuotaError가 매칭함.
+        const errPayload = (msg as any).errors?.[0]
+        const errStr = errPayload != null
+          ? (typeof errPayload === 'string' ? errPayload : JSON.stringify(errPayload))
+          : ''
+        const detail = [msg.subtype, errStr].filter(Boolean).join(' / ') || 'unknown'
         throw new Error(`Claude 응답 실패: ${detail}`)
       }
     }
