@@ -2376,6 +2376,17 @@
     if (vscode) vscode.postMessage(msg)
   }
 
+  // 전역 에러 → 화면 상단에 표시 (silent fail 방지, reload 후 핵심 함수 missing 같은 케이스 잡기 위함)
+  window.addEventListener('error', (e) => {
+    try {
+      const bar = document.createElement('div')
+      bar.style.cssText = 'position: fixed; top: 0; left: 0; right: 0; padding: 6px 12px; background: #c33; color: #fff; font: 11px monospace; z-index: 99999;'
+      bar.textContent = `⚠ JS error: ${e.message} @ ${e.filename?.split('/').pop()}:${e.lineno}`
+      document.body.appendChild(bar)
+      setTimeout(() => bar.remove(), 8000)
+    } catch {}
+  })
+
   // Extension → WebView 메시지 수신
   window.addEventListener('message', (event) => {
     const msg = event.data
@@ -2946,32 +2957,49 @@
       return
     }
     rehydrateRequested = true  // 한 번 채워졌으면 더 이상 요청할 이유 없음
+    let drawnCount = 0
+    let firstError = null
     for (const m of messages) {
-      if (m.role === 'user') {
-        appendUserMessage(m)
-      } else if (m.role === 'assistant') {
-        const model = m.model || 'claude'
-        const modelLabel = model === 'claude' ? 'Claude' : model === 'codex' ? 'Codex' : 'Gemini'
-        const actualModel = m.actualModel || m.routing?.actualModel || ''
-        const actualName = actualModel ? `<span class="actual-model">${escapeHtml(actualModel)}</span>` : ''
-        const el = document.createElement('div')
-        el.className = `msg msg-ai ${model}`
-        el.dataset.model = model
-        el.id = `msg-${m.id}`
-        el.innerHTML = `<div class="bubble">
-          <div class="msg-header">
-            <span class="model-tag">${modelLabel}</span>
-            ${actualName}
-            <span class="effort-tag">effort·${m.effort || 'medium'}</span>
-            <span class="tokens-tag">${(m.tokens ?? 0).toLocaleString()} tok</span>
-          </div>
-          <div class="bubble-actions">
-            <button class="float-btn" onclick="copyMessage('${m.id}', this)">copy</button>
-          </div>
-          <div class="msg-content md" id="content-${m.id}">${renderMarkdown(m.content)}</div>
-        </div>`
-        container.appendChild(el)
+      try {
+        if (m.role === 'user') {
+          appendUserMessage(m)
+          drawnCount++
+        } else if (m.role === 'assistant') {
+          const model = m.model || 'claude'
+          const modelLabel = model === 'claude' ? 'Claude' : model === 'codex' ? 'Codex' : 'Gemini'
+          const actualModel = m.actualModel || m.routing?.actualModel || ''
+          const actualName = actualModel ? `<span class="actual-model">${escapeHtml(actualModel)}</span>` : ''
+          const el = document.createElement('div')
+          el.className = `msg msg-ai ${model}`
+          el.dataset.model = model
+          el.id = `msg-${m.id}`
+          el.innerHTML = `<div class="bubble">
+            <div class="msg-header">
+              <span class="model-tag">${modelLabel}</span>
+              ${actualName}
+              <span class="effort-tag">effort·${m.effort || 'medium'}</span>
+              <span class="tokens-tag">${(m.tokens ?? 0).toLocaleString()} tok</span>
+            </div>
+            <div class="bubble-actions">
+              <button class="float-btn" onclick="copyMessage('${m.id}', this)">copy</button>
+            </div>
+            <div class="msg-content md" id="content-${m.id}">${renderMarkdown(m.content)}</div>
+          </div>`
+          container.appendChild(el)
+          drawnCount++
+        }
+      } catch (err) {
+        // 개별 메시지 한 개가 throw해도 나머지 그리도록 — 이전엔 첫 throw에서 전체 멈춤
+        if (!firstError) firstError = err
+        console.error('[orchestrai] rehydrate item failed:', m?.id, err)
       }
+    }
+    console.log('[orchestrai] rehydrate drawn:', drawnCount, '/', messages.length)
+    if (firstError) {
+      const errBox = document.createElement('div')
+      errBox.style.cssText = 'margin: 8px 12px; padding: 8px 12px; border: 1px solid #f55; color: #f88; border-radius: 6px; font-size: 12px; font-family: monospace;'
+      errBox.textContent = `⚠ rehydrate 일부 실패 (${drawnCount}/${messages.length} 그려짐). 첫 에러: ${String(firstError?.message || firstError).slice(0, 200)}`
+      container.insertBefore(errBox, container.firstChild)
     }
     const latestChanged = [...messages].reverse().find(m => m.role === 'assistant' && m.changeSummary && m.changeSummary.files > 0)
     updateReviewBar(latestChanged?.changeSummary || null)
