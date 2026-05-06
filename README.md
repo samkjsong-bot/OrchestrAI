@@ -8,7 +8,16 @@
 
 추가 API 과금 없음 — 모두 사용자 자체 구독·무료 티어로 우회
 
-**[📦 Releases](https://github.com/samkjsong-bot/OrchestrAI/releases)** · [📖 CODEMAP](./CODEMAP.md) · [🐛 Issues](https://github.com/samkjsong-bot/OrchestrAI/issues)
+[![VSCode Marketplace](https://img.shields.io/visual-studio-marketplace/v/samkj.orchestrai?label=VSCode%20Marketplace&color=blue&logo=visualstudiocode)](https://marketplace.visualstudio.com/items?itemName=samkj.orchestrai)
+[![Installs](https://img.shields.io/visual-studio-marketplace/i/samkj.orchestrai)](https://marketplace.visualstudio.com/items?itemName=samkj.orchestrai)
+[![Rating](https://img.shields.io/visual-studio-marketplace/r/samkj.orchestrai)](https://marketplace.visualstudio.com/items?itemName=samkj.orchestrai&ssr=false#review-details)
+[![License](https://img.shields.io/badge/license-MIT-green.svg)](./LICENSE)
+
+**[🛒 Marketplace 설치](https://marketplace.visualstudio.com/items?itemName=samkj.orchestrai)** · [📦 Releases](https://github.com/samkjsong-bot/OrchestrAI/releases) · [📖 CODEMAP](./CODEMAP.md) · [🐛 Issues](https://github.com/samkjsong-bot/OrchestrAI/issues)
+
+```
+ext install samkj.orchestrai
+```
 
 </div>
 
