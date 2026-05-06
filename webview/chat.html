@@ -2916,6 +2916,8 @@
     scrollIfNearBottom(container)
   }
 
+  // 빈 rehydrate 가 한 번 와도 disk 엔 살아있을 수 있음 — 첫 빈 응답엔 host 에 1회만 다시 요청
+  let rehydrateRequested = false
   function rehydrateMessages(messages) {
     console.log('[orchestrai] rehydrate received:', messages?.length, 'messages')
     const container = document.getElementById('messages')
@@ -2924,14 +2926,26 @@
       setTimeout(() => rehydrateMessages(messages), 100)
       return
     }
+    // 메시지가 들어왔는데 우리쪽엔 이미 그려진 게 있으면 덮어쓰기 전에 비교 — 빈 push 가 살아있는 화면을 지우지 않게
+    const existingMsgs = container.querySelectorAll('.msg').length
+    if ((!messages || messages.length === 0) && existingMsgs > 0) {
+      console.log('[orchestrai] empty rehydrate but view already has', existingMsgs, '— ignoring')
+      return
+    }
     container.innerHTML = ''
     Object.keys(streamBuffers).forEach(k => delete streamBuffers[k])
     if (!messages || messages.length === 0) {
       console.log('[orchestrai] empty rehydrate, cleared view')
+      // 첫 빈 응답이면 disk safety net 한 번만 요청 (진짜 새 채팅이면 그냥 빈 채로 유지)
+      if (!rehydrateRequested) {
+        rehydrateRequested = true
+        setTimeout(() => postToExtension({ type: 'requestRehydrate' }), 800)
+      }
       applyModelFilter()
       updateReviewBar(null)
       return
     }
+    rehydrateRequested = true  // 한 번 채워졌으면 더 이상 요청할 이유 없음
     for (const m of messages) {
       if (m.role === 'user') {
         appendUserMessage(m)

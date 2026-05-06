@@ -1439,6 +1439,15 @@ class OrchestrAIViewProvider implements vscode.WebviewViewProvider, vscode.Dispo
             this._webviewReady = true
             this._lastWebviewReadyInstance = msg.instanceId
             await this._pushWebviewState(`ready${msg.instanceId ? `:${msg.instanceId}` : ''}`)
+            // Reload Window 직후 webview 의 message 핸들러가 100ms 안에 등록 안 돼 첫 push 가
+            // 손실되는 케이스 방지 — 500ms / 1.5s 후 한 번씩 더 보낸다 (idempotent).
+            setTimeout(() => void this._pushWebviewState('ready-retry-500ms'), 500)
+            setTimeout(() => void this._pushWebviewState('ready-retry-1500ms'), 1500)
+            break
+          case 'requestRehydrate':
+            // webview 가 비어있는데 disk 엔 데이터 있다고 판단되면 한 번 더 요청 (safety net)
+            log.info('persist', `webview requested rehydrate explicitly`)
+            await this._pushWebviewState('webview-request')
             break
           case 'send':          await this._handleSend(msg.text, msg.attachments ?? []); break
           case 'setOverride':   this._override = msg.mode; break
