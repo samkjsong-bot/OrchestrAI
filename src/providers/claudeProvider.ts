@@ -36,6 +36,18 @@ export function setClaudeFallbackNotifier(fn: typeof _claudeFallbackNotifier) {
   _claudeFallbackNotifier = fn
 }
 
+// 응답 출력 max tokens — SDK type 정의엔 maxTokens 없지만 cli.js 가 실제로 받음 (typedef outdated).
+// 빼면 SDK default(작음)로 잘려서 응답 중간 끊김. Sonnet 4.6: 64k, Opus 4.6: 32k 한도까지.
+const MAX_OUTPUT: Record<Effort, number> = {
+  low: 64000,
+  medium: 64000,
+  high: 64000,
+  'extra-high': 32000,  // Opus 한도
+}
+function maxOutputFor(effort: Effort | string): number {
+  return MAX_OUTPUT[effort as Effort] ?? 32000
+}
+
 // OrchestrAI의 permission mode → Claude Agent SDK의 permissionMode로 매핑
 export type ClaudePermissionMode = 'ask' | 'auto-edit' | 'plan' | 'smart-auto'
 function sdkPermissionMode(m: ClaudePermissionMode): 'default' | 'acceptEdits' | 'plan' | 'bypassPermissions' {
@@ -123,6 +135,9 @@ export async function callClaude(
       maxThinkingTokens: thinkingBudgetFor(effort),
       cwd: vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? process.cwd(),
       env: subscriptionEnv(),
+      // SDK type 정의에 maxTokens 가 빠져있지만 cli.js 가 실제로 받음 (typedef outdated).
+      // 빼면 SDK default(8k)로 응답이 중간에 잘림 — Sonnet 4.6 한도 64k까지 사용.
+      ...({ maxTokens: maxOutputFor(effort) } as any),
     },
   })
 
