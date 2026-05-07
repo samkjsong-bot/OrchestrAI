@@ -3011,7 +3011,11 @@
     const latestChanged = [...messages].reverse().find(m => m.role === 'assistant' && m.changeSummary && m.changeSummary.files > 0)
     updateReviewBar(latestChanged?.changeSummary || null)
     applyModelFilter()
-    scrollIfNearBottom(container)
+    // rehydrate 직후엔 무조건 끝으로 스크롤 (reload 후 최상단에 위치하던 버그 fix).
+    // requestAnimationFrame x2 — innerHTML 채운 직후 layout 아직 안 끝나서 scrollHeight 0 인 timing 회피.
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      container.scrollTop = container.scrollHeight
+    }))
   }
 
   // ── 사용량 패널 ──
