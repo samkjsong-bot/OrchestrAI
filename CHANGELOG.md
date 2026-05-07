@@ -1,5 +1,27 @@
 # Changelog
 
+## v0.1.3 — 2026-05-07
+
+### Diagnostics
+- rehydrate 루프 per-item try/catch — 메시지 한 개가 throw 해도 나머지는 그림
+- 부분 실패 시 화면 상단에 빨간 에러 박스 표시 (silent fail 방지)
+- 전역 `window.error` 핸들러 추가 — 미잡힌 JS 에러도 화면에 즉시 노출
+
+## v0.1.2 — 2026-05-06
+
+### Fixed
+- **Reload Window 시 메시지 사라지는 버그**: 디스크엔 데이터 살아있지만 webview 가 빈 채로 시작하는 race condition
+  - host: `webviewReady` 받으면 push + 500ms / 1500ms 후 한 번씩 더 (idempotent)
+  - webview: 빈 rehydrate 가 화면을 지우지 않게 (이미 메시지 있으면 무시)
+  - webview→host `requestRehydrate` 역방향 safety net
+
+## v0.1.1 — 2026-05-06
+
+### Fixed
+- **응답 중간 cut-off 버그**: yaml/markdown 도중 잘림
+- 원인: SDK type definition 에 `maxTokens` 가 없어서 dead config 로 판단해 제거했는데, 실제 cli.js 는 받음
+- 복구 후 Sonnet 4.6 한도(64k) / Opus 4.6 한도(32k) 까지 사용
+
 ## v0.1.0 — 2026-05-03 (initial public release)
 
 ### 라우팅 모드 6+1
