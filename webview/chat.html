@@ -2210,10 +2210,17 @@
   }
 
   function renderMarkdown(raw) {
-    const normalized = normalizeToolActivities(raw)
+    // content 가 undefined / null / 비-string 이면 marked.parse 가 .replace() throw — 빈 문자열로 강제
+    const safe = (raw == null) ? '' : (typeof raw === 'string' ? raw : String(raw))
+    const normalized = normalizeToolActivities(safe)
     if (HAS_MARKED) {
-      const html = marked.parse(normalized)
-      return autoLinkifyPaths(html)
+      try {
+        const html = marked.parse(normalized)
+        return autoLinkifyPaths(html)
+      } catch (err) {
+        console.error('[orchestrai] marked.parse failed:', err, 'input length:', normalized.length)
+        // marked 실패해도 plain text 라도 렌더 — silent fail 안 됨
+      }
     }
     return normalized
       .replace(/&/g, '&amp;')
