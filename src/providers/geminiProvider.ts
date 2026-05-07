@@ -24,6 +24,13 @@ const IMAGE_RE = /<image name="([^"]*)" mime="([^"]*)">(data:[^<]+)<\/image>/g
 const esmImport = new Function('s', 'return import(s)') as (s: string) => Promise<any>
 
 let _cache: { streamText: any; provider: any } | null = null
+// 사용자가 입력한 Gemini API key 가 있으면 그쪽으로 호출 (한도 더 큼, 안정적). 없으면 OAuth tier.
+let _apiKey: string | null = null
+export function setGeminiApiKey(key: string | null) {
+  if (_apiKey === key) return
+  _apiKey = key
+  _cache = null  // provider 재생성 강제
+}
 
 async function loadGemini() {
   if (_cache) return _cache
@@ -31,7 +38,11 @@ async function loadGemini() {
     esmImport('ai'),
     esmImport('ai-sdk-provider-gemini-cli'),
   ])
-  const provider = geminiMod.createGeminiProvider({ authType: 'oauth-personal' })
+  // API key 있으면 그걸로 (Code Assist OAuth tier 보다 한도 큼, 안전 필터 동일하지만 RPM/RPD 여유)
+  const provider = _apiKey
+    ? geminiMod.createGeminiProvider({ authType: 'gemini-api-key', apiKey: _apiKey })
+    : geminiMod.createGeminiProvider({ authType: 'oauth-personal' })
+  log.info('gemini', `provider loaded with authType=${_apiKey ? 'gemini-api-key' : 'oauth-personal'}`)
   _cache = { streamText: aiMod.streamText, provider }
   return _cache
 }

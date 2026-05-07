@@ -10,7 +10,7 @@ import { callClaude, setClaudeFallbackNotifier } from './providers/claudeProvide
 import { callCodex, setCodexFallbackNotifier } from './providers/codexProvider'
 import { getCodexMcpClient, disposeCodexMcpClient } from './providers/codexMcpClient'
 import { OrchestrAICompletionProvider } from './providers/inlineCompletion'
-import { callGemini, setGeminiFallbackNotifier } from './providers/geminiProvider'
+import { callGemini, setGeminiFallbackNotifier, setGeminiApiKey } from './providers/geminiProvider'
 import { ChatMessage, RouterMode, RoutingDecision, Model, Effort, ChangeSummary } from './router/types'
 import { AuthStorage } from './auth/storage'
 import { ClaudeAuth } from './auth/claudeAuth'
@@ -942,6 +942,10 @@ class OrchestrAIViewProvider implements vscode.WebviewViewProvider, vscode.Dispo
     setCodexFallbackNotifier((from, to, reason) => {
       this._post({ type: 'modelFallback', from, to, reason, model: 'codex' })
     })
+
+    // 사용자가 입력한 Gemini API key 가 있으면 텍스트 호출 시 그쪽 사용 (Code Assist OAuth tier 보다 한도 큼).
+    // 이미지 생성 / RAG 인덱싱용으로만 쓰이던 거 텍스트에도 활용 — 사용자 추가 작업 0.
+    void this._authStorage.getGeminiApiKey().then(k => setGeminiApiKey(k ?? null))
 
     // 코드베이스 인덱스 로드 (이미 인덱싱돼있으면 즉시 사용 가능)
     const root = getWorkspaceRoot()
@@ -2175,6 +2179,7 @@ class OrchestrAIViewProvider implements vscode.WebviewViewProvider, vscode.Dispo
       }
       if (action.action === 'delete') {
         await this._authStorage.deleteGeminiApiKey()
+        setGeminiApiKey(null)
         vscode.window.showInformationMessage('Gemini API key deleted')
         return
       }
@@ -2188,7 +2193,8 @@ class OrchestrAIViewProvider implements vscode.WebviewViewProvider, vscode.Dispo
     })
     if (!key) return
     await this._authStorage.setGeminiApiKey(key.trim())
-    vscode.window.showInformationMessage('Gemini API key saved')
+    setGeminiApiKey(key.trim())
+    vscode.window.showInformationMessage('Gemini API key saved — 텍스트 호출에도 사용됩니다 (한도 ↑)')
   }
 
   // ── MCP 서버 관리 ──────────────────────────────
