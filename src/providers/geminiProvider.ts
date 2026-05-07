@@ -8,6 +8,7 @@ import { isQuotaError } from '../util/quota'
 
 // 무료 티어: Pro는 5 RPM·100 RPD로 빡빡, Flash는 10 RPM·500 RPD로 여유.
 // medium은 Flash로 두고 Pro는 high에서만. 429 뜨면 자동 Flash 폴백.
+// 2.5-flash 가 RESOURCE_EXHAUSTED 시 1.5-flash 로 한 번 더 시도 (1.5 가 capacity 더 안정적).
 const MODEL_BY_EFFORT: Record<Effort, string> = {
   low: 'gemini-2.5-flash',
   medium: 'gemini-2.5-flash',
@@ -15,6 +16,7 @@ const MODEL_BY_EFFORT: Record<Effort, string> = {
   'extra-high': 'gemini-2.5-pro',
 }
 const FALLBACK_MODEL = 'gemini-2.5-flash'
+const STABLE_FALLBACK_MODEL = 'gemini-1.5-flash'  // 2.5 둘 다 막혔을 때 최후의 보루
 const IMAGE_RE = /<image name="([^"]*)" mime="([^"]*)">(data:[^<]+)<\/image>/g
 
 // esbuild는 static import / 분석가능한 dynamic import를 require()로 치환함.
@@ -208,6 +210,15 @@ export async function callGemini(
     log.warn('gemini', `${primaryModel} empty response, falling back to ${FALLBACK_MODEL}`)
     _fallbackNotifier?.(primaryModel, FALLBACK_MODEL, 'empty response (safety filter?)')
     res = await runOnce(FALLBACK_MODEL, messages, onChunk, systemPrompt, abortSignal)
+  }
+
+  // 2.5-flash 까지 RESOURCE_EXHAUSTED / 빈 응답이면 1.5-flash 로 최후 시도 (1.5 가 capacity 더 안정적)
+  const stillFailing = res.error || !res.content
+  if (stillFailing) {
+    if (abortSignal?.aborted) throw new Error('aborted')
+    log.warn('gemini', `2.5 series exhausted, last-resort fallback to ${STABLE_FALLBACK_MODEL}`)
+    _fallbackNotifier?.(FALLBACK_MODEL, STABLE_FALLBACK_MODEL, '2.5 capacity exhausted, trying 1.5')
+    res = await runOnce(STABLE_FALLBACK_MODEL, messages, onChunk, systemPrompt, abortSignal)
   }
 
   if (res.error) {

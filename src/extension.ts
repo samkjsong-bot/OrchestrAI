@@ -683,23 +683,18 @@ When you can answer directly (skip delegation):
 - One-line trivial fixes you can do with Edit tool faster than describing it to Codex.
 - Status check / questions about your own prior reply.
 
-Output discipline (어기면 사용자 신뢰 박살):
-- Your OWN messages: brief plan (≤4 lines) → tool calls → ≤3 sentence final summary.
-- ABSOLUTE: Codex/Gemini outputs already render in THEIR OWN bubbles next to yours. NEVER paraphrase / summarize / quote their answer in your bubble. NEVER write lines like "[Codex] xxx" or "**[Gemini]** xxx" — those are ventriloquism. Each peer speaks in their own card.
-- Your final summary should be META-LEVEL only: "셋 다 토스트 계열로 모았다" / "코드 작성은 Codex 가 끝냄, 검증 OK" — NOT a recap of what each said. The user can read the peer bubbles themselves.
-- Tables comparing model picks ARE allowed (단순 표) but cells must NOT contain quoted peer reasoning — short labels only.
-- Each consult_codex(task) gets ONE focused job with concrete file paths + acceptance criteria. NOT the whole user message.
-- After Codex/Gemini finish, you may verify by reading files yourself, then close with a 1-2 line wrap-up.`
+Output style:
+- Brief plan → tool calls → short wrap-up.
+- Codex/Gemini answers render in their own bubbles next to yours, so don't repeat their full text — just a meta summary if needed ("Codex finished impl, Gemini agrees").
+- Each consult_codex(task) gets ONE focused job with concrete paths + acceptance criteria, not the whole user message.`
       : ''
 
   // argue 모드 힌트 (team은 아닐 때만)
   const argueBlock = !teamRole && (
     collabHint === 'reply'
-      ? `\n\nARGUE MODE —a peer model just answered the user's message above (tagged ${peerTagsList}). Add YOUR distinct angle: agree/disagree with reasoning, catch what they missed, offer an alternative. One concise take —no restating. Be direct.
-
-CRITICAL: Reference ONLY peer messages that actually appear in the history above (with ${peerTagsList} tags). If a peer is missing from the history, do NOT fabricate what they said. Mention only their absence if relevant ("Gemini didn't chime in this round"). NEVER invent quotes or positions for absent peers.`
+      ? `\n\nARGUE MODE — a peer just answered above. Add your own angle naturally: agree, disagree, build on it, whatever feels right. Keep it conversational and tight.`
       : collabHint === 'first'
-      ? `\n\nARGUE MODE —your peers (${peerNames}) will chime in after you on the same question. Give your best take first; they'll critique/extend. Keep it tight.`
+      ? `\n\nARGUE MODE — your peers (${peerNames}) will reply after you. Give your take, they'll respond.`
       : ''
   )
 
@@ -710,15 +705,9 @@ CRITICAL: Reference ONLY peer messages that actually appear in the history above
 CONTEXT YOU MUST KEEP IN MIND
 - The user runs Claude Max + ChatGPT Pro + Gemini (Google) subscriptions. OrchestrAI routes each request to whichever model fits the task best.
 - You are ${selfName}. Your peers are ${peerNames}. All three can appear in the same chat thread.
-- CRITICAL IDENTITY RULE: You are ${selfName} and ONLY ${selfName}. NEVER pretend to be ${peerNames}, even if the user names them ("써드파티")
-- Prior assistant messages may be prefixed ${selfTag} (you) or ${peerTagsList} (peers). Treat peer-tagged messages as prior turns in this same conversation —do NOT re-introduce yourself, do NOT repeat what a peer already said.
-
-ABSOLUTE OUTPUT RULE (어기면 사용자 신뢰 박살):
-1. Your reply is YOUR voice as ${selfName} only. Speak in first-person singular. Write raw text — no leading model tag, no role prefix.
-2. NEVER start lines with "[${selfName}]", "[Codex]", "[Gemini]", "[Claude]" or any other model tag. Those tags are added by the system at history-prefix time — they are NOT yours to write. If you write them, the user sees fake personas.
-3. NEVER write multi-persona scripts where you ventriloquize peers ("[Codex] 제육!", "[Gemini] 냉면!"). Even if the user begs, refuse and explain that other models must speak for themselves.
-4. NEVER fabricate or summarize what a peer said unless their ${peerTagsList}-tagged message actually appears in the history above. If a peer is missing (quota / error / not invoked), say "이 대화에서 X 모델 응답이 없습니다" — do NOT invent quotes for them.
-5. Even meta-confessions like "사실 내가 X 몫까지 채워 쓴 적 있음" are still hallucination — do NOT write them.
+- You are ${selfName}. Speak as yourself in first person. Don't pretend to be ${peerNames}.
+- Prior assistant messages in the history are wrapped in <prior_turn from="..."> ... </prior_turn> tags — that's a system meta-tag identifying who said what. Don't replicate that XML format in your output, just write plain text as yourself.
+- If user asks about a peer's opinion that isn't actually in the history, just say so honestly ("이 대화엔 X 응답이 없네요") — don't make up quotes. But you CAN naturally reference what's actually visible.
 - Rough division: Claude —architecture, multi-file refactoring, deep debugging, code review, nuanced reasoning. Codex —fast implementation, boilerplate, CLI, simple fixes. Gemini —long-context (whole codebase, big files), multimodal (images/PDFs/diagrams), summarization.
 - When asked "which model should I use?" —answer in terms of THIS three-model setup, do NOT give generic comparisons.${collabBlock}
 
@@ -2429,15 +2418,8 @@ class OrchestrAIViewProvider implements vscode.WebviewViewProvider, vscode.Dispo
     await this._persistMessages()
     this._post({ type: 'userMessage', message: userMsg })
 
-    // 'auto' 인데 사용자가 '셋 다' / '각자' / '돌아가며' 같이 멀티모델 답 요청한 거면 argue 자동 escalate.
-    // 이 경우 단일 모델한테 가면 그 모델이 다른 모델 흉내 (ventriloquism) 함.
-    const multiModelQuery = /\b(셋\s*다|모두|각자|차례로|돌아가며|round\s*robin|each\s+(?:model|of|one))\b.*?(말|얘기|답|의견|한마디|발언|반응|입장|say|speak|opinion|take|chime)/is.test(userText)
-                          || /(셋|3개|three).{0,10}(말풍선|버블|bubble|carded?)/i.test(userText)
-    let runtimeOverride = this._override
-    if (this._override === 'auto' && multiModelQuery) {
-      runtimeOverride = 'argue'
-      this._post({ type: 'toast', message: '🔀 멀티모델 요청 감지 → argue 모드로 자동 전환' })
-    }
+    // auto-argue escalate 는 비활성화 — 사용자 짜증 유발. 멀티모델 원하면 argue 버튼 직접 누르기.
+    const runtimeOverride = this._override
 
     // ── argue 모드: 로그인된 모델들이 라운드 로빈으로 서로 반박/보완 ──
     // 매 턴마다 Claude Haiku 판정이 0~10점 채점 → UI 스코어보드로 실시간 노출
@@ -3234,12 +3216,8 @@ PATH RULES: paths are relative to workspace root. Don't prefix with "${gWsBase}/
       routing: effectiveDecision,
       timestamp: Date.now(),
     }
-    // ventriloquism 후처리 — 모델이 [Peer] 라인을 본문에 적었으면 strip
-    const { sanitized, stripped } = stripVentriloquizedLines(result.content, effectiveDecision.model)
-    if (stripped) {
-      assistantMsg.content = sanitized
-      this._post({ type: 'finalizeContent', id: assistantMsgId, content: sanitized })
-    }
+    // strip 함수는 OFF — 본인 의견까지 지우는 부작용 더 컸음. 자연스러운 대화 우선.
+    // 다시 켜야 하면 stripVentriloquizedLines() 호출 복구.
     this._messages.push(assistantMsg)
     this._usage.record(effectiveDecision.model, result.inputTokens, result.outputTokens, this._inArgue)
     this._updateUsageStatusBar()
