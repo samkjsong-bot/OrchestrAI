@@ -16,7 +16,8 @@ const MODEL_BY_EFFORT: Record<Effort, string> = {
   'extra-high': 'gemini-2.5-pro',
 }
 const FALLBACK_MODEL = 'gemini-2.5-flash'
-const STABLE_FALLBACK_MODEL = 'gemini-1.5-flash'  // 2.5 둘 다 막혔을 때 최후의 보루
+// 2.5 둘 다 막혔을 때 최후의 보루 — gemini-1.5-flash 는 v1beta 에서 NOT_FOUND, 2.0-flash 가 안정.
+const STABLE_FALLBACK_MODEL = 'gemini-2.0-flash'
 const IMAGE_RE = /<image name="([^"]*)" mime="([^"]*)">(data:[^<]+)<\/image>/g
 
 // esbuild는 static import / 분석가능한 dynamic import를 require()로 치환함.
