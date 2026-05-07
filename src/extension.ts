@@ -654,10 +654,10 @@ function buildSystemPrompt(
   teamRole?: 'architect' | 'implementer' | 'reviewer',
 ): string {
   const selfName = modelLabel(model)
-  const selfTag = modelTag(model)
+  const selfTag = `<prior_turn from="${model}">`
   const peers: Model[] = (['claude', 'codex', 'gemini'] as Model[]).filter(m => m !== model)
   const peerNames = peers.map(modelLabel).join(' and ')
-  const peerTagsList = peers.map(modelTag).join(' / ')
+  const peerTagsList = peers.map(p => `<prior_turn from="${p}">`).join(' / ')
 
   // team 모드 역할별 지침 (teamRole이 지정됐을 때만)
   // 새 설계: Claude orchestrator가 consult_codex/consult_gemini/generate_image 툴로 동료에게 위임.

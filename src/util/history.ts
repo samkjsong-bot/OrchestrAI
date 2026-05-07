@@ -66,8 +66,12 @@ export function buildTaggedHistory(
         ).join('\n')}\n</attachments>`
       : ''
     if (m.role === 'assistant' && m.model) {
-      const tag = m.model === 'claude' ? '[Claude]' : m.model === 'codex' ? '[Codex]' : '[Gemini]'
-      return { role: 'assistant' as const, content: `${tag}\n${m.content}` }
+      // XML-like meta tag — 모델이 markdown heading 으로 인식 안 해서 자기 답에 따라 쓰지 않음.
+      // [Claude] / [Codex] / [Gemini] 형식은 Claude 가 학습 trigger 로 받아들여서 ventriloquize 했음.
+      return {
+        role: 'assistant' as const,
+        content: `<prior_turn from="${m.model}">\n${m.content}\n</prior_turn>`,
+      }
     }
     return { role: m.role as 'user' | 'assistant', content: `${m.content}${attachmentBlock}` }
   })
