@@ -56,8 +56,7 @@ node_modules/**/*.wasm.map
 node_modules/googleapis/**
 node_modules/googleapis-common/**
 node_modules/node-pty/**
-node_modules/tree-sitter-bash/**
-node_modules/web-tree-sitter/**
+# NOTE: tree-sitter / web-tree-sitter 는 @google/gemini-cli-core 가 동적 require 함 — 빼면 깨짐
 node_modules/@img/**
 # @opentelemetry: ai / @google/gemini-cli-core 가 @opentelemetry/api,
 # @opentelemetry/semantic-conventions 를 import 함. 둘 다 keep.
