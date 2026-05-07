@@ -2432,6 +2432,13 @@
         updateReviewBar(null)
         showToast('대화 초기화됐어요')
         break
+      case 'finalizeContent': {
+        // server 가 ventriloquism strip 등 후처리 후 최종 content 로 교체 요청
+        streamBuffers[msg.id] = msg.content
+        const target = document.getElementById(`content-${msg.id}`)
+        if (target) target.innerHTML = renderMarkdown(msg.content)
+        break
+      }
       case 'authStatus':
         updateAuthStatus(msg.claude, msg.codex, msg.gemini)
         break

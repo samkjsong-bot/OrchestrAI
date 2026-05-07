@@ -592,6 +592,48 @@ function modelTag(m: Model): string {
   return m === 'claude' ? '[Claude]' : m === 'codex' ? '[Codex]' : '[Gemini]'
 }
 
+// ventriloquism 후처리 — 모델이 답변 본문에 [Codex] / [Gemini] 같은 peer prefix 라인을 적었으면
+// 그 라인부터 다음 self prefix(또는 빈 라인)까지 제거. self prefix 자체도 제거 (시스템이 history 에 추가하니까).
+function stripVentriloquizedLines(content: string, selfModel: Model): { sanitized: string; stripped: boolean } {
+  const selfName = ({ claude: 'Claude', codex: 'Codex', gemini: 'Gemini' } as const)[selfModel]
+  // 라인 시작에 [ModelName] 또는 [Model → Other] 같은 헤더 검출
+  const tagRe = /^\s*\[\s*(Claude|Codex|Gemini)\s*(→\s*\w+\s*)?\]\s*/i
+  const lines = content.split('\n')
+  const out: string[] = []
+  let dropping = false
+  let stripped = false
+  for (const line of lines) {
+    const m = line.match(tagRe)
+    if (m) {
+      const detected = m[1].toLowerCase()
+      if (detected !== selfName.toLowerCase()) {
+        dropping = true
+        stripped = true
+        continue
+      } else {
+        // 본인 prefix 라인 — prefix 만 제거하고 나머지 유지
+        dropping = false
+        out.push(line.replace(tagRe, '').trimStart())
+        continue
+      }
+    }
+    if (dropping) {
+      // 빈 라인 또는 markdown 구분선 만나면 dropping 해제 (다음 paragraph 부터 다시 본인 발언으로 간주)
+      if (/^\s*$/.test(line) || /^[-=_]{3,}\s*$/.test(line)) {
+        dropping = false
+      }
+      continue
+    }
+    out.push(line)
+  }
+  let sanitized = out.join('\n').trim()
+  if (stripped) {
+    sanitized += '\n\n> ⚠ 다른 모델 발언 부분은 자동 제거됨 — 셋 다 답을 원하면 argue/team 모드를 쓰세요.'
+  }
+  if (!sanitized) sanitized = content  // 전부 strip 됐으면 원본 보존 (안전망)
+  return { sanitized, stripped }
+}
+
 function buildSystemPrompt(
   ctx: FileContext | null,
   model: Model = 'claude',
@@ -2280,9 +2322,19 @@ class OrchestrAIViewProvider implements vscode.WebviewViewProvider, vscode.Dispo
     await this._persistMessages()
     this._post({ type: 'userMessage', message: userMsg })
 
+    // 'auto' 인데 사용자가 '셋 다' / '각자' / '돌아가며' 같이 멀티모델 답 요청한 거면 argue 자동 escalate.
+    // 이 경우 단일 모델한테 가면 그 모델이 다른 모델 흉내 (ventriloquism) 함.
+    const multiModelQuery = /\b(셋\s*다|모두|각자|차례로|돌아가며|round\s*robin|each\s+(?:model|of|one))\b.*?(말|얘기|답|의견|한마디|발언|반응|입장|say|speak|opinion|take|chime)/is.test(userText)
+                          || /(셋|3개|three).{0,10}(말풍선|버블|bubble|carded?)/i.test(userText)
+    let runtimeOverride = this._override
+    if (this._override === 'auto' && multiModelQuery) {
+      runtimeOverride = 'argue'
+      this._post({ type: 'toast', message: '🔀 멀티모델 요청 감지 → argue 모드로 자동 전환' })
+    }
+
     // ── argue 모드: 로그인된 모델들이 라운드 로빈으로 서로 반박/보완 ──
     // 매 턴마다 Claude Haiku 판정이 0~10점 채점 → UI 스코어보드로 실시간 노출
-    if (this._override === 'argue') {
+    if (runtimeOverride === 'argue') {
       const status = await this._authStorage.getStatus()
       const order: Model[] = []
       if (status.claude) order.push('claude')
@@ -3074,6 +3126,12 @@ PATH RULES: paths are relative to workspace root. Don't prefix with "${gWsBase}/
       tokens: result.inputTokens + result.outputTokens,
       routing: effectiveDecision,
       timestamp: Date.now(),
+    }
+    // ventriloquism 후처리 — 모델이 [Peer] 라인을 본문에 적었으면 strip
+    const { sanitized, stripped } = stripVentriloquizedLines(result.content, effectiveDecision.model)
+    if (stripped) {
+      assistantMsg.content = sanitized
+      this._post({ type: 'finalizeContent', id: assistantMsgId, content: sanitized })
     }
     this._messages.push(assistantMsg)
     this._usage.record(effectiveDecision.model, result.inputTokens, result.outputTokens, this._inArgue)
