@@ -639,7 +639,9 @@ Output discipline:
   // argue 모드 힌트 (team은 아닐 때만)
   const argueBlock = !teamRole && (
     collabHint === 'reply'
-      ? `\n\nARGUE MODE —a peer model just answered the user's message above (tagged ${peerTagsList}). Add YOUR distinct angle: agree/disagree with reasoning, catch what they missed, offer an alternative. One concise take —no restating. Be direct.`
+      ? `\n\nARGUE MODE —a peer model just answered the user's message above (tagged ${peerTagsList}). Add YOUR distinct angle: agree/disagree with reasoning, catch what they missed, offer an alternative. One concise take —no restating. Be direct.
+
+CRITICAL: Reference ONLY peer messages that actually appear in the history above (with ${peerTagsList} tags). If a peer is missing from the history, do NOT fabricate what they said. Mention only their absence if relevant ("Gemini didn't chime in this round"). NEVER invent quotes or positions for absent peers.`
       : collabHint === 'first'
       ? `\n\nARGUE MODE —your peers (${peerNames}) will chime in after you on the same question. Give your best take first; they'll critique/extend. Keep it tight.`
       : ''
@@ -654,6 +656,7 @@ CONTEXT YOU MUST KEEP IN MIND
 - You are ${selfName}. Your peers are ${peerNames}. All three can appear in the same chat thread.
 - CRITICAL IDENTITY RULE: You are ${selfName} and ONLY ${selfName}. NEVER pretend to be ${peerNames}, even if the user names them ("써드파티")
 - Prior assistant messages may be prefixed ${selfTag} (you) or ${peerTagsList} (peers). Treat peer-tagged messages as prior turns in this same conversation —do NOT re-introduce yourself, do NOT repeat what a peer already said.
+- ANTI-HALLUCINATION RULE (전체 모드 공통): NEVER fabricate or summarize what a peer said unless their ${peerTagsList}-tagged message actually appears in the history above. If the user asks "Codex/Gemini는 뭐라고 했어?" and that peer's turn is not visible in the history, say so explicitly ("이 대화에서 X 모델 응답이 없습니다") instead of inventing quotes. Even if a peer was attempted but failed (quota/error), do NOT make up what they would have said.
 - Rough division: Claude —architecture, multi-file refactoring, deep debugging, code review, nuanced reasoning. Codex —fast implementation, boilerplate, CLI, simple fixes. Gemini —long-context (whole codebase, big files), multimodal (images/PDFs/diagrams), summarization.
 - When asked "which model should I use?" —answer in terms of THIS three-model setup, do NOT give generic comparisons.${collabBlock}
 
@@ -2309,7 +2312,8 @@ class OrchestrAIViewProvider implements vscode.WebviewViewProvider, vscode.Dispo
         }
         this._postRoutingDecision(decision)
         const prevLen = this._messages.length
-        const ok = await this._runTurn(decision, fileCtx, i === 0 ? 'first' : 'reply', userMsg.id)
+        // argue 는 모델 분담이 의미 — fallback 으로 다른 모델이 답하면 hallucination 유발 → noFallback
+        const ok = await this._runTurn(decision, fileCtx, i === 0 ? 'first' : 'reply', userMsg.id, undefined, true)
         if (!ok) {
           // 다른 모델은 계속 돌려야 하니 여기 break 안 하고 그 모델만 스킵
           skippedModels.add(model)
@@ -2789,9 +2793,10 @@ class OrchestrAIViewProvider implements vscode.WebviewViewProvider, vscode.Dispo
     collabHint?: 'first' | 'reply',
     turnId?: string,
     teamRole?: 'architect' | 'implementer' | 'reviewer',
+    noFallback = false,  // argue 모드 같이 모델 분담이 의미 있는 흐름에선 fallback 끄고 그 모델만 시도
   ): Promise<boolean> {
-    // 쿼터 파산 시 폴백할 모델 순서 (primary가 맨 앞)
-    const fallbackChain = await this._buildFallbackChain(decision.model)
+    // 쿼터 파산 시 폴백할 모델 순서 (primary가 맨 앞). noFallback 이면 자기 자신만.
+    const fallbackChain = noFallback ? [decision.model] : await this._buildFallbackChain(decision.model)
     if (fallbackChain.length === 0) {
       const msgId = Date.now().toString()
       this._post({ type: 'streamStart', id: msgId, decision })
