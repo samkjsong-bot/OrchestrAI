@@ -2914,6 +2914,13 @@ After files are written, reply with concise summary (file paths + what changed).
                     turnId,
                   )
                   this._post({ type: 'streamEnd', id: consultId, tokens: r.outputTokens, actualModel: consultDecision.actualModel })
+                  // disk persist — reload 후에도 consult 답변 살아있게
+                  this._messages.push({
+                    id: consultId, role: 'assistant', content: r.content,
+                    model: 'codex', effort: 'medium', actualModel: consultDecision.actualModel,
+                    routing: consultDecision, tokens: r.outputTokens, timestamp: Date.now(),
+                  })
+                  await this._persistMessages()
                   return r
                 } catch (err) {
                   this._post({ type: 'streamError', id: consultId, error: err instanceof Error ? err.message : String(err) })
@@ -2944,6 +2951,12 @@ PATH RULES: paths are relative to workspace root. Don't prefix with "${gWsBase}/
                     turnId,
                   )
                   this._post({ type: 'streamEnd', id: consultId, tokens: r.outputTokens, actualModel: consultDecision.actualModel })
+                  this._messages.push({
+                    id: consultId, role: 'assistant', content: r.content,
+                    model: 'gemini', effort: 'medium', actualModel: consultDecision.actualModel,
+                    routing: consultDecision, tokens: r.outputTokens, timestamp: Date.now(),
+                  })
+                  await this._persistMessages()
                   return r
                 } catch (err) {
                   this._post({ type: 'streamError', id: consultId, error: err instanceof Error ? err.message : String(err) })
