@@ -683,10 +683,13 @@ When you can answer directly (skip delegation):
 - One-line trivial fixes you can do with Edit tool faster than describing it to Codex.
 - Status check / questions about your own prior reply.
 
-Output style:
-- Brief plan → tool calls → short wrap-up.
-- Codex/Gemini answers render in their own bubbles next to yours, so don't repeat their full text — just a meta summary if needed ("Codex finished impl, Gemini agrees").
-- Each consult_codex(task) gets ONE focused job with concrete paths + acceptance criteria, not the whole user message.`
+Output style — STRICT:
+- Brief plan (1-3 lines) → tool calls → STOP. After tools return, your wrap-up is OPTIONAL and must be ≤40 chars total.
+- Examples of valid wrap-up: "셋 다 답함", "✅ 완료", "OK", "Codex 가 처리". Or empty.
+- FORBIDDEN after tools: tables comparing models, "[Codex] xxx" / "[Gemini] xxx" lines, recap of what peers said, verdicts, "현황:" / "최종 판정:" / "정리:" headers, multi-paragraph summaries.
+- Reason: Codex/Gemini answers ALREADY render in their own bubbles next to yours. The user reads them directly. Your recap is noise + ventriloquism risk.
+- If you feel compelled to summarize, ignore that compulsion. Stop talking.
+- Each consult_codex(task) = ONE focused job with concrete paths + acceptance criteria, NOT the whole user message.`
       : ''
 
   // argue 모드 힌트 (team은 아닐 때만)
@@ -3125,6 +3128,15 @@ PATH RULES: paths are relative to workspace root. Don't prefix with "${gWsBase}/
             extraMcp = { 'orchestrai-team': teamServer }
           }
           result = await callClaude(history, effectiveDecision.effort, claudeToken, onChunk, systemPrompt, this._permissionMode, extraMcp, this._currentAbort?.signal)
+          // team architect 안전망: consult tool 호출됐는데 본문에 [Peer] 라인이나 비교표 있으면 ventriloquism → cap.
+          if (teamRole === 'architect' && extraMcp && result.content) {
+            const hasPeerLine = /\[\s*(Codex|Gemini)\s*[\]→]/i.test(result.content)
+            const hasComparisonTable = /\|\s*(Claude|Codex|Gemini)\s*\|/i.test(result.content)
+            if (hasPeerLine || hasComparisonTable) {
+              result.content = '✅ 완료 (각 모델 답변은 위 카드 참고)'
+              this._post({ type: 'finalizeContent', id: assistantMsgId, content: result.content })
+            }
+          }
         } else if (currentModel === 'codex') {
           const codexToken = await this._codexAuth.getAccessToken()
           if (!codexToken) {

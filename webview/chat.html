@@ -2219,14 +2219,41 @@
         return autoLinkifyPaths(html)
       } catch (err) {
         console.error('[orchestrai] marked.parse failed:', err, 'input length:', normalized.length)
-        // marked 실패해도 plain text 라도 렌더 — silent fail 안 됨
+        // marked 실패해도 핵심 markdown 은 살리기 — bold / italic / inline code / fenced code / 줄바꿈
       }
     }
-    return normalized
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-      .replace(/\n/g, '<br>')
+    return manualMarkdownFallback(normalized)
+  }
+
+  // marked.js 가 실패했을 때 또는 라이브러리 미로드 시 — 수동 markdown 처리.
+  // bold/italic/code/codeblock 정도는 보존해야 사용자가 의도한 포맷 일부라도 보임.
+  function manualMarkdownFallback(text) {
+    // 1) fenced code block 먼저 (다른 처리 보호하려고 placeholder 로 빼둠)
+    const codeBlocks = []
+    text = text.replace(/```(\w*)\n?([\s\S]*?)```/g, (_, lang, body) => {
+      codeBlocks.push(`<pre><code>${escapeHtml(body)}</code></pre>`)
+      return ` CB${codeBlocks.length - 1} `
+    })
+    // 2) inline code
+    const inlineCodes = []
+    text = text.replace(/`([^`\n]+)`/g, (_, body) => {
+      inlineCodes.push(`<code>${escapeHtml(body)}</code>`)
+      return ` IC${inlineCodes.length - 1} `
+    })
+    // 3) escape rest
+    let html = escapeHtml(text)
+    // 4) bold / italic (간단 ** _ * 만)
+    html = html
+      .replace(/\*\*([^*\n]+)\*\*/g, '<strong>$1</strong>')
+      .replace(/\*([^*\n]+)\*/g, '<em>$1</em>')
+    // 5) headings (간단)
+    html = html.replace(/^(#{1,6})\s+(.+)$/gm, (_, hashes, body) => `<h${hashes.length}>${body}</h${hashes.length}>`)
+    // 6) line break
+    html = html.replace(/\n/g, '<br>')
+    // 7) restore code blocks / inline code
+    html = html.replace(/ CB(\d+) /g, (_, i) => codeBlocks[+i])
+    html = html.replace(/ IC(\d+) /g, (_, i) => inlineCodes[+i])
+    return html
   }
 
   // <code> 태그 안 또는 plain text의 파일 경로 (예: src/foo.ts, test/index.html, app/main.py:42)를
