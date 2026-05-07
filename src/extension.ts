@@ -596,8 +596,8 @@ function modelTag(m: Model): string {
 // 그 라인부터 다음 self prefix(또는 빈 라인)까지 제거. self prefix 자체도 제거 (시스템이 history 에 추가하니까).
 function stripVentriloquizedLines(content: string, selfModel: Model): { sanitized: string; stripped: boolean } {
   const selfName = ({ claude: 'Claude', codex: 'Codex', gemini: 'Gemini' } as const)[selfModel]
-  // 라인 시작에 [ModelName] 또는 [Model → Other] 같은 헤더 검출
-  const tagRe = /^\s*\[\s*(Claude|Codex|Gemini)\s*(→\s*\w+\s*)?\]\s*/i
+  // 라인 시작에 [ModelName] 또는 **[ModelName]** (markdown bold) 또는 [Model → Other] 같은 헤더 검출
+  const tagRe = /^\s*[*_`]{0,4}\s*\[\s*(Claude|Codex|Gemini)\s*(→\s*\w+\s*)?\]\s*[*_`]{0,4}\s*/i
   const lines = content.split('\n')
   const out: string[] = []
   let dropping = false
@@ -672,8 +672,11 @@ When you can answer directly (skip delegation):
 - One-line trivial fixes you can do with Edit tool faster than describing it to Codex.
 - Status check / questions about your own prior reply.
 
-Output discipline:
-- Your OWN messages: brief plan (≤4 lines) → tool calls → ≤3 sentence final summary. Codex/Gemini outputs are shown to the user in their OWN bubbles, do NOT repeat their content in your message.
+Output discipline (어기면 사용자 신뢰 박살):
+- Your OWN messages: brief plan (≤4 lines) → tool calls → ≤3 sentence final summary.
+- ABSOLUTE: Codex/Gemini outputs already render in THEIR OWN bubbles next to yours. NEVER paraphrase / summarize / quote their answer in your bubble. NEVER write lines like "[Codex] xxx" or "**[Gemini]** xxx" — those are ventriloquism. Each peer speaks in their own card.
+- Your final summary should be META-LEVEL only: "셋 다 토스트 계열로 모았다" / "코드 작성은 Codex 가 끝냄, 검증 OK" — NOT a recap of what each said. The user can read the peer bubbles themselves.
+- Tables comparing model picks ARE allowed (단순 표) but cells must NOT contain quoted peer reasoning — short labels only.
 - Each consult_codex(task) gets ONE focused job with concrete file paths + acceptance criteria. NOT the whole user message.
 - After Codex/Gemini finish, you may verify by reading files yourself, then close with a 1-2 line wrap-up.`
       : ''
