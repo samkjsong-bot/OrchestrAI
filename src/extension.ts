@@ -3128,15 +3128,8 @@ PATH RULES: paths are relative to workspace root. Don't prefix with "${gWsBase}/
             extraMcp = { 'orchestrai-team': teamServer }
           }
           result = await callClaude(history, effectiveDecision.effort, claudeToken, onChunk, systemPrompt, this._permissionMode, extraMcp, this._currentAbort?.signal)
-          // team architect 안전망: consult tool 호출됐는데 본문에 [Peer] 라인이나 비교표 있으면 ventriloquism → cap.
-          if (teamRole === 'architect' && extraMcp && result.content) {
-            const hasPeerLine = /\[\s*(Codex|Gemini)\s*[\]→]/i.test(result.content)
-            const hasComparisonTable = /\|\s*(Claude|Codex|Gemini)\s*\|/i.test(result.content)
-            if (hasPeerLine || hasComparisonTable) {
-              result.content = '✅ 완료 (각 모델 답변은 위 카드 참고)'
-              this._post({ type: 'finalizeContent', id: assistantMsgId, content: result.content })
-            }
-          }
+          // 안전망 OFF — '✅ 완료' 로 강제 교체하니 Claude 가 진짜 답한 내용까지 다 사라지는 부작용.
+          // ventriloquize 자체는 거슬리지만 빈 답보단 차라리 raw 가 낫다 (사용자: '하네스 풀어').
         } else if (currentModel === 'codex') {
           const codexToken = await this._codexAuth.getAccessToken()
           if (!codexToken) {
