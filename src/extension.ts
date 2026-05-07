@@ -1287,23 +1287,24 @@ class OrchestrAIViewProvider implements vscode.WebviewViewProvider, vscode.Dispo
     }
     const lines: string[] = []
 
-    // Claude — Anthropic OAuth JWT
+    // Claude — Claude Code CLI 가 ~/.claude/.credentials.json 에 OAuth 저장
     try {
-      const tok = await this._claudeAuth.getAccessToken()
-      if (tok) {
-        const claims = decodeJwt(tok)
+      const credsPath = path.join(process.env.USERPROFILE || process.env.HOME || '', '.claude', '.credentials.json')
+      if (fs.existsSync(credsPath)) {
+        const creds = JSON.parse(fs.readFileSync(credsPath, 'utf8'))
+        const oauth = creds.claudeAiOauth ?? {}
+        const claims = decodeJwt(oauth.accessToken ?? '')
         const email = claims?.email ?? claims?.['https://anthropic.com/email'] ?? '(이메일 정보 없음)'
-        // Anthropic JWT 의 plan/tier claim 시도 — 정확한 키명은 비공개라 후보 다 시도
-        const plan = claims?.['https://anthropic.com/plan']
-                   ?? claims?.['plan']
-                   ?? claims?.['https://anthropic.com/subscription_tier']
-                   ?? claims?.['organization']?.plan
-                   ?? '(플랜 정보 미노출 — 토큰에 포함 안 됨)'
+        const plan = oauth.subscriptionType ?? '(플랜 정보 없음)'
+        const rateTier = oauth.rateLimitTier ?? '(rate tier 없음)'
+        const orgUuid = creds.organizationUuid ? creds.organizationUuid.slice(0, 8) + '...' : '-'
         lines.push(`✅ **Claude** (Anthropic OAuth)`)
         lines.push(`   이메일: ${email}`)
         lines.push(`   플랜: ${plan}`)
+        lines.push(`   Rate limit tier: ${rateTier}`)
+        lines.push(`   Organization: ${orgUuid}`)
       } else {
-        lines.push(`❌ **Claude** — 로그인 안 됨`)
+        lines.push(`❌ **Claude** — \`~/.claude/.credentials.json\` 없음. \`claude\` CLI 설치/로그인 필요`)
       }
     } catch (err) {
       lines.push(`⚠ Claude 정보 조회 실패: ${err instanceof Error ? err.message : err}`)
@@ -2124,6 +2125,8 @@ class OrchestrAIViewProvider implements vscode.WebviewViewProvider, vscode.Dispo
   private async _showAccountSubmenu() {
     const status = await this._authStorage.getStatus()
     const items: Array<vscode.QuickPickItem & { action: string }> = [
+      { label: '$(info) 계정 정보 보기', description: '이메일·플랜 표시', action: 'viewInfo' },
+      { label: '', kind: vscode.QuickPickItemKind.Separator, action: '' } as any,
       status.claude
         ? { label: 'Claude logout', description: 'Connected', action: 'logoutClaude' }
         : { label: 'Claude login', description: 'Use local Claude Code auth', action: 'loginClaude' },
@@ -2138,6 +2141,7 @@ class OrchestrAIViewProvider implements vscode.WebviewViewProvider, vscode.Dispo
     const picked = await vscode.window.showQuickPick(items, { title: 'OrchestrAI 계정' })
     if (!picked) return
     switch (picked.action) {
+      case 'viewInfo':     await this.showAccounts();        break
       case 'loginClaude':  await this._claudeAuth.login();  break
       case 'logoutClaude': await this._claudeAuth.logout(); break
       case 'loginCodex':   await this._codexAuth.login();   break
