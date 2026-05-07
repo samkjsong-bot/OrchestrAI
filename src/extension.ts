@@ -592,41 +592,52 @@ function modelTag(m: Model): string {
   return m === 'claude' ? '[Claude]' : m === 'codex' ? '[Codex]' : '[Gemini]'
 }
 
-// ventriloquism 후처리 — 모델이 답변 본문에 [Codex] / [Gemini] 같은 peer prefix 라인을 적었으면
-// 그 라인부터 다음 self prefix(또는 빈 라인)까지 제거. self prefix 자체도 제거 (시스템이 history 에 추가하니까).
+// ventriloquism 후처리 — 라인 시작뿐 아니라 inline 도 잡음.
+// "blah blah **[Codex]** xxx **[Gemini]** yyy" 같은 한 줄 형식도 처리.
+// 알고리즘: tag 매치 위치로 content split → self segment / peer segment 분리 → peer 만 drop.
 function stripVentriloquizedLines(content: string, selfModel: Model): { sanitized: string; stripped: boolean } {
-  const selfName = ({ claude: 'Claude', codex: 'Codex', gemini: 'Gemini' } as const)[selfModel]
-  // 라인 시작에 [ModelName] 또는 **[ModelName]** (markdown bold) 또는 [Model → Other] 같은 헤더 검출
-  const tagRe = /^\s*[*_`]{0,4}\s*\[\s*(Claude|Codex|Gemini)\s*(→\s*\w+\s*)?\]\s*[*_`]{0,4}\s*/i
-  const lines = content.split('\n')
-  const out: string[] = []
-  let dropping = false
-  let stripped = false
-  for (const line of lines) {
-    const m = line.match(tagRe)
-    if (m) {
-      const detected = m[1].toLowerCase()
-      if (detected !== selfName.toLowerCase()) {
-        dropping = true
-        stripped = true
-        continue
-      } else {
-        // 본인 prefix 라인 — prefix 만 제거하고 나머지 유지
-        dropping = false
-        out.push(line.replace(tagRe, '').trimStart())
-        continue
-      }
+  const selfName = ({ claude: 'Claude', codex: 'Codex', gemini: 'Gemini' } as const)[selfModel].toLowerCase()
+  // 인라인 매치 — 라인 시작 ^ 강제 안 함. markdown bold/italic/code 변형도 같이.
+  const tagRe = /[*_`]{0,4}\s*\[\s*(Claude|Codex|Gemini)\s*(?:→\s*\w+\s*)?\]\s*[*_`]{0,4}/gi
+
+  type Seg = { model: string | null; text: string }
+  const segs: Seg[] = []
+  let lastIdx = 0
+  let m: RegExpExecArray | null
+  let firstHead = ''
+  while ((m = tagRe.exec(content)) !== null) {
+    const before = content.slice(lastIdx, m.index)
+    if (segs.length === 0) {
+      // 첫 tag 이전 텍스트 — 누가 말한 건지 명확하지 않지만 본인 발언으로 간주 (보존)
+      firstHead = before
+    } else {
+      segs[segs.length - 1].text += before
     }
-    if (dropping) {
-      // 빈 라인 또는 markdown 구분선 만나면 dropping 해제 (다음 paragraph 부터 다시 본인 발언으로 간주)
-      if (/^\s*$/.test(line) || /^[-=_]{3,}\s*$/.test(line)) {
-        dropping = false
-      }
-      continue
-    }
-    out.push(line)
+    segs.push({ model: m[1].toLowerCase(), text: '' })
+    lastIdx = m.index + m[0].length
   }
-  let sanitized = out.join('\n').trim()
+  // 마지막 tail
+  if (segs.length > 0) segs[segs.length - 1].text += content.slice(lastIdx)
+
+  if (segs.length === 0) {
+    // tag 자체 없음 → 원본 그대로
+    return { sanitized: content, stripped: false }
+  }
+
+  const out: string[] = []
+  if (firstHead.trim()) out.push(firstHead.trim())
+  let stripped = false
+  for (const seg of segs) {
+    if (seg.model === selfName) {
+      // 본인 발언 — 본문만 keep (tag 자체는 drop)
+      const t = seg.text.trim()
+      if (t) out.push(t)
+    } else {
+      // peer ventriloquism → drop
+      stripped = true
+    }
+  }
+  let sanitized = out.join('\n\n').trim()
   if (stripped) {
     sanitized += '\n\n> ⚠ 다른 모델 발언 부분은 자동 제거됨 — 셋 다 답을 원하면 argue/team 모드를 쓰세요.'
   }
