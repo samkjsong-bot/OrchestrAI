@@ -109,6 +109,10 @@
       {
         "command": "orchestrai.restoreArchive",
         "title": "OrchestrAI: 이전 대화 복원"
+      },
+      {
+        "command": "orchestrai.showAccounts",
+        "title": "OrchestrAI: 로그인 계정 정보 보기"
       }
     ],
     "viewsContainers": {

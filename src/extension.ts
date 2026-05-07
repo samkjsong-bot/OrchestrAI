@@ -1276,6 +1276,95 @@ class OrchestrAIViewProvider implements vscode.WebviewViewProvider, vscode.Dispo
     this._updateUsageStatusBar()
   }
 
+  // 현재 로그인된 LLM 계정 정보 표시 — 이메일·플랜 등 토큰에서 디코드 가능한 정보
+  async showAccounts() {
+    const decodeJwt = (token: string): any => {
+      try {
+        const parts = token.split('.')
+        if (parts.length < 2) return null
+        return JSON.parse(Buffer.from(parts[1], 'base64url').toString('utf8'))
+      } catch { return null }
+    }
+    const lines: string[] = []
+
+    // Claude — Anthropic OAuth JWT
+    try {
+      const tok = await this._claudeAuth.getAccessToken()
+      if (tok) {
+        const claims = decodeJwt(tok)
+        const email = claims?.email ?? claims?.['https://anthropic.com/email'] ?? '(이메일 정보 없음)'
+        // Anthropic JWT 의 plan/tier claim 시도 — 정확한 키명은 비공개라 후보 다 시도
+        const plan = claims?.['https://anthropic.com/plan']
+                   ?? claims?.['plan']
+                   ?? claims?.['https://anthropic.com/subscription_tier']
+                   ?? claims?.['organization']?.plan
+                   ?? '(플랜 정보 미노출 — 토큰에 포함 안 됨)'
+        lines.push(`✅ **Claude** (Anthropic OAuth)`)
+        lines.push(`   이메일: ${email}`)
+        lines.push(`   플랜: ${plan}`)
+      } else {
+        lines.push(`❌ **Claude** — 로그인 안 됨`)
+      }
+    } catch (err) {
+      lines.push(`⚠ Claude 정보 조회 실패: ${err instanceof Error ? err.message : err}`)
+    }
+
+    // Codex — ChatGPT OAuth (OpenAI JWT 에 profile namespace claim)
+    try {
+      const tok = await this._codexAuth.getAccessToken()
+      const accountId = await this._codexAuth.getAccountId()
+      if (tok) {
+        const claims = decodeJwt(tok)
+        const profile = claims?.['https://api.openai.com/profile'] ?? {}
+        const auth = claims?.['https://api.openai.com/auth'] ?? {}
+        const email = profile.email ?? claims?.email ?? '(이메일 정보 없음)'
+        const plan = auth.chatgpt_plan_type ?? auth.plan_type ?? auth.plan ?? '(플랜 정보 없음)'
+        lines.push(``)
+        lines.push(`✅ **Codex** (ChatGPT OAuth)`)
+        lines.push(`   이메일: ${email}`)
+        lines.push(`   플랜: ${plan}`)
+        if (accountId) lines.push(`   계정 ID: ${accountId.slice(0, 12)}...`)
+      } else {
+        lines.push(``)
+        lines.push(`❌ **Codex** — 로그인 안 됨`)
+      }
+    } catch (err) {
+      lines.push(`⚠ Codex 정보 조회 실패: ${err instanceof Error ? err.message : err}`)
+    }
+
+    // Gemini — gemini-cli 가 ~/.gemini/oauth_creds.json 에 저장. id_token JWT 에 email
+    try {
+      const loggedIn = await this._geminiAuth.isLoggedIn()
+      if (loggedIn) {
+        const credsPath = path.join(process.env.USERPROFILE || process.env.HOME || '', '.gemini', 'oauth_creds.json')
+        let email = '(이메일 정보 없음)'
+        try {
+          if (fs.existsSync(credsPath)) {
+            const creds = JSON.parse(fs.readFileSync(credsPath, 'utf8'))
+            const claims = decodeJwt(creds.id_token ?? '')
+            email = claims?.email ?? '(id_token 디코드 실패)'
+          }
+        } catch {}
+        lines.push(``)
+        lines.push(`✅ **Gemini** (Google OAuth — gemini-cli 무료 tier)`)
+        lines.push(`   이메일: ${email}`)
+        lines.push(`   플랜: oauth-personal (무료 tier, 안전 필터 BLOCK_NONE 불가)`)
+      } else {
+        lines.push(``)
+        lines.push(`❌ **Gemini** — 로그인 안 됨`)
+      }
+    } catch (err) {
+      lines.push(`⚠ Gemini 정보 조회 실패: ${err instanceof Error ? err.message : err}`)
+    }
+
+    // 결과 — 별도 unsaved markdown 문서로 보여주기 (긴 내용 + 복사 가능)
+    const doc = await vscode.workspace.openTextDocument({
+      content: `# OrchestrAI 로그인 계정\n\n` + lines.join('\n') + '\n',
+      language: 'markdown',
+    })
+    await vscode.window.showTextDocument(doc, { preview: true, viewColumn: vscode.ViewColumn.Beside })
+  }
+
   // 아카이브 폴더 열기 — 파일 탐색기로
   async openArchives() {
     const file = chatStateFilePath(this._context)
@@ -3748,6 +3837,7 @@ export function activate(context: vscode.ExtensionContext) {
     vscode.commands.registerCommand('orchestrai.openArchives', () => provider.openArchives()),
     vscode.commands.registerCommand('orchestrai.restoreArchive', () => provider.restoreArchive()),
     vscode.commands.registerCommand('orchestrai.indexCodebase', () => provider.indexCodebase()),
+    vscode.commands.registerCommand('orchestrai.showAccounts', () => provider.showAccounts()),
     provider,
   )
 
