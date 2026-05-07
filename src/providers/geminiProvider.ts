@@ -79,6 +79,19 @@ async function runOnce(
     messages: messages.map(toGeminiMessage),
     abortSignal,
     maxOutputTokens: 65536,  // Gemini 2.5 한도까지 — 한 턴에 큰 프로그램도
+    // safetySettings 강제 주입 시도 — ai-sdk-provider-gemini-cli 가 노출 안 하지만 underlying 까지 떠넘겨봄.
+    // 작동하면 평범한 query 도 빈 응답 안 됨 / 작동 안 해도 부작용 없음.
+    providerOptions: {
+      gemini: {
+        safetySettings: [
+          { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_NONE' },
+          { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'BLOCK_NONE' },
+          { category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT', threshold: 'BLOCK_NONE' },
+          { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_NONE' },
+          { category: 'HARM_CATEGORY_CIVIC_INTEGRITY', threshold: 'BLOCK_NONE' },
+        ],
+      },
+    } as any,
     onError: ({ error }: { error: unknown }) => {
       console.error('[Gemini streamText error]', error)
     },
