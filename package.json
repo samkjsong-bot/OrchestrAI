@@ -224,6 +224,42 @@
           ],
           "description": "Codex 호출 엔진 선택. native = OpenAI 공식 codex.exe (권장), legacy = 우리 자체 fetch 구현."
         },
+        "orchestrai.customProviders": {
+          "type": "array",
+          "default": [],
+          "description": "OpenAI 호환 API 엔드포인트 (LM Studio / Ollama / OpenRouter / vLLM / Together / 자체 호스팅 등). 추가 후 `@<name>` mention 또는 force dropdown 에서 호출 가능.",
+          "items": {
+            "type": "object",
+            "required": ["name", "baseUrl", "model"],
+            "properties": {
+              "name": {
+                "type": "string",
+                "description": "고유 이름 (소문자 권장, mention 키로 사용. 예: 'local', 'ollama', 'qwen')"
+              },
+              "baseUrl": {
+                "type": "string",
+                "description": "OpenAI 호환 endpoint (예: http://localhost:1234/v1, https://openrouter.ai/api/v1, http://localhost:11434/v1 [Ollama])"
+              },
+              "apiKey": {
+                "type": "string",
+                "description": "API key (Local 모델은 비어도 됨)"
+              },
+              "model": {
+                "type": "string",
+                "description": "모델 ID (예: 'llama-3.3-70b', 'qwen2.5-coder:32b', 'anthropic/claude-3.5-sonnet' for OpenRouter)"
+              },
+              "contextWindow": {
+                "type": "number",
+                "description": "토큰 한계 (display 용, 호출 시 max_tokens 결정에는 효력 없음)"
+              },
+              "headers": {
+                "type": "object",
+                "description": "추가 HTTP 헤더 (예: HTTP-Referer for OpenRouter)",
+                "additionalProperties": { "type": "string" }
+              }
+            }
+          }
+        },
         "orchestrai.mcpServers": {
           "type": "object",
           "default": {},

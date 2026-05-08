@@ -11,6 +11,7 @@ import { callCodex, setCodexFallbackNotifier } from './providers/codexProvider'
 import { getCodexMcpClient, disposeCodexMcpClient } from './providers/codexMcpClient'
 import { OrchestrAICompletionProvider } from './providers/inlineCompletion'
 import { callGemini, setGeminiFallbackNotifier, setGeminiApiKey } from './providers/geminiProvider'
+import { callCustomProvider, type CustomProviderConfig } from './providers/customProvider'
 import { ChatMessage, RouterMode, RoutingDecision, Model, Effort, ChangeSummary } from './router/types'
 import { AuthStorage } from './auth/storage'
 import { ClaudeAuth } from './auth/claudeAuth'
@@ -587,6 +588,9 @@ function modelLabel(m: Model): string {
 
 // 모델 + effort → 실제 backend가 호출하는 모델 ID. UI 표시용 (어떤 변종으로 통했는지 명확히)
 export function actualModelName(model: Model, effort: Effort): string {
+  if (typeof model === 'string' && model.startsWith('custom:')) {
+    return model.slice(7)  // custom 은 사용자 정의 이름 그대로
+  }
   if (model === 'claude') {
     if (effort === 'high' || effort === 'extra-high') return 'claude-opus-4-6'
     return 'claude-sonnet-4-6'
@@ -975,6 +979,15 @@ class OrchestrAIViewProvider implements vscode.WebviewViewProvider, vscode.Dispo
     // 사용자가 입력한 Gemini API key 가 있으면 텍스트 호출 시 그쪽 사용 (Code Assist OAuth tier 보다 한도 큼).
     // 이미지 생성 / RAG 인덱싱용으로만 쓰이던 거 텍스트에도 활용 — 사용자 추가 작업 0.
     void this._authStorage.getGeminiApiKey().then(k => setGeminiApiKey(k ?? null))
+
+    // Custom provider 목록을 webview 에 push (mention popup / dropdown 에 동적 추가)
+    this._postCustomProviders()
+    // 설정 변경 시 webview 갱신
+    this._subscriptions.push(
+      vscode.workspace.onDidChangeConfiguration(e => {
+        if (e.affectsConfiguration('orchestrai.customProviders')) this._postCustomProviders()
+      }),
+    )
 
     // 코드베이스 인덱스 로드 (이미 인덱싱돼있으면 즉시 사용 가능)
     const root = getWorkspaceRoot()
@@ -2352,6 +2365,21 @@ class OrchestrAIViewProvider implements vscode.WebviewViewProvider, vscode.Dispo
 
   // ?? Send ?????????????????????????????????????????????????????????
 
+  // VSCode settings 의 orchestrai.customProviders 배열 → 이름으로 조회
+  private _getCustomProvider(name: string): CustomProviderConfig | null {
+    const list = this._cfg<CustomProviderConfig[]>('customProviders') ?? []
+    return list.find(p => p.name === name) ?? null
+  }
+  private _listCustomProviders(): CustomProviderConfig[] {
+    return this._cfg<CustomProviderConfig[]>('customProviders') ?? []
+  }
+  private _postCustomProviders() {
+    const providers = this._listCustomProviders().map(p => ({
+      name: p.name, model: p.model, baseUrl: p.baseUrl,
+    }))
+    this._post({ type: 'customProviders', providers })
+  }
+
   // /pr [title] — 현재 branch 의 commit 들 보고 AI 가 title/body 생성 + gh pr create
   // log 변수와 log import 가 같은 이름이라 helper 로 분리
   private async _handleCreatePR(titleHint: string) {
@@ -3002,6 +3030,32 @@ Be concise. Use conventional commit style if commits do.`
       return
     }
 
+    // Custom provider mention 검출 — @<name> 이 settings 의 customProviders 와 매치되면 강제 라우팅
+    const customRe = /@(\w+)/g
+    const customCandidates: string[] = []
+    let m: RegExpExecArray | null
+    while ((m = customRe.exec(userText)) !== null) {
+      // claude/codex/gemini 는 일반 mention 으로 이미 처리됨
+      if (['claude', 'codex', 'gemini', '클로드', '코덱스', '제미나이', '제미니'].includes(m[1].toLowerCase())) continue
+      customCandidates.push(m[1])
+    }
+    for (const name of customCandidates) {
+      const cfg = this._getCustomProvider(name)
+      if (cfg) {
+        const decision: RoutingDecision = {
+          model: `custom:${cfg.name}` as any,
+          effort: inferredEffort,
+          confidence: 1.0,
+          reason: 'custom-mention',
+          ruleMatched: `@${name}`,
+          actualModel: cfg.model,
+        }
+        this._postRoutingDecision(decision)
+        await this._runTurn(decision, fileCtx, undefined, userMsg.id)
+        return
+      }
+    }
+
     const decision = await orchestrator.route(routingInput, this._override)
     this._postRoutingDecision(decision)
 
@@ -3210,6 +3264,10 @@ Be concise. Use conventional commit style if commits do.`
 
   // 현재 로그인된 모델들로 폴백 순서 구성. primary가 맨 앞, 나머지는 Claude→Codex→Gemini 순
   private async _buildFallbackChain(primary: Model): Promise<Model[]> {
+    // custom: 으로 시작하면 fallback X (사용자가 명시적으로 그 모델 부른 거)
+    if (typeof primary === 'string' && primary.startsWith('custom:')) {
+      return [primary]
+    }
     const status = await this._authStorage.getStatus()
     const order: Model[] = ['claude', 'codex', 'gemini']
     const loggedIn = order.filter(m => status[m])
@@ -3418,13 +3476,25 @@ PATH RULES: paths are relative to workspace root. Don't prefix with "${gWsBase}/
             history, effectiveDecision.effort, codexToken, accountId ?? undefined,
             systemPrompt, onChunk, assistantMsgId, turnId,
           )
-        } else {
+        } else if (currentModel === 'gemini') {
           if (!(await this._geminiAuth.isLoggedIn())) {
             this._post({ type: 'authRequired', model: 'gemini', reason: 'not_logged_in' })
             return false
           }
           result = await this._runGeminiAgent(
             history, effectiveDecision.effort, systemPrompt, onChunk, assistantMsgId, turnId,
+          )
+        } else {
+          // Custom provider — model 필드가 'custom:<name>' 형식
+          const customName = String(currentModel).startsWith('custom:') ? String(currentModel).slice(7) : null
+          const customCfg = customName ? this._getCustomProvider(customName) : null
+          if (!customCfg) {
+            this._post({ type: 'streamError', id: assistantMsgId, error: `알 수 없는 모델: ${currentModel}` })
+            return false
+          }
+          result = await callCustomProvider(
+            customCfg, history, effectiveDecision.effort, onChunk,
+            systemPrompt, this._currentAbort?.signal,
           )
         }
         // 성공 시 루프 탈출
@@ -3519,6 +3589,8 @@ PATH RULES: paths are relative to workspace root. Don't prefix with "${gWsBase}/
     }
 
     await this._persistMessages()
+    // Plan 모드면 "Act 로 실행" prompt 를 webview 에 띄움 (Cline 식 Plan→Act 분리 흐름)
+    const isPlanComplete = this._permissionMode === 'plan' && !!result.content
     this._post({
       type: 'streamEnd',
       id: assistantMsgId,
@@ -3528,6 +3600,7 @@ PATH RULES: paths are relative to workspace root. Don't prefix with "${gWsBase}/
       changeSummary,
       commitHash: assistantMsg.commitHash,
       commitShort: assistantMsg.commitShort,
+      planComplete: isPlanComplete,  // webview 가 'Act 로 실행' 버튼 표시
     })
     // 결과 자동 미리보기 (HTML → Simple Browser, dev script 있으면 안내)
     void this._maybeAutoPreview(changedFiles)

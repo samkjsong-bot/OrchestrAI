@@ -828,6 +828,17 @@
   .override-btn.active-loop { color: #34d399; border-color: #34d39933; background: #34d39911; }
   .override-btn.active-boomerang { color: #c084fc; border-color: #c084fc33; background: #c084fc11; }
 
+  /* Plan → Act 전환 CTA (plan 모드 turn 완료 후 표시) */
+  .plan-act-cta { margin-top: 12px; padding-top: 10px; border-top: 1px solid #a78bfa33; }
+  .plan-act-btn {
+    width: 100%; padding: 10px 14px; border-radius: 8px;
+    background: linear-gradient(90deg, #a78bfa22 0%, #a78bfa11 100%);
+    border: 1px solid #a78bfa66; color: #c4b5fd;
+    font-family: 'JetBrains Mono', monospace; font-size: 11px; font-weight: 500;
+    cursor: pointer; transition: all 0.15s;
+  }
+  .plan-act-btn:hover { background: #a78bfa33; border-color: #a78bfa99; color: #ddd6fe; }
+
   /* 라우팅 dropdown (auto / claude / codex / gemini 묶음) */
   .override-pick { position: relative; display: inline-block; }
   .override-pick .caret { font-size: 9px; opacity: 0.6; margin-left: 2px; }
@@ -2467,7 +2478,7 @@
         appendChunk(msg.id, msg.text)
         break
       case 'streamEnd':
-        finalizeMessage(msg.id, msg.tokens, msg.changedFiles || [], msg.actualModel, msg.changeSummary, msg.commitShort, msg.commitHash)
+        finalizeMessage(msg.id, msg.tokens, msg.changedFiles || [], msg.actualModel, msg.changeSummary, msg.commitShort, msg.commitHash, !!msg.planComplete)
         break
       case 'streamError':
         showStreamError(msg.id, msg.error)
@@ -2489,6 +2500,17 @@
         streamBuffers[msg.id] = msg.content
         const target = document.getElementById(`content-${msg.id}`)
         if (target) target.innerHTML = renderMarkdown(msg.content)
+        break
+      }
+      case 'customProviders': {
+        // 사용자 정의 OpenAI-compatible providers — mention popup 에 동적 추가
+        CUSTOM_MENTIONS = (msg.providers || []).map(p => ({
+          id: p.name,
+          label: p.name,
+          icon: '🔧',
+          hint: `${p.model} @ ${p.baseUrl}`,
+          kind: 'custom',
+        }))
         break
       }
       case 'appendInput': {
@@ -3504,7 +3526,7 @@
     scrollIfNearBottom(messages)
   }
 
-  function finalizeMessage(id, tokens, changedFiles = [], actualModel = '', changeSummary = null, commitShort = '', commitHash = '') {
+  function finalizeMessage(id, tokens, changedFiles = [], actualModel = '', changeSummary = null, commitShort = '', commitHash = '', planComplete = false) {
     setSendLocked(false)
     const tokEl = document.getElementById(`tok-${id}`)
     if (tokEl) tokEl.textContent = `${tokens?.toLocaleString() ?? '?'} tok`
@@ -3522,12 +3544,28 @@
     const el = document.getElementById(`content-${id}`)
     if (el && streamBuffers[id]) {
       el.className = 'msg-content md'
-      el.innerHTML = renderMarkdown(streamBuffers[id]) + renderChangedFiles(changedFiles, changeSummary) + renderCommitChip(commitShort, commitHash)
+      const planActBtn = planComplete
+        ? `<div class="plan-act-cta">
+             <button class="plan-act-btn" onclick="executePlan('${id}')">▶ Act 모드로 실행 (auto-edit 전환 + plan 따라 진행)</button>
+           </div>`
+        : ''
+      el.innerHTML = renderMarkdown(streamBuffers[id]) + renderChangedFiles(changedFiles, changeSummary) + renderCommitChip(commitShort, commitHash) + planActBtn
     }
     updateReviewBar(changeSummary)
 
     const messages = document.getElementById('messages')
     scrollIfNearBottom(messages)
+  }
+
+  // Plan 모드에서 작성된 plan 을 보고 사용자 클릭 → auto-edit 으로 전환 + plan 내용 그대로 실행 prompt 로
+  function executePlan(msgId) {
+    const buf = streamBuffers[msgId]
+    if (!buf) return showToast('plan 내용 못 찾음')
+    setPermissionMode('auto-edit')
+    showToast('Auto-edit 모드 전환됨 — plan 따라 실행 시작')
+    // plan 본문을 user prompt 로 보내 실행 시작
+    const execPrompt = `위 plan 을 따라 실제로 실행해줘. plan 내용:\n\n${buf}`
+    postToExtension({ type: 'send', text: execPrompt, attachments: [] })
   }
 
   function renderCommitChip(short, hash) {
@@ -3637,7 +3675,7 @@
   let mentionFilter = ''
   let mentionSelectedIdx = 0
 
-  const MENTION_ITEMS = [
+  const BASE_MENTION_ITEMS = [
     // 모델 — 강제 라우팅
     { id: 'claude',   label: 'Claude',  icon: 'C', hint: 'architecture, refactor, review',   kind: 'model' },
     { id: 'codex',    label: 'Codex',   icon: 'X', hint: 'implementation, CLI, edits',        kind: 'model' },
@@ -3650,13 +3688,25 @@
     { id: 'web',      label: '@web',      icon: '🌐', hint: 'URL fetch — @web https://... 형식',            kind: 'cmd' },
     { id: 'problem',  label: '@problem',  icon: '⚠', hint: 'VS Code Problems 패널 (현재 에러/경고)',         kind: 'cmd' },
   ]
+  // settings 의 customProviders 배열 → 동적 추가됨 (server 가 'customProviders' 메시지로 push)
+  let CUSTOM_MENTIONS = []
+  // 합친 결과
+  function getMentionItems() { return [...BASE_MENTION_ITEMS, ...CUSTOM_MENTIONS] }
+  // 호환성 유지 — filteredMentions 가 MENTION_ITEMS 참조하던 것
+  const MENTION_ITEMS = new Proxy([], { get: (_, prop) => {
+    const arr = getMentionItems()
+    return prop === 'filter' ? arr.filter.bind(arr)
+         : prop === 'find' ? arr.find.bind(arr)
+         : prop === 'length' ? arr.length
+         : arr[prop]
+  }})
 
   function filteredMentions() {
     const f = mentionFilter.toLowerCase()
-    return MENTION_ITEMS
-      // 모델은 로그인된 것만, command 는 모두
-      .filter(m => m.kind === 'cmd' || loggedInModels[m.id])
-      .filter(m => m.id.startsWith(f))
+    return getMentionItems()
+      // 모델 (claude/codex/gemini) 은 로그인된 것만, command/custom 은 모두
+      .filter(m => m.kind !== 'model' || loggedInModels[m.id])
+      .filter(m => m.id.toLowerCase().startsWith(f))
   }
 
   function renderMentionList() {
@@ -3694,12 +3744,11 @@
   }
 
   function insertMention(idOrCmd) {
-    const item = MENTION_ITEMS.find(m => m.id === idOrCmd)
+    const item = getMentionItems().find(m => m.id === idOrCmd)
     const ta = document.getElementById('input')
     closeMention()
     // command 일 경우: 백엔드에 즉시 요청 (file picker / git / problem / terminal 등)
     if (item && item.kind === 'cmd') {
-      // textarea 의 @file 부분을 placeholder 로 교체 (이후 첨부된 내용으로 다시 교체될 것)
       const before = ta.value.slice(0, mentionStartPos)
       const after = ta.value.slice(ta.selectionStart)
       ta.value = before + after  // @ 부분 제거
@@ -3708,7 +3757,7 @@
       postToExtension({ type: 'mentionCommand', cmd: item.id })
       return
     }
-    // 모델 멘션: @claude / @codex / @gemini
+    // 모델 또는 custom mention — 텍스트에 그대로 삽입 (백엔드가 @<name> 보고 force routing)
     const before = ta.value.slice(0, mentionStartPos)
     const after = ta.value.slice(ta.selectionStart)
     ta.value = before + '@' + idOrCmd + ' ' + after
