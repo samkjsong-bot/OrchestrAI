@@ -2686,7 +2686,7 @@
     val.textContent = `${fmt(used)} / ${fmt(max)} (${pct.toFixed(0)}%)`
   }
 
-  // ?? Mode / Effort ?앹뾽 ????????????????????????????????????????
+  // ── Mode / Effort 팝업 ─────────────────────────────────
   let currentPermissionMode = 'auto-edit'
   let currentEffortOverride = null
 
@@ -3103,7 +3103,7 @@
 
     body.innerHTML = `
       <div style="font-size:10px;color:var(--text-muted);margin-bottom:14px;font-family:'JetBrains Mono',monospace;padding-bottom:10px;border-bottom:1px solid var(--border)">
-        ?몄뀡 ?쒖옉 ?댄썑 ${elapsed}
+        세션 시작 이후 ${elapsed}
       </div>
       ${['claude','codex','gemini'].map(m => {
         const u = session[m] || { requests: 0, inputTokens: 0, outputTokens: 0 }
@@ -3124,7 +3124,7 @@
             <div class="usage-bar-fill" style="width:${pct}%;background:${COLOR[m]}"></div>
           </div>
           <div class="usage-card-stats">
-            <span>?붿껌 <b>${u.requests}</b></span>
+            <span>요청 <b>${u.requests}</b></span>
             <span></span>
             <span>in <b>${fmtTok(u.inputTokens)}</b></span>
             <span></span>
@@ -3161,7 +3161,7 @@
               display:flex;align-items:center;gap:8px;transition:all 0.15s">
               <span></span>
               <div>
-                <div style="font-weight:600">Claude ?곌껐</div>
+                <div style="font-weight:600">Claude 연결</div>
                 <div style="color:var(--text-muted);font-size:9px;margin-top:2px">로컬 Claude Code CLI 인증 감지 (Max 구독 사용)</div>
               </div>
             </button>
@@ -3183,7 +3183,7 @@
               display:flex;align-items:center;gap:8px;transition:all 0.15s">
               <span></span>
               <div>
-                <div style="font-weight:600">Gemini ?곌껐</div>
+                <div style="font-weight:600">Gemini 연결</div>
                 <div style="color:var(--text-muted);font-size:9px;margin-top:2px">로컬 gemini CLI 감지 (Google 무료 티어)</div>
               </div>
             </button>
@@ -3585,7 +3585,7 @@
     el.style.height = Math.min(el.scrollHeight, 140) + 'px';
   }
 
-  // ?? @ 硫섏뀡 ?먮룞?꾩꽦 ?????????????????????????????????????????
+  // ── @ 멘션 자동완성 ─────────────────────────────────────
   let loggedInModels = { claude: false, codex: false, gemini: false }
   let mentionActive = false
   let mentionStartPos = -1
