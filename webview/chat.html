@@ -3635,12 +3635,23 @@
 
   // Plan 모드에서 작성된 plan 을 보고 사용자 클릭 → auto-edit 으로 전환 + plan 내용 그대로 실행 prompt 로
   function executePlan(msgId) {
-    const buf = streamBuffers[msgId]
-    if (!buf) return showToast('plan 내용 못 찾음')
+    // 1) streamBuffer 우선 (방금 끝난 turn)
+    let planText = streamBuffers[msgId]
+    // 2) reload 후엔 buffer 비어있음 → DOM 에서 추출
+    if (!planText) {
+      const el = document.getElementById(`content-${msgId}`)
+      if (el) {
+        // markdown 렌더된 HTML 에서 plain text 만 — innerText 가 가장 안전
+        // 단 plan-act-btn 자체 텍스트는 제외해야 (재귀 방지)
+        const clone = el.cloneNode(true)
+        clone.querySelectorAll('.plan-act-cta').forEach(n => n.remove())
+        planText = clone.innerText || clone.textContent || ''
+      }
+    }
+    if (!planText || !planText.trim()) return showToast('plan 내용 못 찾음')
     setPermissionMode('auto-edit')
     showToast('Auto-edit 모드 전환됨 — plan 따라 실행 시작')
-    // plan 본문을 user prompt 로 보내 실행 시작
-    const execPrompt = `위 plan 을 따라 실제로 실행해줘. plan 내용:\n\n${buf}`
+    const execPrompt = `위 plan 을 따라 실제로 실행해줘. plan 내용:\n\n${planText.trim()}`
     postToExtension({ type: 'send', text: execPrompt, attachments: [] })
   }
 
