@@ -230,7 +230,11 @@
           "description": "OpenAI 호환 API 엔드포인트 (LM Studio / Ollama / OpenRouter / vLLM / Together / 자체 호스팅 등). 추가 후 `@<name>` mention 또는 force dropdown 에서 호출 가능.",
           "items": {
             "type": "object",
-            "required": ["name", "baseUrl", "model"],
+            "required": [
+              "name",
+              "baseUrl",
+              "model"
+            ],
             "properties": {
               "name": {
                 "type": "string",
@@ -255,7 +259,9 @@
               "headers": {
                 "type": "object",
                 "description": "추가 HTTP 헤더 (예: HTTP-Referer for OpenRouter)",
-                "additionalProperties": { "type": "string" }
+                "additionalProperties": {
+                  "type": "string"
+                }
               }
             }
           }
@@ -321,6 +327,7 @@
     "@anthropic-ai/claude-agent-sdk": "^0.1.0",
     "@modelcontextprotocol/sdk": "^1.29.0",
     "ai": "^6.0.168",
-    "ai-sdk-provider-gemini-cli": "^2.0.1"
+    "ai-sdk-provider-gemini-cli": "^2.0.1",
+    "playwright-core": "^1.59.1"
   }
 }

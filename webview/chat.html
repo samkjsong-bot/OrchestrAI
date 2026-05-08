@@ -778,6 +778,23 @@
     border-color: var(--border-bright);
   }
 
+  .voice-btn {
+    width: 28px; height: 28px; border-radius: 50%;
+    background: var(--surface); border: 1px solid var(--border);
+    color: var(--text-dim); cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    transition: all 0.15s; flex-shrink: 0;
+  }
+  .voice-btn:hover { color: var(--text); border-color: var(--border-bright); }
+  .voice-btn.recording {
+    color: #fff; background: #ef4444; border-color: #ef4444;
+    animation: voicePulse 1.2s ease-in-out infinite;
+  }
+  @keyframes voicePulse {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.5); }
+    50%      { box-shadow: 0 0 0 6px rgba(239, 68, 68, 0); }
+  }
+
   .send-btn {
     width: 28px;
     height: 28px;
@@ -2143,6 +2160,12 @@
       <button class="mode-btn auto-edit" id="mode-btn" onclick="toggleModePopup(event)" title="Mode · Effort (Shift+Tab)">
         <span id="mode-btn-icon">&lt;/&gt;</span>
         <span id="mode-btn-label">Edit automatically</span>
+      </button>
+      <button class="voice-btn" id="voice-btn" onclick="toggleVoiceInput()" title="음성 입력 (한국어)">
+        <svg viewBox="0 0 16 16" fill="none" width="14" height="14">
+          <path d="M8 1a3 3 0 0 0-3 3v4a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3Z" stroke="currentColor" stroke-width="1.5"/>
+          <path d="M3 8v0a5 5 0 0 0 10 0M8 13v2" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+        </svg>
       </button>
       <button class="send-btn" onclick="sendMessage()">
         <svg viewBox="0 0 14 14" fill="none">
@@ -3716,6 +3739,57 @@
     thinkingEl = null
   }
 
+  // ── Voice input (Web Speech API, 의존성 0) ─────────────────────────────
+  let _voiceRecog = null
+  let _voiceFinalTextStartLen = 0  // 녹음 시작 시점의 textarea 길이 (final 텍스트 append 시점 계산용)
+  function toggleVoiceInput() {
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition
+    if (!SR) return showToast('이 브라우저는 음성 입력 지원 안 함')
+    if (_voiceRecog) {
+      try { _voiceRecog.stop() } catch {}
+      return
+    }
+    const recog = new SR()
+    recog.lang = 'ko-KR'
+    recog.continuous = true        // 길게 녹음 가능
+    recog.interimResults = true    // 중간 결과도 실시간 표시
+    const ta = document.getElementById('input')
+    _voiceFinalTextStartLen = ta.value.length
+    let interim = ''
+    recog.onstart = () => {
+      const btn = document.getElementById('voice-btn')
+      if (btn) btn.classList.add('recording')
+      showToast('🎤 듣는 중... 다시 클릭해서 종료')
+    }
+    recog.onresult = (e) => {
+      let finalT = ''
+      interim = ''
+      for (let i = e.resultIndex; i < e.results.length; i++) {
+        const r = e.results[i]
+        if (r.isFinal) finalT += r[0].transcript
+        else interim += r[0].transcript
+      }
+      // textarea 의 voice 부분만 갱신: 시작 길이 + 누적 final + interim
+      const before = ta.value.slice(0, _voiceFinalTextStartLen)
+      const sep = before && !/\s$/.test(before) ? ' ' : ''
+      const accumulated = (recog._accumulated || '') + finalT
+      recog._accumulated = accumulated
+      ta.value = before + sep + accumulated + interim
+      autoResize(ta)
+    }
+    recog.onerror = (e) => {
+      showToast('음성 인식 오류: ' + (e.error || 'unknown'))
+    }
+    recog.onend = () => {
+      const btn = document.getElementById('voice-btn')
+      if (btn) btn.classList.remove('recording')
+      _voiceRecog = null
+      ta.focus()
+    }
+    _voiceRecog = recog
+    try { recog.start() } catch (err) { showToast('음성 시작 실패: ' + err) }
+  }
+
   function autoResize(el) {
     el.style.height = 'auto';
     el.style.height = Math.min(el.scrollHeight, 140) + 'px';
@@ -3738,7 +3812,8 @@
     { id: 'codebase', label: '@codebase', icon: '🧭', hint: '코드베이스 RAG — 관련 파일 자동 검색 첨부',     kind: 'cmd' },
     { id: 'terminal', label: '@terminal', icon: '⌨', hint: '터미널 선택 영역 첨부 (먼저 텍스트 select)',     kind: 'cmd' },
     { id: 'git',      label: '@git',      icon: '⎇', hint: 'git diff/log/status 첨부',                       kind: 'cmd' },
-    { id: 'web',      label: '@web',      icon: '🌐', hint: 'URL fetch — @web https://... 형식',            kind: 'cmd' },
+    { id: 'web',      label: '@web',      icon: '🌐', hint: 'URL fetch (단순 HTML) — @web https://... 형식',         kind: 'cmd' },
+    { id: 'browser',  label: '@browser',  icon: '🧭', hint: '실제 브라우저로 페이지 열기 (JS/SPA 지원, Playwright)', kind: 'cmd' },
     { id: 'problem',  label: '@problem',  icon: '⚠', hint: 'VS Code Problems 패널 (현재 에러/경고)',         kind: 'cmd' },
   ]
   // settings 의 customProviders 배열 → 동적 추가됨 (server 가 'customProviders' 메시지로 push)

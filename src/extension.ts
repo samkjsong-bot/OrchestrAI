@@ -12,6 +12,7 @@ import { getCodexMcpClient, disposeCodexMcpClient } from './providers/codexMcpCl
 import { OrchestrAICompletionProvider } from './providers/inlineCompletion'
 import { callGemini, setGeminiFallbackNotifier, setGeminiApiKey } from './providers/geminiProvider'
 import { callCustomProvider, type CustomProviderConfig } from './providers/customProvider'
+import { fetchPageWithBrowser } from './providers/browserTool'
 import { ChatMessage, RouterMode, RoutingDecision, Model, Effort, ChangeSummary } from './router/types'
 import { AuthStorage } from './auth/storage'
 import { ClaudeAuth } from './auth/claudeAuth'
@@ -2620,6 +2621,24 @@ Be concise. Use conventional commit style if commits do.`
             attachText = `## @web ${url}\n\n${stripped.slice(0, 30_000)}`
           } catch (err) {
             attachText = `## @web ${url}\n\n(fetch 실패: ${err instanceof Error ? err.message : err})`
+          }
+          break
+        }
+        case 'browser': {
+          // Playwright + system Chrome — JS 실행된 후 페이지 (SPA 지원)
+          const url = await vscode.window.showInputBox({
+            title: '@browser — Playwright 로 페이지 열기',
+            prompt: 'JS 실행 + 텍스트 추출. SPA (React/Vue 등) 페이지에 사용. http(s):// URL',
+            ignoreFocusOut: true,
+            validateInput: (v) => /^https?:\/\//.test(v?.trim() ?? '') ? null : 'http(s):// 로 시작해야 함',
+          })
+          if (!url) return
+          this._post({ type: 'toast', message: '🧭 브라우저 시작 중... (Chrome 또는 Edge 필요)' })
+          const result = await fetchPageWithBrowser(url, { takeScreenshot: false, timeoutMs: 20_000 })
+          if (result.error) {
+            attachText = `## @browser ${url}\n\n(실패: ${result.error}\n\n💡 Chrome 또는 Edge 가 시스템에 설치돼있어야 합니다.)`
+          } else {
+            attachText = `## @browser ${url}\n\n### 제목\n${result.title}\n\n### 본문 (JS 실행 후)\n${result.text.slice(0, 50_000)}`
           }
           break
         }
