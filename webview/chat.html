@@ -2491,6 +2491,18 @@
         if (target) target.innerHTML = renderMarkdown(msg.content)
         break
       }
+      case 'appendInput': {
+        // @ command 결과를 입력창에 첨부 (사용자가 추가 prompt 적은 후 보내기)
+        const ta = document.getElementById('input')
+        if (ta) {
+          const sep = ta.value.trim() ? '\n\n' : ''
+          ta.value = ta.value + sep + msg.text + '\n\n'
+          ta.focus()
+          ta.setSelectionRange(ta.value.length, ta.value.length)
+          autoResize(ta)
+        }
+        break
+      }
       case 'authStatus':
         updateAuthStatus(msg.claude, msg.codex, msg.gemini)
         break
@@ -2795,6 +2807,11 @@
       case 'effort':  setEffortOverride(arg); return true
       case 'review':  postToExtension({ type: 'multiModelReview', scope: arg === 'staged' ? 'staged' : 'lastCommit' }); return true
       case 'index':   postToExtension({ type: 'requestIndexCodebase' }); return true
+      case 'pr': {
+        // /pr [title]  → 현재 브랜치 git push + gh pr create. AI 가 title/body 작성.
+        postToExtension({ type: 'createPR', titleHint: arg })
+        return true
+      }
       case 'bg':
       case 'background': {
         if (!arg) { showToast('사용법: /bg <작업내용>'); return true }
@@ -3101,9 +3118,19 @@
     const ICON = { claude: 'C', codex: 'X', gemini: 'G' }
     const COLOR = { claude: 'var(--claude)', codex: 'var(--codex)', gemini: 'var(--gemini)' }
 
+    // 단가 ($/1M tokens) — 우리는 zero-billing 우회라 실제 청구 0이지만,
+    // '구독 안 썼을 경우' 절약 금액 추정 (사용자에게 가치 환산).
+    const PRICING = {
+      claude: { in: 3, out: 15 },         // Sonnet 4.6 기준
+      codex:  { in: 5, out: 20 },          // gpt-5.4 기준 (Pro 평균)
+      gemini: { in: 0.30, out: 2.5 },      // Flash 기준
+    }
+    const calcCost = (m, u) => (u.inputTokens * PRICING[m].in + u.outputTokens * PRICING[m].out) / 1_000_000
+    const totalSaved = ['claude','codex','gemini'].reduce((s, m) => s + calcCost(m, session[m] || { inputTokens: 0, outputTokens: 0 }), 0)
+
     body.innerHTML = `
       <div style="font-size:10px;color:var(--text-muted);margin-bottom:14px;font-family:'JetBrains Mono',monospace;padding-bottom:10px;border-bottom:1px solid var(--border)">
-        세션 시작 이후 ${elapsed}
+        세션 시작 이후 ${elapsed} · 💰 절약 추정: <b style="color:#34d399">$${totalSaved.toFixed(2)}</b> (구독 우회로 실제 청구 0)
       </div>
       ${['claude','codex','gemini'].map(m => {
         const u = session[m] || { requests: 0, inputTokens: 0, outputTokens: 0 }
@@ -3112,6 +3139,7 @@
         const limit = HEURISTIC_LIMIT[m]
         const pct = Math.min(100, (total / limit) * 100)
         const fmtTok = (n) => n >= 1000 ? (n/1000).toFixed(1) + 'k' : String(n)
+        const cost = calcCost(m, u)
         return `
         <div class="usage-card">
           <div class="usage-card-head">
@@ -3130,7 +3158,7 @@
             <span></span>
             <span>out <b>${fmtTok(u.outputTokens)}</b></span>
             <span></span>
-            <span>총 <b>${fmtTok(total)}</b></span>
+            <span>$ <b style="color:#34d399">$${cost.toFixed(2)}</b></span>
           </div>
           <div class="usage-card-hint">${p.limitHint}</div>
         </div>`
@@ -3593,15 +3621,24 @@
   let mentionSelectedIdx = 0
 
   const MENTION_ITEMS = [
-    { id: 'claude', label: 'Claude', icon: 'C', hint: 'architecture, refactor, review' },
-    { id: 'codex',  label: 'Codex',  icon: 'X', hint: 'implementation, CLI, edits' },
-    { id: 'gemini', label: 'Gemini', icon: 'G', hint: 'long context, images, review' },
+    // 모델 — 강제 라우팅
+    { id: 'claude',   label: 'Claude',  icon: 'C', hint: 'architecture, refactor, review',   kind: 'model' },
+    { id: 'codex',    label: 'Codex',   icon: 'X', hint: 'implementation, CLI, edits',        kind: 'model' },
+    { id: 'gemini',   label: 'Gemini',  icon: 'G', hint: 'long context, images, review',      kind: 'model' },
+    // Commands — 컨텍스트 첨부 (@키워드 → 백엔드가 처리)
+    { id: 'file',     label: '@file',     icon: '📄', hint: '파일 picker — 워크스페이스 파일 선택해서 첨부',  kind: 'cmd' },
+    { id: 'codebase', label: '@codebase', icon: '🧭', hint: '코드베이스 RAG — 관련 파일 자동 검색 첨부',     kind: 'cmd' },
+    { id: 'terminal', label: '@terminal', icon: '⌨', hint: '터미널 선택 영역 첨부 (먼저 텍스트 select)',     kind: 'cmd' },
+    { id: 'git',      label: '@git',      icon: '⎇', hint: 'git diff/log/status 첨부',                       kind: 'cmd' },
+    { id: 'web',      label: '@web',      icon: '🌐', hint: 'URL fetch — @web https://... 형식',            kind: 'cmd' },
+    { id: 'problem',  label: '@problem',  icon: '⚠', hint: 'VS Code Problems 패널 (현재 에러/경고)',         kind: 'cmd' },
   ]
 
   function filteredMentions() {
     const f = mentionFilter.toLowerCase()
     return MENTION_ITEMS
-      .filter(m => loggedInModels[m.id])
+      // 모델은 로그인된 것만, command 는 모두
+      .filter(m => m.kind === 'cmd' || loggedInModels[m.id])
       .filter(m => m.id.startsWith(f))
   }
 
@@ -3639,15 +3676,28 @@
     insertMention(list[mentionSelectedIdx].id)
   }
 
-  function insertMention(modelId) {
+  function insertMention(idOrCmd) {
+    const item = MENTION_ITEMS.find(m => m.id === idOrCmd)
     const ta = document.getElementById('input')
+    closeMention()
+    // command 일 경우: 백엔드에 즉시 요청 (file picker / git / problem / terminal 등)
+    if (item && item.kind === 'cmd') {
+      // textarea 의 @file 부분을 placeholder 로 교체 (이후 첨부된 내용으로 다시 교체될 것)
+      const before = ta.value.slice(0, mentionStartPos)
+      const after = ta.value.slice(ta.selectionStart)
+      ta.value = before + after  // @ 부분 제거
+      ta.focus()
+      autoResize(ta)
+      postToExtension({ type: 'mentionCommand', cmd: item.id })
+      return
+    }
+    // 모델 멘션: @claude / @codex / @gemini
     const before = ta.value.slice(0, mentionStartPos)
     const after = ta.value.slice(ta.selectionStart)
-    ta.value = before + '@' + modelId + ' ' + after
-    const newPos = mentionStartPos + modelId.length + 2
+    ta.value = before + '@' + idOrCmd + ' ' + after
+    const newPos = mentionStartPos + idOrCmd.length + 2
     ta.setSelectionRange(newPos, newPos)
     ta.focus()
-    closeMention()
     autoResize(ta)
   }
 

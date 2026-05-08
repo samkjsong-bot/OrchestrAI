@@ -207,6 +207,39 @@ const MAX_CODEX_TOOL_TURNS = 100
 const MAX_TOOL_READ_CHARS = 40000
 const MAX_TOOL_LIST_ITEMS = 250
 
+// ORCHESTRAI.md 또는 .orchestrai/rules.md 자동 로드 — 프로젝트별 룰을 모든 모델에 주입.
+// 우선순위: ORCHESTRAI.md (root) > .orchestrai/rules.md > .orchestrai-rules.md
+// 5분 캐시 (매 호출마다 디스크 읽기 부담 ↓), 파일 mtime 변경 시 자동 갱신
+let _rulesCache: { content: string; mtime: number; checked: number } | null = null
+function loadProjectRules(): string {
+  const root = getWorkspaceRoot()
+  if (!root) return ''
+  const candidates = ['ORCHESTRAI.md', '.orchestrai/rules.md', '.orchestrai-rules.md']
+  let target: string | null = null
+  let mtime = 0
+  for (const c of candidates) {
+    const full = path.join(root, c)
+    try {
+      const st = fs.statSync(full)
+      if (st.isFile()) { target = full; mtime = st.mtimeMs; break }
+    } catch {}
+  }
+  if (!target) return ''
+  const now = Date.now()
+  if (_rulesCache && _rulesCache.mtime === mtime && (now - _rulesCache.checked) < 5 * 60_000) {
+    return _rulesCache.content
+  }
+  try {
+    const content = fs.readFileSync(target, 'utf8').trim()
+    // 너무 길면 잘라 (모든 turn 의 system prompt 에 들어가니 토큰 비용 ↑)
+    const truncated = content.length > 8000 ? content.slice(0, 8000) + '\n\n[...truncated, file > 8KB]' : content
+    _rulesCache = { content: truncated, mtime, checked: now }
+    return truncated
+  } catch {
+    return ''
+  }
+}
+
 function getWorkspaceRoot(): string | null {
   return vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? null
 }
@@ -850,7 +883,14 @@ Choose per action:
   }
   // 'auto-edit'은 추가 지침 없음 (기본 동작)
 
-  const prompt = `${base}${localTools}${mcpBlock}${modeBlock}`
+  // 프로젝트 룰 — workspace 의 ORCHESTRAI.md 또는 .orchestrai/rules.md 자동 prepend
+  // 사용자 정의 컨벤션 / 금지 사항 / 스택 등을 모든 모델에 통합 주입
+  const projectRules = loadProjectRules()
+  const rulesBlock = projectRules
+    ? `\n\nPROJECT RULES (from ORCHESTRAI.md — these are the user's convention guardrails. follow them strictly):\n${projectRules}\n`
+    : ''
+
+  const prompt = `${base}${rulesBlock}${localTools}${mcpBlock}${modeBlock}`
 
   if (!ctx) return prompt
 
@@ -1587,6 +1627,8 @@ class OrchestrAIViewProvider implements vscode.WebviewViewProvider, vscode.Dispo
             await this._pushWebviewState('webview-request')
             break
           case 'send':          await this._handleSend(msg.text, msg.attachments ?? []); break
+          case 'mentionCommand': await this._handleMentionCommand(msg.cmd); break
+          case 'createPR':       await this._handleCreatePR(msg.titleHint ?? ''); break
           case 'setOverride':   this._override = msg.mode; break
           case 'toggleContext': this._useFileContext = msg.enabled; break
           case 'clearChat':
@@ -2309,6 +2351,252 @@ class OrchestrAIViewProvider implements vscode.WebviewViewProvider, vscode.Dispo
   }
 
   // ?? Send ?????????????????????????????????????????????????????????
+
+  // /pr [title] — 현재 branch 의 commit 들 보고 AI 가 title/body 생성 + gh pr create
+  // log 변수와 log import 가 같은 이름이라 helper 로 분리
+  private async _handleCreatePR(titleHint: string) {
+    const log_warn_pr = (err: unknown) => log.warn('pr', `AI title 생성 실패: ${err instanceof Error ? err.message : err}`)
+    const root = getWorkspaceRoot()
+    if (!root) { vscode.window.showWarningMessage('워크스페이스 없음'); return }
+    const { spawn } = require('child_process') as typeof import('child_process')
+    const run = (cmd: string, args: string[]): Promise<{ out: string; code: number }> => new Promise(resolve => {
+      const p = spawn(cmd, args, { cwd: root, env: { ...process.env, GIT_TERMINAL_PROMPT: '0' }, shell: process.platform === 'win32' })
+      let out = ''
+      p.stdout.on('data', (c: Buffer) => out += c.toString('utf8'))
+      p.stderr.on('data', (c: Buffer) => out += c.toString('utf8'))
+      p.on('exit', (code) => resolve({ out, code: code ?? 1 }))
+      p.on('error', () => resolve({ out: '', code: 1 }))
+    })
+
+    // 1. gh CLI 있는지 확인
+    const ghCheck = await run('gh', ['--version'])
+    if (ghCheck.code !== 0) {
+      vscode.window.showErrorMessage('gh CLI 가 설치 안 됨. https://cli.github.com 에서 설치 후 `gh auth login`')
+      return
+    }
+
+    // 2. 현재 branch 정보
+    const branch = (await run('git', ['rev-parse', '--abbrev-ref', 'HEAD'])).out.trim()
+    if (!branch || branch === 'HEAD') {
+      vscode.window.showErrorMessage('현재 detached HEAD — branch 에 있을 때 PR 생성 가능')
+      return
+    }
+
+    // 3. main 과의 diff
+    const baseBranch = (await run('git', ['symbolic-ref', 'refs/remotes/origin/HEAD'])).out.trim().replace('refs/remotes/origin/', '') || 'main'
+    const commits = (await run('git', ['log', `${baseBranch}..HEAD`, '--oneline'])).out.trim()
+    const diffStat = (await run('git', ['diff', '--stat', `${baseBranch}..HEAD`])).out.trim()
+
+    if (!commits) {
+      vscode.window.showWarningMessage(`${branch} 가 ${baseBranch} 와 같음. PR 만들 commit 없음`)
+      return
+    }
+
+    // 4. push 안 했으면 push
+    const pushResult = await run('git', ['push', '-u', 'origin', branch])
+    if (pushResult.code !== 0 && !pushResult.out.includes('up-to-date')) {
+      vscode.window.showWarningMessage(`git push 실패: ${pushResult.out.slice(0, 200)}`)
+      // 그래도 PR 생성 시도 — 이미 push 된 상태일 수 있음
+    }
+
+    // 5. AI 한테 title/body 생성 요청 (Haiku 사용 — 빠르고 싸고)
+    const claudeToken = await this._claudeAuth.getAccessToken()
+    if (!claudeToken) {
+      // Claude 없으면 사용자한테 직접 입력 받음
+      const title = titleHint || await vscode.window.showInputBox({ title: 'PR title', value: branch.replace(/[-_/]/g, ' ') }) || branch
+      const body = `Branch: \`${branch}\`\n\n## Commits\n\`\`\`\n${commits}\n\`\`\`\n\n## Diff stat\n\`\`\`\n${diffStat}\n\`\`\``
+      const create = await run('gh', ['pr', 'create', '--title', title, '--body', body])
+      if (create.code === 0) {
+        vscode.window.showInformationMessage('✅ PR 생성됨', 'Open').then(s => { if (s) vscode.env.openExternal(vscode.Uri.parse(create.out.trim())) })
+      } else {
+        vscode.window.showErrorMessage(`PR 생성 실패: ${create.out.slice(0, 300)}`)
+      }
+      return
+    }
+
+    // Claude Haiku 로 title/body 생성
+    vscode.window.showInformationMessage('🤖 PR title/body 생성 중...')
+    let aiTitle = titleHint, aiBody = ''
+    try {
+      const sysPrompt = `Generate a PR title and body from these commits. Return EXACTLY this format:
+TITLE: <one-line summary, ≤72 chars>
+BODY:
+<markdown body — bullet list of changes + test plan checklist>
+
+Be concise. Use conventional commit style if commits do.`
+      const userPrompt = `Branch: ${branch} → ${baseBranch}\n\nCommits:\n${commits}\n\nDiff stat:\n${diffStat}\n\n${titleHint ? `Hint: ${titleHint}` : ''}`
+      const res = await callClaude(
+        [{ role: 'user', content: userPrompt }],
+        'low',
+        claudeToken,
+        () => {},
+        sysPrompt,
+        'auto-edit',
+        undefined,
+        undefined,
+      )
+      const m = res.content.match(/TITLE:\s*(.+?)\s*\n+BODY:\s*([\s\S]*)/i)
+      if (m) {
+        aiTitle = m[1].trim()
+        aiBody = m[2].trim()
+      } else {
+        aiTitle = titleHint || branch
+        aiBody = res.content
+      }
+    } catch (err) {
+      log_warn_pr(err)
+      aiTitle = titleHint || branch
+      aiBody = `## Commits\n\`\`\`\n${commits}\n\`\`\``
+    }
+
+    // 6. gh pr create
+    const create = await run('gh', ['pr', 'create', '--title', aiTitle, '--body', aiBody])
+    if (create.code === 0) {
+      const url = create.out.trim()
+      vscode.window.showInformationMessage(`✅ PR 생성됨: ${aiTitle}`, 'Open in browser').then(s => {
+        if (s) vscode.env.openExternal(vscode.Uri.parse(url))
+      })
+      this._post({ type: 'toast', message: `✅ PR 생성: ${url}` })
+    } else {
+      vscode.window.showErrorMessage(`PR 생성 실패: ${create.out.slice(0, 300)}`)
+    }
+  }
+
+  // @ commands — 입력창에 첨부 텍스트 삽입 후 사용자가 보내기 (Continue 스타일).
+  private async _handleMentionCommand(cmd: string) {
+    const root = getWorkspaceRoot()
+    let attachText: string | null = null
+
+    try {
+      switch (cmd) {
+        case 'file': {
+          // 파일 picker — 워크스페이스 안 파일 다중 선택 가능
+          const picked = await vscode.window.showOpenDialog({
+            canSelectMany: true,
+            canSelectFiles: true,
+            canSelectFolders: false,
+            defaultUri: root ? vscode.Uri.file(root) : undefined,
+            openLabel: 'Attach to chat',
+          })
+          if (!picked || picked.length === 0) return
+          const blocks: string[] = []
+          for (const uri of picked.slice(0, 5)) {  // 최대 5개
+            try {
+              const content = fs.readFileSync(uri.fsPath, 'utf8')
+              const rel = root ? path.relative(root, uri.fsPath).replace(/\\/g, '/') : path.basename(uri.fsPath)
+              const lang = (rel.split('.').pop() ?? '').toLowerCase()
+              blocks.push(`### ${rel}\n\`\`\`${lang}\n${content.slice(0, 50_000)}\n\`\`\``)
+            } catch (err) {
+              blocks.push(`### ${uri.fsPath}\n(read failed: ${err instanceof Error ? err.message : err})`)
+            }
+          }
+          attachText = blocks.join('\n\n')
+          break
+        }
+        case 'codebase': {
+          // 사용자에게 검색어 받음 → RAG 검색 결과 첨부
+          const query = await vscode.window.showInputBox({
+            title: '@codebase — 검색어',
+            prompt: '어떤 코드를 찾을까요? (예: "OAuth flow", "database connection")',
+            ignoreFocusOut: true,
+          })
+          if (!query) return
+          if (!this._codebaseIndex) {
+            vscode.window.showWarningMessage('코드베이스 인덱싱 안 됨. Command Palette → "OrchestrAI: 코드베이스 인덱싱"')
+            return
+          }
+          const apiKey = await this._authStorage.getGeminiApiKey()
+          if (!apiKey) {
+            vscode.window.showWarningMessage('Gemini API key 필요 (RAG 검색용). 계정 설정에서 입력.')
+            return
+          }
+          const result = await retrieve(this._codebaseIndex, query, apiKey, { topK: 8 })
+          if (result.chunks.length === 0) {
+            attachText = `(@codebase "${query}" — 결과 없음)`
+          } else {
+            attachText = `## @codebase: ${query}\n\n` + result.chunks.map(h =>
+              `### ${h.path}:${h.startLine}-${h.endLine} (score ${h.score.toFixed(2)})\n\`\`\`\n${h.text.slice(0, 2000)}\n\`\`\``,
+            ).join('\n\n')
+          }
+          break
+        }
+        case 'terminal': {
+          // 활성 terminal 의 select 영역 — 사용자가 미리 select 해놨어야 함.
+          // VSCode API 가 terminal selection 직접 노출 안 함 → copySelection 명령으로 클립보드에 복사 후 읽기
+          await vscode.commands.executeCommand('workbench.action.terminal.copySelection').then(undefined, () => {})
+          const clip = await vscode.env.clipboard.readText()
+          if (!clip || !clip.trim()) {
+            vscode.window.showWarningMessage('터미널에서 텍스트 먼저 select 해주세요. (Ctrl+A 로 전체 선택 가능)')
+            return
+          }
+          attachText = `## @terminal\n\`\`\`\n${clip.slice(0, 30_000)}\n\`\`\``
+          break
+        }
+        case 'git': {
+          // git status + diff 를 첨부
+          if (!root) { vscode.window.showWarningMessage('워크스페이스 없음'); return }
+          const { spawn } = require('child_process') as typeof import('child_process')
+          const run = (args: string[]): Promise<string> => new Promise(resolve => {
+            const p = spawn('git', args, { cwd: root, env: { ...process.env, GIT_TERMINAL_PROMPT: '0' } })
+            let out = ''
+            p.stdout.on('data', (c: Buffer) => out += c.toString('utf8'))
+            p.stderr.on('data', (c: Buffer) => out += c.toString('utf8'))
+            p.on('exit', () => resolve(out))
+            p.on('error', () => resolve(''))
+          })
+          const status = await run(['status', '-sb'])
+          const diff = await run(['diff', '--stat'])
+          const log = await run(['log', '--oneline', '-10'])
+          attachText = `## @git\n\n### status\n\`\`\`\n${status.slice(0, 5000)}\n\`\`\`\n\n### diff (stat)\n\`\`\`\n${diff.slice(0, 5000)}\n\`\`\`\n\n### last 10 commits\n\`\`\`\n${log.slice(0, 5000)}\n\`\`\``
+          break
+        }
+        case 'web': {
+          const url = await vscode.window.showInputBox({
+            title: '@web — URL fetch',
+            prompt: 'fetch 할 URL 입력',
+            ignoreFocusOut: true,
+            validateInput: (v) => /^https?:\/\//.test(v?.trim() ?? '') ? null : 'http(s):// 로 시작해야 함',
+          })
+          if (!url) return
+          try {
+            const r = await fetch(url)
+            const text = await r.text()
+            // HTML → 대충 plain (간단 stripping; 정교 파싱은 사용자가 모델한테 시키면 됨)
+            const stripped = text.replace(/<script[\s\S]*?<\/script>/gi, '').replace(/<style[\s\S]*?<\/style>/gi, '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim()
+            attachText = `## @web ${url}\n\n${stripped.slice(0, 30_000)}`
+          } catch (err) {
+            attachText = `## @web ${url}\n\n(fetch 실패: ${err instanceof Error ? err.message : err})`
+          }
+          break
+        }
+        case 'problem': {
+          // VS Code Problems 패널의 진단 (전체 워크스페이스)
+          const all = vscode.languages.getDiagnostics()
+          const lines: string[] = []
+          for (const [uri, diags] of all) {
+            if (diags.length === 0) continue
+            const rel = root ? path.relative(root, uri.fsPath).replace(/\\/g, '/') : uri.fsPath
+            for (const d of diags) {
+              const sev = d.severity === 0 ? 'ERROR' : d.severity === 1 ? 'WARN' : 'INFO'
+              lines.push(`[${sev}] ${rel}:${d.range.start.line + 1}:${d.range.start.character + 1} — ${d.message}`)
+            }
+          }
+          attachText = lines.length > 0
+            ? `## @problem (${lines.length} diagnostics)\n\`\`\`\n${lines.slice(0, 100).join('\n')}\n\`\`\``
+            : '## @problem\n(현재 진단 없음 — 깨끗합니다)'
+          break
+        }
+      }
+    } catch (err) {
+      vscode.window.showErrorMessage(`@${cmd} 실패: ${err instanceof Error ? err.message : err}`)
+      return
+    }
+
+    if (attachText) {
+      // webview 입력창에 attach text append
+      this._post({ type: 'appendInput', text: attachText })
+    }
+  }
 
   private async _handleSend(userText: string, attachments: ImageAttachment[] = []) {
     if (!userText.trim() && attachments.length === 0) return

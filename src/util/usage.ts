@@ -20,6 +20,42 @@ export const PLAN_INFO: Record<Model, PlanInfo> = {
   gemini: { label: 'Google 무료 티어', limitHint: '60 req/min · 1000 req/day' },
 }
 
+// 단가 ($/1M tokens) — 사용자가 zero-billing 우회 경로라 실제 청구 0이지만,
+// '구독 안 썼다면 얼마였을지' 절약 금액 계산용 (사용자 만족도 ↑).
+// 2026-05 기준 공식 API 단가.
+export interface ModelPricing {
+  inputPer1M: number   // USD
+  outputPer1M: number  // USD
+}
+export const PRICING: Record<Model, Record<string, ModelPricing>> = {
+  claude: {
+    'claude-sonnet-4-6': { inputPer1M: 3, outputPer1M: 15 },
+    'claude-opus-4-6':   { inputPer1M: 15, outputPer1M: 75 },
+    'claude-haiku-4-5':  { inputPer1M: 0.8, outputPer1M: 4 },
+    default:             { inputPer1M: 3, outputPer1M: 15 },
+  },
+  codex: {
+    'gpt-5.5':       { inputPer1M: 10, outputPer1M: 40 },  // 추정 (Pro tier)
+    'gpt-5.4':       { inputPer1M: 5, outputPer1M: 20 },
+    'gpt-5.4-mini':  { inputPer1M: 1, outputPer1M: 4 },
+    default:         { inputPer1M: 5, outputPer1M: 20 },
+  },
+  gemini: {
+    'gemini-2.5-pro':    { inputPer1M: 1.25, outputPer1M: 10 },
+    'gemini-2.5-flash':  { inputPer1M: 0.30, outputPer1M: 2.5 },
+    'gemini-2.0-flash':  { inputPer1M: 0.10, outputPer1M: 0.40 },
+    default:             { inputPer1M: 0.30, outputPer1M: 2.5 },
+  },
+}
+
+// 사용된 토큰으로 '만약 API 였다면' 비용 추정
+export function estimateCost(model: Model, actualModel: string | undefined, inTok: number, outTok: number): number {
+  const modelPricings = PRICING[model] ?? {}
+  const pricing = (actualModel && modelPricings[actualModel]) ?? modelPricings.default
+  if (!pricing) return 0
+  return (inTok * pricing.inputPer1M + outTok * pricing.outputPer1M) / 1_000_000
+}
+
 const empty = (): ModelUsage => ({ requests: 0, inputTokens: 0, outputTokens: 0 })
 
 export class UsageTracker {
