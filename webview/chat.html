@@ -828,6 +828,23 @@
   .override-btn.active-loop { color: #34d399; border-color: #34d39933; background: #34d39911; }
   .override-btn.active-boomerang { color: #c084fc; border-color: #c084fc33; background: #c084fc11; }
 
+  /* 라우팅 dropdown (auto / claude / codex / gemini 묶음) */
+  .override-pick { position: relative; display: inline-block; }
+  .override-pick .caret { font-size: 9px; opacity: 0.6; margin-left: 2px; }
+  .route-popup {
+    position: absolute; bottom: calc(100% + 4px); left: 0;
+    display: flex; flex-direction: column; gap: 2px;
+    background: var(--surface2); border: 1px solid var(--border); border-radius: 6px;
+    padding: 4px; z-index: 50; min-width: 110px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+  }
+  .route-item {
+    background: transparent; border: none; color: var(--text-dim);
+    padding: 5px 10px; border-radius: 4px; cursor: pointer; text-align: left;
+    font-family: 'JetBrains Mono', monospace; font-size: 10px;
+  }
+  .route-item:hover { background: var(--surface); color: var(--text); }
+
   /* 컨텍스트 게이지 (헤더 바로 아래) */
   .ctx-gauge {
     padding: 6px 16px 8px;
@@ -2043,15 +2060,23 @@
         <path d="M5 11L11 5" stroke="currentColor" stroke-width="1.35" stroke-linecap="round"/>
       </svg>
     </button>
-    <span class="override-label">force:</span>
-    <button class="override-btn active-auto" onclick="setOverride(this,'auto')">✦ auto</button>
-    <button class="override-btn" onclick="setOverride(this,'claude')">● claude</button>
-    <button class="override-btn" onclick="setOverride(this,'codex')">○ codex</button>
-    <button class="override-btn" onclick="setOverride(this,'gemini')">◆ gemini</button>
-    <button class="override-btn" onclick="setOverride(this,'argue')" title="등록된 모델들이 라운드 로빈으로 서로 보완·반박 (최대 6턴, 중간 확장 가능)">⚡ argue</button>
-    <button class="override-btn" onclick="setOverride(this,'team')" title="작업 모드 — Claude 설계 → Codex 구현 → Gemini 리뷰 순차 실행">👥 team</button>
-    <button class="override-btn" onclick="setOverride(this,'loop')" title="될 때까지 반복 (Ralph Wiggum 패턴) — 모델이 결과 검증 후 부족하면 자동 다음 iteration. max 5회">🔁 loop</button>
-    <button class="override-btn" onclick="setOverride(this,'boomerang')" title="큰 작업 자동 분할 → 여러 모델 병렬 위임 → 결과 종합 (Roo Code 스타일)">🪃 boom</button>
+    <span class="override-label">mode:</span>
+    <!-- 단일 모델 강제는 dropdown 으로 묶음. 직접 입력으로도 @claude / @codex / @gemini 가능. -->
+    <div class="override-pick" id="route-pick">
+      <button class="override-btn active-auto" id="route-pick-btn" onclick="toggleRoutePopup(event)" title="auto: 라우터가 알아서 / claude·codex·gemini: 강제 (또는 @멘션)">
+        <span id="route-pick-label">✦ auto</span> <span class="caret">▾</span>
+      </button>
+      <div class="route-popup" id="route-popup" style="display:none;">
+        <button class="route-item" onclick="setOverride(null,'auto'); pickRouteLabel('✦ auto', true)" title="라우터가 작업 보고 모델 자동 선택">✦ auto</button>
+        <button class="route-item" onclick="setOverride(null,'claude'); pickRouteLabel('● claude', false)">● claude</button>
+        <button class="route-item" onclick="setOverride(null,'codex'); pickRouteLabel('○ codex', false)">○ codex</button>
+        <button class="route-item" onclick="setOverride(null,'gemini'); pickRouteLabel('◆ gemini', false)">◆ gemini</button>
+      </div>
+    </div>
+    <button class="override-btn" onclick="setOverride(this,'argue')" title="셋이 토론 — 각자 자기 카드에 답하고 Haiku가 0~10점 채점 (최대 6턴)">⚡ argue</button>
+    <button class="override-btn" onclick="setOverride(this,'team')" title="코드 위임 — Claude(설계) → Codex(구현) → Gemini(리뷰). 토론 X, 코드 작업 O">👥 team</button>
+    <button class="override-btn" onclick="setOverride(this,'loop')" title="될 때까지 반복 (Ralph Wiggum) — 모델이 결과 검증 후 부족하면 자동 다음 iteration. max 5회">🔁 loop</button>
+    <button class="override-btn" onclick="setOverride(this,'boomerang')" title="큰 작업 자동 분할 → 여러 모델 병렬 위임 → 결과 종합">🪃 boom</button>
     <div style="flex:1"></div>
     <button class="ctx-btn active" id="ctx-btn" onclick="toggleContext(this)" title="현재 파일 컨텍스트 자동 주입">
       <span class="ctx-icon">📄</span>
@@ -3674,17 +3699,54 @@
     document.querySelectorAll('.override-btn').forEach(b => {
       b.className = 'override-btn';
     });
-    btn.classList.add('active-' + mode);
+    // dropdown 으로 단일 모델 선택한 경우 btn 이 null — auto/claude/codex/gemini 는 route-pick-btn 이 받음
+    if (mode === 'auto' || mode === 'claude' || mode === 'codex' || mode === 'gemini') {
+      const pickBtn = document.getElementById('route-pick-btn')
+      if (pickBtn) pickBtn.classList.add('active-' + mode)
+    } else if (btn) {
+      btn.classList.add('active-' + mode);
+    }
     postToExtension({ type: 'setOverride', mode });
   }
 
   function setOverrideButton(mode) {
     document.querySelectorAll('.override-btn').forEach(b => {
       b.className = 'override-btn'
-      const onclick = b.getAttribute('onclick') || ''
-      if (onclick.includes(`'${mode}'`)) b.classList.add('active-' + mode)
     })
+    if (mode === 'auto' || mode === 'claude' || mode === 'codex' || mode === 'gemini') {
+      const pickBtn = document.getElementById('route-pick-btn')
+      if (pickBtn) pickBtn.classList.add('active-' + mode)
+      const labels = { auto: '✦ auto', claude: '● claude', codex: '○ codex', gemini: '◆ gemini' }
+      const lbl = document.getElementById('route-pick-label')
+      if (lbl) lbl.textContent = labels[mode] || '✦ auto'
+    } else {
+      document.querySelectorAll('.override-btn').forEach(b => {
+        const onclick = b.getAttribute('onclick') || ''
+        if (onclick.includes(`'${mode}'`)) b.classList.add('active-' + mode)
+      })
+    }
   }
+
+  // 라우팅 dropdown 토글
+  function toggleRoutePopup(e) {
+    if (e) { e.stopPropagation(); e.preventDefault() }
+    const popup = document.getElementById('route-popup')
+    if (!popup) return
+    popup.style.display = popup.style.display === 'none' ? 'flex' : 'none'
+  }
+  function pickRouteLabel(label, isAuto) {
+    const lbl = document.getElementById('route-pick-label')
+    if (lbl) lbl.textContent = label
+    const popup = document.getElementById('route-popup')
+    if (popup) popup.style.display = 'none'
+  }
+  // 바깥 클릭 시 dropdown 닫기
+  document.addEventListener('click', (e) => {
+    const pick = document.getElementById('route-pick')
+    const popup = document.getElementById('route-popup')
+    if (!pick || !popup) return
+    if (!pick.contains(e.target)) popup.style.display = 'none'
+  })
 
   let isSending = false
   let pendingAttachments = []
