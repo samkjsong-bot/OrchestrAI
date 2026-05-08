@@ -108,6 +108,10 @@ export function inferEffort(input: string): Effort {
   if (/(추가|수정|고쳐|고치|바꿔|변경|개선|버그|에러|오류|디버그|fix it)/.test(text)) {
     return 'high'
   }
+  // 한국어 코딩 동사 — '만들어줘 / 구현해 / 짜줘 / 작성해' 단독 키워드도 high (작은 작업도 깊이 보장)
+  if (/(만들어|만들|구현|짜줘|작성|개발)/.test(text)) {
+    return 'high'
+  }
   if (compact.length > 500) {
     return 'high'
   }
