@@ -2742,6 +2742,23 @@
       const check = document.getElementById(`check-${m}`)
       if (check) check.textContent = m === currentPermissionMode ? 'ok' : ''
     }
+    // Plan 모드 : 입력창 placeholder + 색 변경 — 사용자가 즉시 시각적 인지
+    const ta = document.getElementById('input')
+    if (ta) {
+      if (currentPermissionMode === 'plan') {
+        ta.placeholder = '📋 Plan 모드 — 계획만 세우고 멈춤. 코드 수정 X'
+        ta.style.borderColor = '#a78bfa'
+        ta.style.background = 'rgba(167, 139, 250, 0.05)'
+      } else if (currentPermissionMode === 'ask') {
+        ta.placeholder = '❓ Ask 모드 — 수정 전 매번 확인'
+        ta.style.borderColor = '#fbbf24'
+        ta.style.background = 'rgba(251, 191, 36, 0.05)'
+      } else {
+        ta.placeholder = '무엇을 만들까요... (@ 치면 모델/명령 선택)'
+        ta.style.borderColor = ''
+        ta.style.background = ''
+      }
+    }
   }
 
   function updateEffortUI() {
