@@ -1642,6 +1642,7 @@ class OrchestrAIViewProvider implements vscode.WebviewViewProvider, vscode.Dispo
           case 'send':          await this._handleSend(msg.text, msg.attachments ?? []); break
           case 'mentionCommand': await this._handleMentionCommand(msg.cmd); break
           case 'createPR':       await this._handleCreatePR(msg.titleHint ?? ''); break
+          case 'revertFile':     await this._handleRevertFile(msg.path); break
           case 'setOverride':   this._override = msg.mode; break
           case 'toggleContext': this._useFileContext = msg.enabled; break
           case 'clearChat':
@@ -2378,6 +2379,31 @@ class OrchestrAIViewProvider implements vscode.WebviewViewProvider, vscode.Dispo
       name: p.name, model: p.model, baseUrl: p.baseUrl,
     }))
     this._post({ type: 'customProviders', providers })
+  }
+
+  // 단일 파일 git checkout — Composer-style "이 파일만 되돌리기"
+  private async _handleRevertFile(relPath: string) {
+    const root = getWorkspaceRoot()
+    if (!root || !relPath) return
+    const { spawn } = require('child_process') as typeof import('child_process')
+    const run = (args: string[]): Promise<{ out: string; code: number }> => new Promise(resolve => {
+      const p = spawn('git', args, { cwd: root, env: { ...process.env, GIT_TERMINAL_PROMPT: '0' } })
+      let out = ''
+      p.stdout.on('data', (c: Buffer) => out += c.toString('utf8'))
+      p.stderr.on('data', (c: Buffer) => out += c.toString('utf8'))
+      p.on('exit', (code) => resolve({ out, code: code ?? 1 }))
+      p.on('error', () => resolve({ out: '', code: 1 }))
+    })
+    // HEAD 기준 — auto git commit 이 이미 변경 commit 했으면 그 직전 (HEAD~1) 이 적합
+    // 안전하게: 최근 commit 메시지가 [OrchestrAI] 로 시작하면 HEAD~1, 아니면 HEAD
+    const lastMsg = (await run(['log', '-1', '--pretty=%s'])).out.trim()
+    const ref = lastMsg.startsWith('[OrchestrAI]') ? 'HEAD~1' : 'HEAD'
+    const result = await run(['checkout', ref, '--', relPath])
+    if (result.code === 0) {
+      this._post({ type: 'toast', message: `↶ '${relPath}' 되돌림 (${ref})` })
+    } else {
+      this._post({ type: 'toast', message: `되돌리기 실패: ${result.out.slice(0, 120)}` })
+    }
   }
 
   // /pr [title] — 현재 branch 의 commit 들 보고 AI 가 title/body 생성 + gh pr create

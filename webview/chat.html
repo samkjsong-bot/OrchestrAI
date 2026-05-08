@@ -828,6 +828,29 @@
   .override-btn.active-loop { color: #34d399; border-color: #34d39933; background: #34d39911; }
   .override-btn.active-boomerang { color: #c084fc; border-color: #c084fc33; background: #c084fc11; }
 
+  /* Composer-style 다중 파일 review 추가 UI */
+  .change-toggle-btn {
+    background: transparent; border: none; color: var(--text-dim);
+    cursor: pointer; padding: 0 6px; font-size: 12px;
+  }
+  .change-toggle-btn:hover { color: var(--text); }
+  .change-files-list.collapsed { max-height: 120px; overflow-y: auto; }
+  .change-revert {
+    color: #f87171 !important;
+  }
+  .change-revert:hover { color: #fca5a5 !important; background: #f8717111 !important; }
+  .change-bulk-actions {
+    display: flex; gap: 6px; padding: 8px 4px 4px; border-top: 1px solid var(--border); margin-top: 6px;
+  }
+  .bulk-btn {
+    flex: 1; padding: 5px 10px; border-radius: 4px;
+    background: var(--surface); border: 1px solid var(--border); color: var(--text-dim);
+    cursor: pointer; font-family: 'JetBrains Mono', monospace; font-size: 10px; transition: all 0.15s;
+  }
+  .bulk-btn:hover { background: var(--surface2); color: var(--text); border-color: var(--border-bright); }
+  .bulk-revert-all { color: #f87171; border-color: #f8717133; }
+  .bulk-revert-all:hover { background: #f8717111; color: #fca5a5; border-color: #f87171; }
+
   /* Plan → Act 전환 CTA (plan 모드 turn 완료 후 표시) */
   .plan-act-cta { margin-top: 12px; padding-top: 10px; border-top: 1px solid #a78bfa33; }
   .plan-act-btn {
@@ -2382,24 +2405,54 @@
     const totalAdd = files.reduce((sum, f) => sum + (f.additions || 0), 0)
     const totalDel = files.reduce((sum, f) => sum + (f.deletions || 0), 0)
     const turnId = summary?.turnId || latestChangeSummary?.turnId || files[0]?.turnId || ''
-    return `<div class="change-panel">
+    // 5+ 파일 then collapse default. 그 외 펼침.
+    const manyFiles = files.length >= 5
+    const panelId = `cp-${turnId || Math.random().toString(36).slice(2, 8)}`
+    return `<div class="change-panel" id="${panelId}">
       <div class="change-title">
-        <span>편집한 파일</span>
+        <span>📝 편집한 파일 (${files.length})</span>
         <span><span class="review-add">+${totalAdd}</span> <span class="review-del">-${totalDel}</span></span>
+        ${manyFiles ? `<button class="change-toggle-btn" onclick="toggleChangePanel('${panelId}')" title="펼치기/접기">▾</button>` : ''}
       </div>
+      <div class="change-files-list ${manyFiles ? 'collapsed' : ''}">
       ${files.map(f => `
-        <div class="change-file">
+        <div class="change-file" data-path="${escapeHtml(f.path)}">
           <div class="change-file-head">
             <span class="change-status ${f.status}">${f.status}</span>
             <span class="change-path" title="${escapeHtml(f.path)}">${escapeHtml(f.path)}</span>
             <span class="change-stat"><span class="add">+${f.additions || 0}</span> <span class="del">-${f.deletions || 0}</span></span>
             <button class="change-icon-btn" title="파일 열기" data-path="${escapeHtml(f.path)}" onclick="openChangedFile(this.dataset.path)">↗</button>
             <button class="change-icon-btn" title="diff 보기" data-turn="${escapeHtml(turnId)}" data-path="${escapeHtml(f.path)}" onclick="reviewFileChange(this.dataset.turn, this.dataset.path)">≡</button>
+            <button class="change-icon-btn change-revert" title="이 파일만 되돌리기 (git checkout)" data-path="${escapeHtml(f.path)}" onclick="revertSingleFile(this.dataset.path)">↶</button>
           </div>
           ${renderDiffPreview(f.preview || [])}
         </div>
       `).join('')}
+      </div>
+      ${files.length >= 2 ? `<div class="change-bulk-actions">
+        <button class="bulk-btn bulk-revert-all" onclick="revertAllInTurn('${escapeHtml(turnId)}')" title="이 turn 의 모든 변경 되돌리기">↶ 이 turn 다 되돌리기</button>
+        <button class="bulk-btn" onclick="openAllChanged()" title="변경 파일 전부 에디터 탭에 열기">↗ 전부 열기</button>
+      </div>` : ''}
     </div>`
+  }
+
+  // 다중 파일 review 보조 함수들
+  function toggleChangePanel(id) {
+    const list = document.querySelector(`#${id} .change-files-list`)
+    if (list) list.classList.toggle('collapsed')
+  }
+  function revertSingleFile(filePath) {
+    if (!confirm(`'${filePath}' 만 git checkout 으로 되돌릴까요?`)) return
+    postToExtension({ type: 'revertFile', path: filePath })
+  }
+  function revertAllInTurn(turnId) {
+    if (!turnId) return showToast('turnId 없음 — 자동 git commit 활성 상태에서만 작동')
+    if (!confirm('이 turn 의 모든 변경을 되돌릴까요? (해당 commit parent 로 hard reset)')) return
+    postToExtension({ type: 'rollbackTurn', userId: turnId })
+  }
+  function openAllChanged() {
+    const items = document.querySelectorAll('.change-file[data-path]')
+    items.forEach(el => openChangedFile(el.getAttribute('data-path')))
   }
 
   function renderDiffPreview(lines = []) {
