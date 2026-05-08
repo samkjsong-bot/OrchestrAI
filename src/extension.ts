@@ -22,7 +22,7 @@ import { log } from './util/log'
 import { buildTaggedHistory, setContextWindowPreset } from './util/history'
 import { buildIndex, loadIndex, reindexFile, type CodebaseIndex } from './util/codebaseIndex'
 import { retrieve } from './util/retriever'
-import { planBoomerang, type BoomerangPlan } from './util/boomerang'
+import { planBoomerang } from './util/boomerang'
 import { fetchAgentFromUrl, loadAgentStore, addAgent, removeAgent, setActiveAgent, getActiveAgent } from './util/agentMarketplace'
 import { isQuotaError, summarizeQuotaError } from './util/quota'
 import { TelegramBridge } from './telegram/bridge'
@@ -64,21 +64,6 @@ function chatStateFilePath(context: vscode.ExtensionContext): string {
   const dir = path.join(getStorageRoot(context), 'chats')
   try { fs.mkdirSync(dir, { recursive: true }) } catch {}
   return path.join(dir, `${hash}.json`)
-}
-
-// 현재 키 파일 못 찾을 때 chats/ 안 가장 최근 파일을 자동으로 따라옴 (데이터 분실 방지 안전망)
-function findMostRecentChat(context: vscode.ExtensionContext): string | null {
-  const dir = path.join(context.globalStorageUri.fsPath, 'chats')
-  if (!fs.existsSync(dir)) return null
-  const files = fs.readdirSync(dir)
-    .filter(f => f.endsWith('.json'))
-    .map(f => {
-      try { return { f, mtime: fs.statSync(path.join(dir, f)).mtime.getTime() } }
-      catch { return null }
-    })
-    .filter((x): x is { f: string; mtime: number } => x !== null)
-    .sort((a, b) => b.mtime - a.mtime)
-  return files[0] ? path.join(dir, files[0].f) : null
 }
 
 interface ChatStorage {
@@ -217,7 +202,6 @@ interface McpToolInfo {
   description?: string
 }
 
-const CODEX_TOOL_RE = /```(?:orchestrai-tool|json)\s*([\s\S]*?)```/i
 // 무한 루프 안전장치 — 정상 작업은 절대 도달 못 하는 수. Claude Code CLI와 동등.
 const MAX_CODEX_TOOL_TURNS = 100
 const MAX_TOOL_READ_CHARS = 40000
@@ -287,10 +271,6 @@ function fileLinkMd(p?: string): string {
   return `[${base}](orchestrai-open:${encodeURIComponent(p)})`
 }
 function formatCodexToolCall(call: CodexToolCall): string {
-  const trim = (s: any, n = 80) => {
-    const str = String(s ?? '').replace(/\s+/g, ' ').trim()
-    return str.length > n ? str.slice(0, n) + '...' : str
-  }
   switch (call.tool) {
     case 'list_files':
       return `list_files(${call.path ?? '.'}${call.recursive === false ? '' : ', recursive'})`
@@ -588,10 +568,6 @@ export function actualModelName(model: Model, effort: Effort): string {
   return 'gemini-2.5-flash'
 }
 
-function modelTag(m: Model): string {
-  return m === 'claude' ? '[Claude]' : m === 'codex' ? '[Codex]' : '[Gemini]'
-}
-
 // ventriloquism 후처리 — 라인 시작뿐 아니라 inline 도 잡음.
 // "blah blah **[Codex]** xxx **[Gemini]** yyy" 같은 한 줄 형식도 처리.
 // 알고리즘: tag 매치 위치로 content split → self segment / peer segment 분리 → peer 만 drop.
@@ -654,10 +630,8 @@ function buildSystemPrompt(
   teamRole?: 'architect' | 'implementer' | 'reviewer',
 ): string {
   const selfName = modelLabel(model)
-  const selfTag = `<prior_turn from="${model}">`
   const peers: Model[] = (['claude', 'codex', 'gemini'] as Model[]).filter(m => m !== model)
   const peerNames = peers.map(modelLabel).join(' and ')
-  const peerTagsList = peers.map(p => `<prior_turn from="${p}">`).join(' / ')
 
   // team 모드 역할별 지침 (teamRole이 지정됐을 때만)
   // 새 설계: Claude orchestrator가 consult_codex/consult_gemini/generate_image 툴로 동료에게 위임.
@@ -2631,6 +2605,8 @@ class OrchestrAIViewProvider implements vscode.WebviewViewProvider, vscode.Dispo
             results.set(task.id, `(failed: ${errMsg})`)
           }
         }))
+        // 각 group 끝날 때마다 persist (sub-task 누적이 reload 후에도 살아있게)
+        await this._persistMessages()
       }
 
       // 종합 — 모든 sub-task 결과를 Claude(또는 Haiku)가 통합
@@ -3326,6 +3302,7 @@ PATH RULES: paths are relative to workspace root. Don't prefix with "${gWsBase}/
       timestamp: Date.now(),
     }
     this._messages.push(userMsg)
+    await this._persistMessages()  // review 도중 reload 시 user msg 살아있게
     this._post({ type: 'userMessage', message: userMsg })
 
     const { spawn } = require('child_process') as typeof import('child_process')
@@ -3406,6 +3383,7 @@ N — one line summary`
           tokens: result.inputTokens + result.outputTokens, routing: decision, timestamp: Date.now(),
         }
         this._messages.push(assistantMsg)
+        await this._persistMessages()  // 각 review 응답 즉시 persist (3개 모델 병렬, 한쪽 끝나는 대로 살림)
         this._post({ type: 'streamEnd', id: msgId, tokens: assistantMsg.tokens, actualModel: decision.actualModel })
         return { model: m, content: result.content }
       } catch (err) {
