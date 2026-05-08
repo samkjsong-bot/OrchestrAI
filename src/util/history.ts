@@ -5,14 +5,14 @@
 import { Model, ChatMessage } from '../router/types'
 import type { CompactionState } from './compaction'
 
-// 모델별 최대 메시지 수. Claude Code / Codex CLI 가 자체적으로 거의 무제한 보내는 패턴 따라감.
-// compaction이 토큰 한계 가까워지면 알아서 압축하니 메시지 수 limit은 안전망 역할만.
-// Claude Sonnet 4.6: 1M window, Opus 4.6: 200k. 메시지 1개 평균 ~500토큰이면 1000개=500k.
-// Codex (gpt-5): 256k. Gemini 2.5 Flash: 1M, Pro: 2M.
+// 모델별 최대 메시지 수. Claude/Codex 는 자체적으로 거의 무제한 보내는 패턴 따라감.
+// Gemini 만 따로 작게 — 무료 OAuth tier 의 안전 필터가 컨텍스트 길이 + 다양성에 민감해서
+// 100+ 메시지 들어가면 finishReason: stop 빈 응답 잦음. 200 으로 균형.
+// compaction (TRIGGER_TOKENS=150k) 이 토큰 한계 가까우면 알아서 압축.
 const PRESETS: Record<'narrow' | 'default' | 'wide', Record<Model, number>> = {
-  narrow:  { claude: 60, codex: 40, gemini: 100 },     // 토큰 절약 원할 때
-  default: { claude: 500, codex: 300, gemini: 1000 },  // Claude Code/Codex 수준 — 사실상 무제한
-  wide:    { claude: 2000, codex: 1500, gemini: 5000 },// 진짜 긴 작업 (큰 코드베이스 단위)
+  narrow:  { claude: 60,   codex: 40,   gemini: 60   },  // 토큰 절약 원할 때
+  default: { claude: 500,  codex: 300,  gemini: 200  },  // Gemini 만 줄임 (안전 필터 trip 방지)
+  wide:    { claude: 2000, codex: 1500, gemini: 600  },  // 진짜 긴 작업 — Gemini 도 600 까지만
 }
 
 // VSCode setting `orchestrai.contextWindow` 로 결정. 안 받아오면 default.
