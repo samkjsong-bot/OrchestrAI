@@ -119,6 +119,24 @@ VSCode Settings 에 추가하면 `@<name>` mention 으로 호출:
 ]
 ```
 
+## 📎 첨부 파일 (Claude Code 수준)
+
+drag & drop / paste / 파일 picker — 모두 자동 분기:
+
+| 형식 | Claude | Codex | Gemini | 처리 |
+|---|---|---|---|---|
+| 텍스트/코드 (md/json/ts/py/sh/sql 등 40+) | ✅ | ✅ | ✅ | inline 코드블록 |
+| 이미지 (png/jpg/gif/webp/svg) | ✅ | ✅ | ✅ | base64 multimodal |
+| PDF | ✅ | ❌ | ✅ | base64 multimodal |
+| 엑셀 (xlsx/xls/xlsm/ods) | ✅ | ✅ | ✅ | SheetJS → CSV |
+| Word (.docx) | ✅ | ✅ | ✅ | mammoth → markdown |
+| Jupyter (.ipynb) | ✅ | ✅ | ✅ | cell 분리 |
+| PowerPoint (.pptx) | ✅ | ✅ | ✅ | jszip 슬라이드 텍스트 |
+| 음성 (mp3/wav/m4a/flac/ogg) | ❌ | ❌ | ✅ | Gemini multimodal |
+| 영상 (mp4/mov/webm) | ❌ | ❌ | ✅ | Gemini multimodal |
+
+multimodal 첨부 시 auto 모드면 자동으로 Gemini 라우팅. 음성/영상은 Gemini 만 인식.
+
 ## 📋 ORCHESTRAI.md (프로젝트 룰)
 
 워크스페이스 루트에 `ORCHESTRAI.md` 파일 만들면 자동 로드됨 → 모든 모델 system prompt 에 prepend.

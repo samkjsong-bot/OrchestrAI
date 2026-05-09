@@ -1,5 +1,35 @@
 # Changelog
 
+## v0.1.7 — 2026-05-09 (첨부 형식 대확장 + GitHub 인프라)
+
+### 첨부 파일 형식 (Claude Code 수준 + 일부 그 이상)
+- **이미지** (png/jpg/gif/webp/svg) — Claude/Codex/Gemini 모두 multimodal
+- **PDF** — Claude/Gemini multimodal
+- **엑셀** (xlsx/xls/xlsm/ods) — SheetJS → CSV inline (모든 모델)
+- **Word** (.docx) — mammoth → markdown inline (모든 모델)
+- **Jupyter** (.ipynb) — cell 분리 → 코드블록 + outputs (모든 모델)
+- **PowerPoint** (.pptx) — jszip + 슬라이드 텍스트 추출 (모든 모델)
+- **음성** (mp3/wav/m4a/flac/ogg) — Gemini multimodal
+- **영상** (mp4/mov/webm) — Gemini multimodal
+- 텍스트/코드 (40+ 확장자) — inline 코드블록
+
+### Multimodal 정식 처리
+- **Claude SDK**: `query()` 의 prompt 를 AsyncIterable<SDKUserMessage> 로 전달, content blocks (text/image/document) 구성
+- **Gemini provider**: `type: 'file'` 추가 (PDF/audio/video)
+- **Codex provider**: chatgpt.com 우회 경로의 `input_image` content type 직접 처리
+
+### GitHub 인프라
+- `.github/workflows/ci.yml` — Ubuntu+Windows × Node 20 매트릭스 CI
+- `.github/workflows/publish.yml` — v* 태그 push 시 GitHub Release + Marketplace + Open VSX 자동 publish
+- `.github/dependabot.yml` — npm 주간, GitHub Actions 월간, 그룹화
+- `SECURITY.md` — threat model + 취약점 보고 정책
+
+### 안정성
+- spawn timeout (gh/git push 60s, 기본 15s) — auth hang process leak 방지
+- webview message error boundary — 한 핸들러 fail 해도 다른 작동
+- dispose 누수 fix — `_reindexTimer` clearTimeout + `_currentAbort` abort
+- esbuild build 깨짐 fix (playwright-core / chromium-bidi external)
+
 ## v0.1.6 — 2026-05-08~09 (대규모 기능 + 안정성 패스)
 
 ### 🎯 새 기능 (상용 도구 핵심 따라잡기)
