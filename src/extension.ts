@@ -1656,6 +1656,8 @@ class OrchestrAIViewProvider implements vscode.WebviewViewProvider, vscode.Dispo
           case 'createPR':       await this._handleCreatePR(msg.titleHint ?? ''); break
           case 'revertFile':     await this._handleRevertFile(msg.path); break
           case 'spreadsheetAttach': await this._handleSpreadsheetAttach(msg.name, msg.dataBase64); break
+          case 'docxAttach':         await this._handleDocxAttach(msg.name, msg.dataBase64); break
+          case 'notebookAttach':     await this._handleNotebookAttach(msg.name, msg.text); break
           case 'setOverride':   this._override = msg.mode; break
           case 'toggleContext': this._useFileContext = msg.enabled; break
           case 'clearChat':
@@ -2428,6 +2430,61 @@ class OrchestrAIViewProvider implements vscode.WebviewViewProvider, vscode.Dispo
       const msg = err instanceof Error ? err.message : String(err)
       this._post({ type: 'toast', message: `엑셀 변환 실패: ${msg.slice(0, 120)}` })
       log.warn('spreadsheet', `${name} parse failed: ${msg}`)
+    }
+  }
+
+  // Word 문서 (.docx) → markdown 변환 (mammoth library)
+  private async _handleDocxAttach(name: string, dataBase64: string) {
+    try {
+      // mammoth typedef 가 outdated — convertToMarkdown 누락. as any 우회
+      const mammoth = require('mammoth') as any
+      const buffer = Buffer.from(dataBase64, 'base64')
+      const result = await mammoth.convertToMarkdown({ buffer })
+      const markdown = result.value || '(empty document)'
+      const truncated = markdown.length > 100_000
+      const text = `### ${name} (Word document, ${markdown.length} chars${truncated ? ', truncated' : ''})\n\n${truncated ? markdown.slice(0, 100_000) + '\n\n... [truncated]' : markdown}`
+      this._post({ type: 'appendInput', text })
+      log.info('docx', `${name} → ${markdown.length} chars markdown`)
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      this._post({ type: 'toast', message: `Word 변환 실패: ${msg.slice(0, 120)}` })
+      log.warn('docx', `${name} parse failed: ${msg}`)
+    }
+  }
+
+  // Jupyter notebook (.ipynb) → 각 cell 별 코드/markdown inline. 의존성 0 (JSON parse).
+  private async _handleNotebookAttach(name: string, text: string) {
+    try {
+      const nb = JSON.parse(text)
+      const cells: any[] = Array.isArray(nb.cells) ? nb.cells : []
+      const blocks: string[] = [`### ${name} (Jupyter notebook, ${cells.length} cells)`]
+      cells.forEach((cell, i) => {
+        const src = Array.isArray(cell.source) ? cell.source.join('') : String(cell.source ?? '')
+        if (cell.cell_type === 'markdown') {
+          blocks.push(`\n#### Cell ${i + 1} (markdown)\n${src}`)
+        } else if (cell.cell_type === 'code') {
+          const lang = (nb.metadata?.kernelspec?.language || nb.metadata?.language_info?.name || 'python').toLowerCase()
+          blocks.push(`\n#### Cell ${i + 1} (code, ${lang})\n\`\`\`${lang}\n${src}\n\`\`\``)
+          // outputs 도 첨부 — text/plain 만 (이미지/HTML 은 base64 라 너무 큼)
+          const outputs: any[] = Array.isArray(cell.outputs) ? cell.outputs : []
+          for (const out of outputs.slice(0, 3)) {
+            const textOut = out['text/plain'] || (out.data?.['text/plain']) || out.text
+            if (textOut) {
+              const t = Array.isArray(textOut) ? textOut.join('') : String(textOut)
+              blocks.push(`Output:\n\`\`\`\n${t.slice(0, 5000)}\n\`\`\``)
+            }
+          }
+        } else {
+          blocks.push(`\n#### Cell ${i + 1} (${cell.cell_type ?? 'unknown'})\n${src}`)
+        }
+      })
+      const final = blocks.join('\n')
+      const truncated = final.length > 200_000
+      this._post({ type: 'appendInput', text: truncated ? final.slice(0, 200_000) + '\n\n... [notebook truncated]' : final })
+      log.info('ipynb', `${name} → ${cells.length} cells inlined`)
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      this._post({ type: 'toast', message: `Notebook parse 실패: ${msg.slice(0, 120)}` })
     }
   }
 

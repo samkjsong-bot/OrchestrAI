@@ -2140,7 +2140,7 @@
 
   <div class="input-wrap">
     <input id="image-input" type="file"
-           accept="image/*,application/pdf,text/*,.md,.markdown,.txt,.json,.yaml,.yml,.toml,.csv,.tsv,.log,.xml,.html,.htm,.svg,.css,.scss,.less,.ts,.tsx,.js,.jsx,.mjs,.cjs,.py,.rb,.go,.rs,.java,.kt,.swift,.c,.cc,.cpp,.h,.hpp,.cs,.php,.lua,.sh,.bash,.zsh,.ps1,.bat,.cmd,.sql,.dockerfile,.gitignore,.env,.xlsx,.xls,.ods"
+           accept="image/*,application/pdf,text/*,.md,.markdown,.txt,.json,.yaml,.yml,.toml,.csv,.tsv,.log,.xml,.html,.htm,.svg,.css,.scss,.less,.ts,.tsx,.js,.jsx,.mjs,.cjs,.py,.rb,.go,.rs,.java,.kt,.swift,.c,.cc,.cpp,.h,.hpp,.cs,.php,.lua,.sh,.bash,.zsh,.ps1,.bat,.cmd,.sql,.dockerfile,.gitignore,.env,.xlsx,.xls,.ods,.docx,.ipynb"
            multiple hidden onchange="handleImageFiles(this.files)">
     <div class="attach-preview" id="attach-preview"></div>
     <textarea id="input" placeholder="무엇을 만들까요... (@ 치면 모델 선택)" rows="1"
@@ -4063,22 +4063,52 @@
     const t = (file.type || '').toLowerCase()
     return t.includes('spreadsheet') || t.includes('excel')
   }
+  // Word 문서 — mammoth 로 markdown 변환
+  function isDocx(file) {
+    if (!file) return false
+    return /\.docx$/i.test(file.name || '')
+  }
+  // Jupyter notebook — JSON 그대로 텍스트로 읽고 백엔드에서 cell 별 추출
+  function isNotebook(file) {
+    if (!file) return false
+    return /\.ipynb$/i.test(file.name || '')
+  }
 
   // 이미지 / PDF — base64 dataUrl 로 attachments 배열에 (Claude/Gemini multimodal)
   // 엑셀 — 백엔드에서 SheetJS 로 csv 변환 → inline
+  // Word — 백엔드에서 mammoth 로 markdown 변환 → inline
+  // Jupyter — 백엔드에서 cell 별 분리 → inline
   // 텍스트 / 코드 파일 — content 를 입력창에 ## 파일명 + 코드블록으로 inline (모든 모델)
   function addImageFile(file) {
     if (!file) return
     const reader = new FileReader()
-    // 엑셀: base64 로 백엔드에 보내 SheetJS 가 csv 변환
+    // 엑셀
     if (isSpreadsheet(file)) {
       reader.onload = () => {
-        const dataUrl = String(reader.result || '')
-        const base64 = dataUrl.replace(/^data:[^;]+;base64,/, '')
+        const base64 = String(reader.result || '').replace(/^data:[^;]+;base64,/, '')
         showToast(`📊 ${file.name} 변환 중...`)
         postToExtension({ type: 'spreadsheetAttach', name: file.name, dataBase64: base64 })
       }
       reader.readAsDataURL(file)
+      return
+    }
+    // Word (.docx)
+    if (isDocx(file)) {
+      reader.onload = () => {
+        const base64 = String(reader.result || '').replace(/^data:[^;]+;base64,/, '')
+        showToast(`📝 ${file.name} 변환 중...`)
+        postToExtension({ type: 'docxAttach', name: file.name, dataBase64: base64 })
+      }
+      reader.readAsDataURL(file)
+      return
+    }
+    // Jupyter notebook (.ipynb)
+    if (isNotebook(file)) {
+      reader.onload = () => {
+        showToast(`📓 ${file.name} 처리 중...`)
+        postToExtension({ type: 'notebookAttach', name: file.name, text: String(reader.result || '') })
+      }
+      reader.readAsText(file)
       return
     }
     if (isTextFile(file)) {
