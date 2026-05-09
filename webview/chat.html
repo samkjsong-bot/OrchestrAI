@@ -2140,7 +2140,7 @@
 
   <div class="input-wrap">
     <input id="image-input" type="file"
-           accept="image/*,application/pdf,text/*,.md,.markdown,.txt,.json,.yaml,.yml,.toml,.csv,.tsv,.log,.xml,.html,.htm,.svg,.css,.scss,.less,.ts,.tsx,.js,.jsx,.mjs,.cjs,.py,.rb,.go,.rs,.java,.kt,.swift,.c,.cc,.cpp,.h,.hpp,.cs,.php,.lua,.sh,.bash,.zsh,.ps1,.bat,.cmd,.sql,.dockerfile,.gitignore,.env"
+           accept="image/*,application/pdf,text/*,.md,.markdown,.txt,.json,.yaml,.yml,.toml,.csv,.tsv,.log,.xml,.html,.htm,.svg,.css,.scss,.less,.ts,.tsx,.js,.jsx,.mjs,.cjs,.py,.rb,.go,.rs,.java,.kt,.swift,.c,.cc,.cpp,.h,.hpp,.cs,.php,.lua,.sh,.bash,.zsh,.ps1,.bat,.cmd,.sql,.dockerfile,.gitignore,.env,.xlsx,.xls,.ods"
            multiple hidden onchange="handleImageFiles(this.files)">
     <div class="attach-preview" id="attach-preview"></div>
     <textarea id="input" placeholder="무엇을 만들까요... (@ 치면 모델 선택)" rows="1"
@@ -4055,11 +4055,32 @@
     return /\.(md|markdown|txt|json|yaml|yml|toml|csv|tsv|log|xml|html?|svg|css|scss|less|ts|tsx|js|jsx|mjs|cjs|py|rb|go|rs|java|kt|swift|c|cc|cpp|h|hpp|cs|php|lua|sh|bash|zsh|ps1|bat|cmd|sql|dockerfile|gitignore|env|conf|ini)$/.test(name)
   }
 
+  // 엑셀 / 스프레드시트 감지
+  function isSpreadsheet(file) {
+    if (!file) return false
+    const name = (file.name || '').toLowerCase()
+    if (/\.(xlsx|xls|xlsm|ods)$/.test(name)) return true
+    const t = (file.type || '').toLowerCase()
+    return t.includes('spreadsheet') || t.includes('excel')
+  }
+
   // 이미지 / PDF — base64 dataUrl 로 attachments 배열에 (Claude/Gemini multimodal)
+  // 엑셀 — 백엔드에서 SheetJS 로 csv 변환 → inline
   // 텍스트 / 코드 파일 — content 를 입력창에 ## 파일명 + 코드블록으로 inline (모든 모델)
   function addImageFile(file) {
     if (!file) return
     const reader = new FileReader()
+    // 엑셀: base64 로 백엔드에 보내 SheetJS 가 csv 변환
+    if (isSpreadsheet(file)) {
+      reader.onload = () => {
+        const dataUrl = String(reader.result || '')
+        const base64 = dataUrl.replace(/^data:[^;]+;base64,/, '')
+        showToast(`📊 ${file.name} 변환 중...`)
+        postToExtension({ type: 'spreadsheetAttach', name: file.name, dataBase64: base64 })
+      }
+      reader.readAsDataURL(file)
+      return
+    }
     if (isTextFile(file)) {
       reader.onload = () => {
         const content = String(reader.result || '')

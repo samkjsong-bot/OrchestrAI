@@ -308,7 +308,7 @@
     ]
   },
   "scripts": {
-    "build": "esbuild src/extension.ts --bundle --outfile=dist/extension.js --external:vscode --external:@anthropic-ai/claude-agent-sdk --external:ai --external:ai-sdk-provider-gemini-cli --external:@google/gemini-cli-core --external:zod --external:playwright-core --external:chromium-bidi --platform=node --format=cjs",
+    "build": "esbuild src/extension.ts --bundle --outfile=dist/extension.js --external:vscode --external:@anthropic-ai/claude-agent-sdk --external:ai --external:ai-sdk-provider-gemini-cli --external:@google/gemini-cli-core --external:zod --external:playwright-core --external:chromium-bidi --external:xlsx --platform=node --format=cjs",
     "watch": "npm run build -- --watch",
     "dev": "npm run watch",
     "package": "npm run build && vsce package -o orchestrai.vsix",
@@ -329,6 +329,7 @@
     "ai": "^6.0.168",
     "ai-sdk-provider-gemini-cli": "^2.0.1",
     "chromium-bidi": "^15.0.0",
-    "playwright-core": "^1.59.1"
+    "playwright-core": "^1.59.1",
+    "xlsx": "^0.18.5"
   }
 }

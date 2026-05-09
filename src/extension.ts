@@ -1655,6 +1655,7 @@ class OrchestrAIViewProvider implements vscode.WebviewViewProvider, vscode.Dispo
           case 'mentionCommand': await this._handleMentionCommand(msg.cmd); break
           case 'createPR':       await this._handleCreatePR(msg.titleHint ?? ''); break
           case 'revertFile':     await this._handleRevertFile(msg.path); break
+          case 'spreadsheetAttach': await this._handleSpreadsheetAttach(msg.name, msg.dataBase64); break
           case 'setOverride':   this._override = msg.mode; break
           case 'toggleContext': this._useFileContext = msg.enabled; break
           case 'clearChat':
@@ -2397,6 +2398,37 @@ class OrchestrAIViewProvider implements vscode.WebviewViewProvider, vscode.Dispo
       name: p.name, model: p.model, baseUrl: p.baseUrl,
     }))
     this._post({ type: 'customProviders', providers })
+  }
+
+  // 엑셀/스프레드시트 → 시트별 CSV 로 변환해서 입력창에 inline (SheetJS).
+  // xlsx / xls / ods / csv (csv 도 그냥 읽어서 통일 처리) 다 지원.
+  private async _handleSpreadsheetAttach(name: string, dataBase64: string) {
+    try {
+      const XLSX = require('xlsx') as typeof import('xlsx')
+      const buffer = Buffer.from(dataBase64, 'base64')
+      const workbook = XLSX.read(buffer, { type: 'buffer' })
+      const blocks: string[] = []
+      const ext = (name.split('.').pop() || 'xlsx').toLowerCase()
+      blocks.push(`### ${name} (${workbook.SheetNames.length} sheets)`)
+      for (const sheetName of workbook.SheetNames) {
+        const sheet = workbook.Sheets[sheetName]
+        // 100,000 cells 넘으면 잘라 (큰 파일 token 폭주 방지)
+        const range = XLSX.utils.decode_range(sheet['!ref'] || 'A1:A1')
+        const cells = (range.e.r - range.s.r + 1) * (range.e.c - range.s.c + 1)
+        const csv = XLSX.utils.sheet_to_csv(sheet, {
+          blankrows: false,
+          strip: false,
+        })
+        const truncated = csv.length > 80_000
+        blocks.push(`\n#### sheet: ${sheetName} (${range.e.r - range.s.r + 1} rows × ${range.e.c - range.s.c + 1} cols${cells > 100_000 ? ', large' : ''})\n\`\`\`csv\n${truncated ? csv.slice(0, 80_000) + '\n... [truncated]' : csv}\n\`\`\``)
+      }
+      this._post({ type: 'appendInput', text: blocks.join('\n') })
+      log.info('spreadsheet', `${name} → ${workbook.SheetNames.length} sheets attached as csv`)
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      this._post({ type: 'toast', message: `엑셀 변환 실패: ${msg.slice(0, 120)}` })
+      log.warn('spreadsheet', `${name} parse failed: ${msg}`)
+    }
   }
 
   // 단일 파일 git checkout — Composer-style "이 파일만 되돌리기"
