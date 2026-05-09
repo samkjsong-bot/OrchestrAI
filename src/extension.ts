@@ -1658,6 +1658,7 @@ class OrchestrAIViewProvider implements vscode.WebviewViewProvider, vscode.Dispo
           case 'spreadsheetAttach': await this._handleSpreadsheetAttach(msg.name, msg.dataBase64); break
           case 'docxAttach':         await this._handleDocxAttach(msg.name, msg.dataBase64); break
           case 'notebookAttach':     await this._handleNotebookAttach(msg.name, msg.text); break
+          case 'pptxAttach':         await this._handlePptxAttach(msg.name, msg.dataBase64); break
           case 'setOverride':   this._override = msg.mode; break
           case 'toggleContext': this._useFileContext = msg.enabled; break
           case 'clearChat':
@@ -2485,6 +2486,40 @@ class OrchestrAIViewProvider implements vscode.WebviewViewProvider, vscode.Dispo
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
       this._post({ type: 'toast', message: `Notebook parse 실패: ${msg.slice(0, 120)}` })
+    }
+  }
+
+  // PowerPoint (.pptx) → 슬라이드별 텍스트 추출 (jszip + XML <a:t> 정규식)
+  // 의존성: jszip (~1.1MB)
+  private async _handlePptxAttach(name: string, dataBase64: string) {
+    try {
+      const JSZip = require('jszip')
+      const buffer = Buffer.from(dataBase64, 'base64')
+      const zip = await JSZip.loadAsync(buffer)
+      // ppt/slides/slide1.xml, slide2.xml, ... 순서대로
+      const slidePaths = Object.keys(zip.files)
+        .filter((p: string) => /^ppt\/slides\/slide\d+\.xml$/.test(p))
+        .sort((a: string, b: string) => {
+          const na = parseInt(a.match(/slide(\d+)/)?.[1] ?? '0')
+          const nb = parseInt(b.match(/slide(\d+)/)?.[1] ?? '0')
+          return na - nb
+        })
+      const blocks: string[] = [`### ${name} (PowerPoint, ${slidePaths.length} slides)`]
+      for (let i = 0; i < slidePaths.length; i++) {
+        const xml = await zip.file(slidePaths[i])!.async('string')
+        // <a:t>text</a:t> 패턴 — 각 슬라이드의 텍스트 (제목/본문 다)
+        const texts = [...xml.matchAll(/<a:t[^>]*>([^<]*)<\/a:t>/g)].map(m => m[1])
+        const slideText = texts.filter(t => t.trim()).join('\n')
+        blocks.push(`\n#### Slide ${i + 1}\n${slideText || '(empty)'}`)
+      }
+      const final = blocks.join('\n')
+      const truncated = final.length > 100_000
+      this._post({ type: 'appendInput', text: truncated ? final.slice(0, 100_000) + '\n... [truncated]' : final })
+      log.info('pptx', `${name} → ${slidePaths.length} slides text extracted`)
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      this._post({ type: 'toast', message: `PowerPoint 변환 실패: ${msg.slice(0, 120)}` })
+      log.warn('pptx', `${name} parse failed: ${msg}`)
     }
   }
 

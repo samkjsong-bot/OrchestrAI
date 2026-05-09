@@ -80,12 +80,40 @@ export async function callCodex(
   const primaryModel = MODEL_BY_EFFORT[effort]
   const FALLBACK_MODEL = 'gpt-5.4-mini'
 
+  // multimodal: 마지막 user message 의 <image name="..." mime="image/..." data:...></image> 태그 추출 → input_image content 로 변환
+  // OpenAI Responses API 형식: { role, content: [{type: 'input_text', text: '...'}, {type: 'input_image', image_url: 'data:...'}] }
+  // 단 chatgpt.com 백엔드 우회 경로 — image 만 지원 (PDF/audio/video 미지원)
+  const ATTACHMENT_RE = /<image name="([^"]*)" mime="([^"]*)">(data:[^<]+)<\/image>/g
+  const transformedInput = messages.map((m, i) => {
+    if (i !== messages.length - 1 || m.role !== 'user') {
+      // 다른 메시지는 image tag strip (raw HTML 태그 안 보내려고)
+      return { role: m.role, content: m.content.replace(ATTACHMENT_RE, (_f, name) => `[attached: ${name}]`) }
+    }
+    // 마지막 user — image 추출 후 multimodal content
+    const imageBlocks: Array<{ type: 'input_image'; image_url: string }> = []
+    const text = m.content.replace(ATTACHMENT_RE, (_full, _name, mime, dataUrl) => {
+      const mimeStr = String(mime)
+      if (mimeStr.startsWith('image/')) {
+        imageBlocks.push({ type: 'input_image', image_url: String(dataUrl) })
+        return ''
+      }
+      return `[attached: ${_name} (${mimeStr})]`  // PDF/audio/video 는 raw fallback
+    })
+    if (imageBlocks.length === 0) {
+      return { role: m.role, content: text }
+    }
+    return {
+      role: m.role,
+      content: [{ type: 'input_text' as const, text }, ...imageBlocks],
+    }
+  })
+
   // 한 모델로 fetch 시도 (429/5xx 지수 백오프 재시도 포함, 스트림 시작 전까지)
   async function tryFetch(model: string): Promise<{ res: Response | null; lastErr: { status: number; text: string } | null }> {
     const body = {
       model,
       instructions: systemPrompt ?? 'You are an expert coding assistant.',
-      input: messages.map(m => ({ role: m.role, content: m.content })),
+      input: transformedInput,
       stream: true,
       store: false,
       reasoning: { effort },

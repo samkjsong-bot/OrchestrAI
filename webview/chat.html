@@ -2140,7 +2140,7 @@
 
   <div class="input-wrap">
     <input id="image-input" type="file"
-           accept="image/*,application/pdf,audio/*,video/*,text/*,.md,.markdown,.txt,.json,.yaml,.yml,.toml,.csv,.tsv,.log,.xml,.html,.htm,.svg,.css,.scss,.less,.ts,.tsx,.js,.jsx,.mjs,.cjs,.py,.rb,.go,.rs,.java,.kt,.swift,.c,.cc,.cpp,.h,.hpp,.cs,.php,.lua,.sh,.bash,.zsh,.ps1,.bat,.cmd,.sql,.dockerfile,.gitignore,.env,.xlsx,.xls,.xlsm,.ods,.docx,.ipynb,.mp3,.wav,.m4a,.flac,.ogg,.mp4,.mov,.webm"
+           accept="image/*,application/pdf,audio/*,video/*,text/*,.md,.markdown,.txt,.json,.yaml,.yml,.toml,.csv,.tsv,.log,.xml,.html,.htm,.svg,.css,.scss,.less,.ts,.tsx,.js,.jsx,.mjs,.cjs,.py,.rb,.go,.rs,.java,.kt,.swift,.c,.cc,.cpp,.h,.hpp,.cs,.php,.lua,.sh,.bash,.zsh,.ps1,.bat,.cmd,.sql,.dockerfile,.gitignore,.env,.xlsx,.xls,.xlsm,.ods,.docx,.ipynb,.pptx,.mp3,.wav,.m4a,.flac,.ogg,.mp4,.mov,.webm"
            multiple hidden onchange="handleImageFiles(this.files)">
     <div class="attach-preview" id="attach-preview"></div>
     <textarea id="input" placeholder="무엇을 만들까요... (@ 치면 모델 선택)" rows="1"
@@ -4073,6 +4073,11 @@
     if (!file) return false
     return /\.ipynb$/i.test(file.name || '')
   }
+  // PowerPoint — jszip + XML 텍스트 추출
+  function isPptx(file) {
+    if (!file) return false
+    return /\.pptx$/i.test(file.name || '')
+  }
 
   // 이미지 / PDF — base64 dataUrl 로 attachments 배열에 (Claude/Gemini multimodal)
   // 엑셀 — 백엔드에서 SheetJS 로 csv 변환 → inline
@@ -4109,6 +4114,16 @@
         postToExtension({ type: 'notebookAttach', name: file.name, text: String(reader.result || '') })
       }
       reader.readAsText(file)
+      return
+    }
+    // PowerPoint (.pptx)
+    if (isPptx(file)) {
+      reader.onload = () => {
+        const base64 = String(reader.result || '').replace(/^data:[^;]+;base64,/, '')
+        showToast(`🎴 ${file.name} 슬라이드 추출 중...`)
+        postToExtension({ type: 'pptxAttach', name: file.name, dataBase64: base64 })
+      }
+      reader.readAsDataURL(file)
       return
     }
     if (isTextFile(file)) {
