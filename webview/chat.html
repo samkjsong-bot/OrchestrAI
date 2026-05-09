@@ -2140,7 +2140,7 @@
 
   <div class="input-wrap">
     <input id="image-input" type="file"
-           accept="image/*,application/pdf,text/*,.md,.markdown,.txt,.json,.yaml,.yml,.toml,.csv,.tsv,.log,.xml,.html,.htm,.svg,.css,.scss,.less,.ts,.tsx,.js,.jsx,.mjs,.cjs,.py,.rb,.go,.rs,.java,.kt,.swift,.c,.cc,.cpp,.h,.hpp,.cs,.php,.lua,.sh,.bash,.zsh,.ps1,.bat,.cmd,.sql,.dockerfile,.gitignore,.env,.xlsx,.xls,.ods,.docx,.ipynb"
+           accept="image/*,application/pdf,audio/*,video/*,text/*,.md,.markdown,.txt,.json,.yaml,.yml,.toml,.csv,.tsv,.log,.xml,.html,.htm,.svg,.css,.scss,.less,.ts,.tsx,.js,.jsx,.mjs,.cjs,.py,.rb,.go,.rs,.java,.kt,.swift,.c,.cc,.cpp,.h,.hpp,.cs,.php,.lua,.sh,.bash,.zsh,.ps1,.bat,.cmd,.sql,.dockerfile,.gitignore,.env,.xlsx,.xls,.xlsm,.ods,.docx,.ipynb,.mp3,.wav,.m4a,.flac,.ogg,.mp4,.mov,.webm"
            multiple hidden onchange="handleImageFiles(this.files)">
     <div class="attach-preview" id="attach-preview"></div>
     <textarea id="input" placeholder="무엇을 만들까요... (@ 치면 모델 선택)" rows="1"
@@ -4126,10 +4126,14 @@
       reader.readAsText(file)
       return
     }
-    // 이미지 + PDF + 그 외 binary — base64 dataUrl
-    const isImageOrPdf = (file.type || '').startsWith('image/') || (file.type || '') === 'application/pdf' ||
-                        /\.(png|jpe?g|gif|webp|bmp|svg|pdf)$/i.test(file.name || '')
-    if (!isImageOrPdf) {
+    // 이미지 + PDF + 음성 + 영상 — base64 dataUrl 로 multimodal attachments
+    // (Gemini Flash 가 audio/video 다 받음, Claude 는 image/PDF, Codex 는 image)
+    const t = (file.type || '').toLowerCase()
+    const n = (file.name || '').toLowerCase()
+    const isMultimodal = t.startsWith('image/') || t.startsWith('audio/') || t.startsWith('video/') ||
+                          t === 'application/pdf' ||
+                          /\.(png|jpe?g|gif|webp|bmp|svg|pdf|mp3|wav|m4a|flac|ogg|aac|mp4|mov|webm|avi|mkv)$/i.test(n)
+    if (!isMultimodal) {
       // 알 수 없는 binary — text 로 try
       reader.onload = () => {
         const content = String(reader.result || '')
