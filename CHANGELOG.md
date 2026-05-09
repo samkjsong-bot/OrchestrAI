@@ -1,5 +1,78 @@
 # Changelog
 
+## v0.1.6 — 2026-05-08~09 (대규모 기능 + 안정성 패스)
+
+### 🎯 새 기능 (상용 도구 핵심 따라잡기)
+
+#### @ commands (Continue 스타일)
+- `@file` — 파일 picker 다중 선택 → 입력창 첨부
+- `@codebase` — RAG 명시 호출 → top-K chunk 첨부
+- `@terminal` — 활성 터미널 선택 영역 첨부 (clipboard 우회)
+- `@git` — git status / diff / log 첨부
+- `@web` — URL fetch + HTML strip
+- `@browser` — Playwright + system Chrome 으로 SPA / JS-rendered 페이지 추출
+- `@problem` — VS Code Problems 패널 진단 첨부
+
+#### `/pr` 자동 PR 생성
+- gh CLI + AI(Haiku) 가 commit log + diff stat 보고 title/body 자동 작성
+- gh 미설치 시 사용자 수동 입력 fallback
+
+#### Custom Provider (LM Studio / Ollama / OpenRouter / vLLM / OpenAI compatible)
+- `orchestrai.customProviders` settings 배열로 추가
+- `@<name>` mention 으로 호출 (`@ollama`, `@local` 등)
+- 의존성 추가 0 (직접 fetch + SSE 파싱)
+
+#### Plan → Act 흐름 (Cline 스타일)
+- Plan 모드 turn 끝나면 보라색 CTA 버튼 표시
+- 클릭 시 자동 auto-edit 전환 + plan 내용을 user prompt 로 실행
+- reload 후 DOM fallback 으로 안전하게 작동
+
+#### Composer 다중 파일 review (Cursor 스타일)
+- 5+ 파일 자동 collapse + ▾ 토글
+- 파일별 ↶ revert 버튼 (단일 파일 git checkout)
+- 일괄 액션: 이 turn 다 되돌리기 / 전부 열기
+
+#### Voice input (Web Speech API)
+- 입력창 옆 🎤 마이크 버튼 (한국어 default)
+- 녹음 중 빨간 pulse 애니메이션
+- continuous + interim 결과 실시간 textarea 갱신
+- 의존성 0
+
+#### Browser tool (Playwright + system Chrome)
+- Chromium 자체 다운로드 X (`channel: 'chrome'` / `'msedge'`)
+- JS 실행 후 페이지 텍스트 추출 (SPA 지원)
+
+#### ORCHESTRAI.md 자동 룰
+- workspace root 의 `ORCHESTRAI.md` / `.orchestrai/rules.md` 자동 prepend
+- 모든 모델 system prompt 에 통합 주입 (5분 캐시 + mtime 갱신)
+
+### 🛠 UI / UX 개선
+- force bar 8개 → 5개 (auto/claude/codex/gemini → dropdown 통합)
+- Plan / Ask 모드 시 입력창 색 + placeholder 시각화
+- 사이드바 ⚙ 설정 → 👤 계정 연결 메뉴에 "ⓘ 계정 정보 보기"
+- usage panel 한글 mojibake 6곳 fix
+- usage panel 에 절약 추정 비용 표시 (구독 우회로 실제 청구 0)
+
+### 🐛 안정성 fix (다수)
+- `maxTokens` 옵션 SDK 가 받음 — 다시 추가 (응답 cut-off 방지)
+- Reload Window 시 메시지 사라지는 race condition (ready 이후 500ms / 1500ms retry)
+- rehydrate 일부 실패해도 나머지는 그리는 try/catch 보강
+- marked.parse 실패 시 manualMarkdownFallback (bold/italic/code/codeblock 수동 처리)
+- team consult 응답 disk 영속화 (reload 후 사라지던 거)
+- argue 모드 fallback 비활성화 + ventriloquism 차단
+- history tag `[Claude]` → `<prior_turn from="claude">` (학습 trigger 제거)
+- Gemini API key 텍스트 호출에도 활용 (Code Assist OAuth tier 대비 한도 ↑)
+- Gemini RESOURCE_EXHAUSTED 시 1.5/2.0-flash fallback
+- Codex 빈 응답 SSE 핸들러 3개 추가 (output_text.done / content_part / response.completed)
+- review/boomerang user msg 즉시 persist 누락 보완
+- rehydrate 후 자동 스크롤 (reload 시 최상단 머무르던 거)
+- esbuild build 깨짐 fix (playwright-core / chromium-bidi external)
+- Korean encoding mojibake 6곳 (usage panel + 로그인 카드)
+
+### 🧹 리팩토링
+- dead code 정리 (BoomerangPlan / findMostRecentChat / CODEX_TOOL_RE / modelTag 등)
+- inline ventriloquism strip (라인 시작 + markdown bold + inline 다 잡음)
+
 ## v0.1.3 — 2026-05-07
 
 ### Diagnostics

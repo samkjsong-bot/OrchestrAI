@@ -43,6 +43,15 @@ ext install samkj.orchestrai
 | 자동 IDE diff (engine 무관) | ✅ | ✅ | △ | ❌ | △ |
 | 자동 미리보기 HTML→Browser | ✅ | ❌ | ❌ | ❌ | ❌ |
 | 자동 quota 폴백 (모델 간) | ✅ | N/A | N/A | N/A | N/A |
+| **@ commands 풍부** | ✅ 7종 | △ | ✅ | ✅ | △ |
+| `/pr` 자동 (gh + AI title/body) | ✅ | ❌ | ❌ | ❌ | △ |
+| **Custom provider** (Ollama/LM Studio/OpenRouter) | ✅ | ❌ | ✅ | △ | ❌ |
+| **Plan→Act 분리 흐름** | ✅ | ❌ | ❌ | ✅ | ❌ |
+| **Composer 다중 파일 review** (collapse + revert) | ✅ | ✅ | △ | △ | ❌ |
+| **Voice input** (한국어) | ✅ | △ | ❌ | ❌ | ❌ |
+| **Browser tool** (Playwright + system Chrome) | ✅ | ❌ | △ | ✅ | ❌ |
+| **ORCHESTRAI.md** 프로젝트 룰 | ✅ | △ | ✅ | ✅ | ❌ |
+| 절약 추정 비용 표시 | ✅ | ❌ | ❌ | ❌ | ❌ |
 | **API 과금 0원** (자체 구독 우회) | ✅ | ❌ | ❌ | ❌ | △ 구독 |
 
 ---
@@ -61,6 +70,59 @@ ext install samkj.orchestrai
 ## 🧰 권한 모드 4종
 
 `ask` / `auto-edit` / `plan` / `smart-auto` — Claude SDK의 `permissionMode`로 매핑.
+**Plan 모드** turn 끝나면 보라색 "▶ Act 모드로 실행" 버튼 → 클릭 시 자동 auto-edit 전환 + plan 따라 실행 (Cline 식 흐름).
+
+## 💬 @ commands (입력창에 `@` 치면 자동완성)
+
+| Command | 동작 |
+|---|---|
+| `@claude` / `@codex` / `@gemini` | 모델 강제 |
+| `@<custom>` | settings 의 `customProviders` 에 등록한 OpenAI compatible (Ollama/LM Studio/OpenRouter 등) |
+| `@file` | 파일 picker → 다중 선택해서 입력창 첨부 |
+| `@codebase` | RAG 명시 호출 → 검색어 입력 → top-K chunk 첨부 |
+| `@terminal` | 활성 터미널 선택 영역 첨부 (먼저 텍스트 select) |
+| `@git` | git status / diff / log -10 첨부 |
+| `@web` | URL fetch (정적 HTML) |
+| `@browser` | Playwright + system Chrome (JS 실행 후, SPA 지원) |
+| `@problem` | VS Code Problems 패널 진단 첨부 |
+
+## ⚙ 슬래시 명령
+
+```
+/clear            대화 초기화
+/plan             plan 모드 진입
+/auto             auto-edit 모드
+/team             team 모드
+/argue            argue 토론 모드
+/loop             반복 모드
+/effort high      effort 강제
+/review           multi-model 코드 리뷰 (3개 모델 + Haiku 종합)
+/index            코드베이스 인덱싱
+/pr [title]       gh CLI + AI 가 PR title/body 자동 생성
+/bg <task>        background agent 시작
+/agent ...        agent marketplace (import / list / use / remove)
+```
+
+## 🎤 음성 입력
+입력창의 🎤 버튼 → 한국어 default. 녹음 중 빨간 pulse. 다시 클릭으로 종료.
+
+## 🔌 Custom Provider (LM Studio / Ollama / OpenRouter / vLLM / OpenAI compatible)
+
+VSCode Settings 에 추가하면 `@<name>` mention 으로 호출:
+
+```json
+"orchestrai.customProviders": [
+  { "name": "ollama", "baseUrl": "http://localhost:11434/v1", "model": "qwen2.5-coder:32b" },
+  { "name": "lm",     "baseUrl": "http://localhost:1234/v1",  "model": "llama-3.3-70b" },
+  { "name": "or",     "baseUrl": "https://openrouter.ai/api/v1", "apiKey": "sk-or-...",
+                       "model": "anthropic/claude-3.5-sonnet" }
+]
+```
+
+## 📋 ORCHESTRAI.md (프로젝트 룰)
+
+워크스페이스 루트에 `ORCHESTRAI.md` 파일 만들면 자동 로드됨 → 모든 모델 system prompt 에 prepend.
+컨벤션, 금지 사항, 스택 정보, 도메인 지식 등을 한 번에 통합 주입.
 
 ## 🚀 핵심 기능
 
