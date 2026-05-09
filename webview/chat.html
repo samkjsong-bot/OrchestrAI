@@ -2139,7 +2139,9 @@
   <div class="mention-popup" id="mention-popup"></div>
 
   <div class="input-wrap">
-    <input id="image-input" type="file" accept="image/*" multiple hidden onchange="handleImageFiles(this.files)">
+    <input id="image-input" type="file"
+           accept="image/*,application/pdf,text/*,.md,.markdown,.txt,.json,.yaml,.yml,.toml,.csv,.tsv,.log,.xml,.html,.htm,.svg,.css,.scss,.less,.ts,.tsx,.js,.jsx,.mjs,.cjs,.py,.rb,.go,.rs,.java,.kt,.swift,.c,.cc,.cpp,.h,.hpp,.cs,.php,.lua,.sh,.bash,.zsh,.ps1,.bat,.cmd,.sql,.dockerfile,.gitignore,.env"
+           multiple hidden onchange="handleImageFiles(this.files)">
     <div class="attach-preview" id="attach-preview"></div>
     <textarea id="input" placeholder="무엇을 만들까요... (@ 치면 모델 선택)" rows="1"
       oninput="onInputChange(event)" onkeydown="handleKey(event)"
@@ -2150,7 +2152,7 @@
         <span class="hint-chip" onclick="fillInput('git commit 메시지 써줘')">git</span>
         <span class="hint-chip" onclick="fillInput('이 코드 어떻게 동작해?')">설명</span>
       </div>
-      <button class="icon-btn" title="이미지 첨부" onclick="document.getElementById('image-input').click()">
+      <button class="icon-btn" title="파일 첨부 (이미지/PDF/텍스트/코드 — Claude Code 수준)" onclick="document.getElementById('image-input').click()">
         <svg viewBox="0 0 16 16" fill="none" width="12" height="12">
           <rect x="2" y="3" width="12" height="10" rx="1.5" stroke="currentColor" stroke-width="1.3"/>
           <path d="M4 11l3-3 2 2 1-1 2 2" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/>
@@ -4042,11 +4044,55 @@
     renderAttachPreview()
   }
 
+  // 텍스트로 처리할 파일 — base64 dataUrl 보다 inline text 가 모델한테 효율적
+  function isTextFile(file) {
+    if (!file) return false
+    const type = (file.type || '').toLowerCase()
+    if (type.startsWith('text/')) return true
+    if (type === 'application/json' || type === 'application/xml' || type.includes('javascript') || type.includes('typescript')) return true
+    // mime 비어있으면 확장자로 판단 (Windows 가 mime 못 줄 때 흔함)
+    const name = (file.name || '').toLowerCase()
+    return /\.(md|markdown|txt|json|yaml|yml|toml|csv|tsv|log|xml|html?|svg|css|scss|less|ts|tsx|js|jsx|mjs|cjs|py|rb|go|rs|java|kt|swift|c|cc|cpp|h|hpp|cs|php|lua|sh|bash|zsh|ps1|bat|cmd|sql|dockerfile|gitignore|env|conf|ini)$/.test(name)
+  }
+
+  // 이미지 / PDF — base64 dataUrl 로 attachments 배열에 (Claude/Gemini multimodal)
+  // 텍스트 / 코드 파일 — content 를 입력창에 ## 파일명 + 코드블록으로 inline (모든 모델)
   function addImageFile(file) {
-    if (!file || !file.type?.startsWith('image/')) return
+    if (!file) return
     const reader = new FileReader()
+    if (isTextFile(file)) {
+      reader.onload = () => {
+        const content = String(reader.result || '')
+        const ta = document.getElementById('input')
+        if (ta) {
+          const lang = (file.name.split('.').pop() || '').toLowerCase()
+          const sep = ta.value.trim() ? '\n\n' : ''
+          ta.value = ta.value + sep + `### ${file.name}\n\`\`\`${lang}\n${content.slice(0, 200_000)}\n\`\`\`\n\n`
+          autoResize(ta)
+          ta.focus()
+        }
+      }
+      reader.readAsText(file)
+      return
+    }
+    // 이미지 + PDF + 그 외 binary — base64 dataUrl
+    const isImageOrPdf = (file.type || '').startsWith('image/') || (file.type || '') === 'application/pdf' ||
+                        /\.(png|jpe?g|gif|webp|bmp|svg|pdf)$/i.test(file.name || '')
+    if (!isImageOrPdf) {
+      // 알 수 없는 binary — text 로 try
+      reader.onload = () => {
+        const content = String(reader.result || '')
+        const ta = document.getElementById('input')
+        if (ta) {
+          ta.value = ta.value + `\n\n### ${file.name} (binary, raw text dump)\n\`\`\`\n${content.slice(0, 100_000)}\n\`\`\`\n`
+          autoResize(ta)
+        }
+      }
+      reader.readAsText(file)
+      return
+    }
     reader.onload = () => {
-      pendingAttachments.push({ name: file.name || 'pasted-image.png', mime: file.type, dataUrl: String(reader.result) })
+      pendingAttachments.push({ name: file.name || 'pasted.bin', mime: file.type || 'application/octet-stream', dataUrl: String(reader.result) })
       renderAttachPreview()
     }
     reader.readAsDataURL(file)
@@ -4063,15 +4109,16 @@
   const inputBox = document.getElementById('input')
 
   inputBox.addEventListener('paste', (event) => {
-    const files = Array.from(event.clipboardData?.files || []).filter(f => f.type.startsWith('image/'))
+    // 이미지/PDF/텍스트 다 처리. addImageFile 내부에서 분기.
+    const files = Array.from(event.clipboardData?.files || [])
     const itemFiles = Array.from(event.clipboardData?.items || [])
-      .filter(item => item.kind === 'file' && item.type.startsWith('image/'))
+      .filter(item => item.kind === 'file')
       .map(item => item.getAsFile())
       .filter(Boolean)
-    const images = files.length ? files : itemFiles
-    if (!images.length) return
+    const all = files.length ? files : itemFiles
+    if (!all.length) return
     event.preventDefault()
-    images.forEach(addImageFile)
+    all.forEach(addImageFile)
   })
 
   inputWrap.addEventListener('dragover', (event) => {
@@ -4087,10 +4134,10 @@
   inputWrap.addEventListener('drop', (event) => {
     inputWrap.classList.remove('drag-ready')
     if (!event.ctrlKey) return
-    const images = Array.from(event.dataTransfer?.files || []).filter(f => f.type.startsWith('image/'))
-    if (!images.length) return
+    const files = Array.from(event.dataTransfer?.files || [])
+    if (!files.length) return
     event.preventDefault()
-    images.forEach(addImageFile)
+    files.forEach(addImageFile)  // addImageFile 내부에서 image/pdf/text 자동 분기
   })
 
   // 큐: 작업 중에 사용자가 친 메시지를 대기열로 쌓아둠. 끝나면 자동 발송.

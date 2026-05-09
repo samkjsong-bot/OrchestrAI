@@ -1,0 +1,86 @@
+name: Publish
+
+# v* tag push 시 자동:
+# 1. build + test
+# 2. vsix package
+# 3. GitHub Release 생성 + vsix 첨부
+# 4. (옵션) VSCode Marketplace publish — VSCE_PAT secret 있으면
+# 5. (옵션) Open VSX publish — OVSX_PAT secret 있으면
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write  # GitHub Release 생성용
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # CHANGELOG 읽기용
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20.x'
+          cache: 'npm'
+
+      - name: Install
+        run: npm ci
+
+      - name: Type check
+        run: npx tsc --noEmit
+
+      - name: Test
+        run: npm test
+
+      - name: Build
+        run: npm run build
+
+      - name: Package vsix (production deps only)
+        run: |
+          npm prune --omit=dev
+          npx vsce package --allow-missing-repository -o orchestrai.vsix
+          ls -la orchestrai.vsix
+
+      - name: Extract version from tag
+        id: version
+        run: echo "version=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
+
+      - name: Extract release notes from CHANGELOG
+        id: notes
+        run: |
+          # 해당 버전 섹션 추출 (## v0.1.6 ~ 다음 ## 까지)
+          awk -v ver="${{ steps.version.outputs.version }}" '
+            $0 ~ "^## v"ver { found=1; next }
+            found && /^## v[0-9]/ { exit }
+            found { print }
+          ' CHANGELOG.md > release_notes.md
+          echo "First lines:"
+          head -20 release_notes.md
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: 'v${{ steps.version.outputs.version }}'
+          body_path: release_notes.md
+          files: orchestrai.vsix
+          draft: false
+          prerelease: false
+
+      # VSCode Marketplace publish (VSCE_PAT secret 필요 — 없으면 skip)
+      - name: Publish to VSCode Marketplace
+        if: env.VSCE_PAT != ''
+        env:
+          VSCE_PAT: ${{ secrets.VSCE_PAT }}
+        run: npx vsce publish --packagePath orchestrai.vsix --no-dependencies
+
+      # Open VSX (Cursor/VSCodium/Theia 사용자용 — OVSX_PAT secret 필요)
+      - name: Publish to Open VSX
+        if: env.OVSX_PAT != ''
+        env:
+          OVSX_PAT: ${{ secrets.OVSX_PAT }}
+        run: npx ovsx publish orchestrai.vsix --pat $OVSX_PAT

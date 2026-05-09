@@ -1621,6 +1621,10 @@ class OrchestrAIViewProvider implements vscode.WebviewViewProvider, vscode.Dispo
 
     this._subscriptions.push(
       webviewView.webview.onDidReceiveMessage(async (msg) => {
+        // Error boundary: 한 메시지 핸들러가 throw 해도 다른 핸들러 계속 작동.
+        // VSCode webview 의 onDidReceiveMessage 가 unhandled rejection 시 silently fail 하므로
+        // 우리가 explicit catch 해서 사용자에게 알림.
+        try {
         switch (msg.type) {
           case 'webviewReady':
             if (msg.instanceId && msg.instanceId === this._lastWebviewReadyInstance) {
@@ -1785,6 +1789,12 @@ class OrchestrAIViewProvider implements vscode.WebviewViewProvider, vscode.Dispo
           case 'reviewChanges':
             await this._reviewChanges(msg.turnId, msg.path)
             break
+        }
+        } catch (err) {
+          // 한 메시지 핸들러 fail 시 사용자에게 toast + 다른 핸들러 계속 작동
+          const errMsg = err instanceof Error ? err.message : String(err)
+          log.error('webview-msg', `${msg.type} 처리 중 에러: ${errMsg}`)
+          this._post({ type: 'toast', message: `⚠ ${msg.type} 실패: ${errMsg.slice(0, 100)}` })
         }
       }),
       // 에디터 변경 감지 - subscriptions에 등록해서 메모리 누수 방지
