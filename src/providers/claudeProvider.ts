@@ -97,6 +97,56 @@ function formatToolCall(name: string, input: any): string {
   }
 }
 
+// history 의 마지막 user message 에서 <image name="..." mime="..." dataUrl="..."></image> 패턴 추출.
+// inline 텍스트는 prompt 에 남기고, attachments 는 multimodal block 으로 별도 변환.
+const ATTACHMENT_RE = /<image name="([^"]*)" mime="([^"]*)">(data:[^<]+)<\/image>/g
+
+interface ExtractedAttachment {
+  name: string
+  mime: string
+  data: string  // base64 (dataUrl prefix 제거됨)
+}
+
+function extractAttachments(content: string): { text: string; attachments: ExtractedAttachment[] } {
+  const attachments: ExtractedAttachment[] = []
+  const text = content.replace(ATTACHMENT_RE, (_full, name, mime, dataUrl) => {
+    const data = String(dataUrl).replace(/^data:[^;]+;base64,/, '')
+    attachments.push({ name, mime, data })
+    return `[attached: ${name}]`
+  })
+  return { text, attachments }
+}
+
+// SDKUserMessage AsyncIterable 만들어 query 에 전달 — multimodal content blocks 사용
+async function* makeMultimodalInputStream(
+  promptText: string,
+  attachments: ExtractedAttachment[],
+): AsyncIterable<any> {
+  const blocks: any[] = [{ type: 'text', text: promptText }]
+  for (const a of attachments) {
+    if (a.mime === 'application/pdf') {
+      blocks.push({
+        type: 'document',
+        source: { type: 'base64', media_type: 'application/pdf', data: a.data },
+      })
+    } else if (a.mime.startsWith('image/')) {
+      blocks.push({
+        type: 'image',
+        source: { type: 'base64', media_type: a.mime, data: a.data },
+      })
+    } else {
+      // 그 외 binary — Claude 가 못 읽으니 메타정보만 텍스트로
+      blocks.push({ type: 'text', text: `\n[binary attachment: ${a.name} (${a.mime}, ${a.data.length} bytes base64)]` })
+    }
+  }
+  yield {
+    type: 'user',
+    session_id: `orchestrai-${Date.now()}`,
+    parent_tool_use_id: null,
+    message: { role: 'user', content: blocks },
+  }
+}
+
 export async function callClaude(
   messages: Array<{ role: 'user' | 'assistant'; content: string }>,
   effort: Effort,
@@ -108,15 +158,31 @@ export async function callClaude(
   abortSignal?: AbortSignal,
   modelOverride?: string,  // 내부 폴백용 — extra-high opus 쿼터 파산 시 sonnet으로 재시도
 ): Promise<{ content: string; inputTokens: number; outputTokens: number }> {
-  const promptText = messages.length === 1
-    ? messages[0].content
-    : messages.map(m =>
+  // 마지막 user 메시지에서 attachments 추출 — multimodal 처리용
+  let lastAttachments: ExtractedAttachment[] = []
+  const processedMessages = messages.map((m, i) => {
+    if (i === messages.length - 1 && m.role === 'user') {
+      const { text, attachments } = extractAttachments(m.content)
+      lastAttachments = attachments
+      return { ...m, content: text }
+    }
+    // history 중 다른 메시지의 attachments 도 strip (Claude 한테 raw HTML 태그 안 보내려고)
+    return { ...m, content: m.content.replace(ATTACHMENT_RE, (_f, name) => `[attached: ${name}]`) }
+  })
+
+  const promptText = processedMessages.length === 1
+    ? processedMessages[0].content
+    : processedMessages.map(m =>
         m.role === 'user' ? `User: ${m.content}` : `Assistant: ${m.content}`
       ).join('\n\n')
 
   const activeModel = modelOverride ?? modelForEffort(effort)
+  // attachments 있으면 AsyncIterable<SDKUserMessage> 로 multimodal, 없으면 기존 string prompt
+  const promptArg: any = lastAttachments.length > 0
+    ? makeMultimodalInputStream(promptText, lastAttachments)
+    : promptText
   const q = query({
-    prompt: promptText,
+    prompt: promptArg,
     options: {
       model: activeModel,
       systemPrompt: systemPrompt ?? 'You are an expert coding assistant. Be concise and practical.',

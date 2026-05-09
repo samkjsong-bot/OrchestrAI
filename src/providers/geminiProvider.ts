@@ -49,25 +49,30 @@ async function loadGemini() {
 }
 
 function toGeminiMessage(m: { role: 'user' | 'assistant'; content: string }): any {
-  const images: Array<{ name: string; mime: string; dataUrl: string }> = []
+  const attachments: Array<{ name: string; mime: string; dataUrl: string }> = []
   const text = m.content.replace(IMAGE_RE, (_full, name, mime, dataUrl) => {
-    images.push({ name, mime, dataUrl })
-    return `[attached image: ${name}]`
+    attachments.push({ name, mime, dataUrl })
+    return `[attached: ${name}]`
   })
 
-  if (images.length === 0) {
+  if (attachments.length === 0) {
     return { role: m.role, content: m.content }
   }
 
+  // Vercel AI SDK content blocks — image/file 분기
+  // - image: 'image/*' (png/jpg/gif/webp/svg)
+  // - file:  'application/pdf' / 'text/*' 등 (Gemini 가 multimodal 로 PDF 도 받음)
   return {
     role: m.role,
     content: [
       { type: 'text', text },
-      ...images.map(img => ({
-        type: 'image',
-        image: img.dataUrl,
-        mediaType: img.mime,
-      })),
+      ...attachments.map(a => {
+        if (a.mime.startsWith('image/')) {
+          return { type: 'image', image: a.dataUrl, mediaType: a.mime }
+        }
+        // PDF / 기타 binary — Vercel AI SDK 의 file 타입
+        return { type: 'file', data: a.dataUrl, mediaType: a.mime, filename: a.name }
+      }),
     ],
   }
 }
