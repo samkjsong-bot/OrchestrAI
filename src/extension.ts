@@ -1591,6 +1591,13 @@ class OrchestrAIViewProvider implements vscode.WebviewViewProvider, vscode.Dispo
   }
 
   dispose() {
+    // 진행 중인 stream 있으면 abort (사용자가 close 했을 때 LLM 호출 계속하면 토큰 낭비)
+    try { this._currentAbort?.abort() } catch {}
+    // 대기 중 setTimeout 정리 (메모리 누수 방지)
+    if (this._reindexTimer) {
+      clearTimeout(this._reindexTimer)
+      this._reindexTimer = undefined
+    }
     this._subscriptions.forEach(d => d.dispose())
     this._mcp.dispose()
     this._statusBarItem.dispose()
