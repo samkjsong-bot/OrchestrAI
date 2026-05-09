@@ -1,0 +1,52 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        node: ['20.x']
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node ${{ matrix.node }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: 'npm'
+
+      - name: Install
+        run: npm ci
+
+      - name: Type check
+        run: npx tsc --noEmit
+
+      - name: Build (esbuild bundle)
+        run: npm run build
+
+      - name: Test
+        run: npm test
+
+      - name: Package vsix (no publish, sanity check)
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          npm prune --omit=dev
+          npx vsce package --allow-missing-repository -o orchestrai-ci.vsix
+          ls -la orchestrai-ci.vsix
+
+      - name: Upload vsix artifact
+        if: matrix.os == 'ubuntu-latest'
+        uses: actions/upload-artifact@v4
+        with:
+          name: orchestrai-vsix-${{ github.sha }}
+          path: orchestrai-ci.vsix
+          retention-days: 14

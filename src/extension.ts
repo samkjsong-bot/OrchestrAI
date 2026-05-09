@@ -2414,14 +2414,27 @@ class OrchestrAIViewProvider implements vscode.WebviewViewProvider, vscode.Dispo
     const root = getWorkspaceRoot()
     if (!root) { vscode.window.showWarningMessage('워크스페이스 없음'); return }
     const { spawn } = require('child_process') as typeof import('child_process')
-    const run = (cmd: string, args: string[]): Promise<{ out: string; code: number }> => new Promise(resolve => {
-      const p = spawn(cmd, args, { cwd: root, env: { ...process.env, GIT_TERMINAL_PROMPT: '0' }, shell: process.platform === 'win32' })
-      let out = ''
-      p.stdout.on('data', (c: Buffer) => out += c.toString('utf8'))
-      p.stderr.on('data', (c: Buffer) => out += c.toString('utf8'))
-      p.on('exit', (code) => resolve({ out, code: code ?? 1 }))
-      p.on('error', () => resolve({ out: '', code: 1 }))
-    })
+    // timeout 안전망 — git/gh 명령이 hang (auth prompt 등) 했을 때 process leak 방지.
+    // push 같이 네트워크 명령은 60초, 나머지는 15초 default.
+    const run = (cmd: string, args: string[], timeoutMs = 15_000): Promise<{ out: string; code: number; timedOut?: boolean }> =>
+      new Promise(resolve => {
+        const p = spawn(cmd, args, { cwd: root, env: { ...process.env, GIT_TERMINAL_PROMPT: '0' }, shell: process.platform === 'win32' })
+        let out = ''
+        let done = false
+        const finish = (code: number, timedOut = false) => {
+          if (done) return
+          done = true
+          resolve({ out, code, timedOut })
+        }
+        const timer = setTimeout(() => {
+          try { p.kill() } catch {}
+          finish(124, true)  // 124 = standard timeout exit code
+        }, timeoutMs)
+        p.stdout.on('data', (c: Buffer) => out += c.toString('utf8'))
+        p.stderr.on('data', (c: Buffer) => out += c.toString('utf8'))
+        p.on('exit', (code) => { clearTimeout(timer); finish(code ?? 1) })
+        p.on('error', () => { clearTimeout(timer); finish(1) })
+      })
 
     // 1. gh CLI 있는지 확인
     const ghCheck = await run('gh', ['--version'])
@@ -2448,7 +2461,12 @@ class OrchestrAIViewProvider implements vscode.WebviewViewProvider, vscode.Dispo
     }
 
     // 4. push 안 했으면 push
-    const pushResult = await run('git', ['push', '-u', 'origin', branch])
+    // git push 는 네트워크 명령이라 60초 timeout (auth hang 방지)
+    const pushResult = await run('git', ['push', '-u', 'origin', branch], 60_000)
+    if (pushResult.timedOut) {
+      vscode.window.showErrorMessage('git push 가 60초 내 응답 없음 — 인증 prompt 가 떴을 가능성 (`git push` 직접 실행 후 다시 시도)')
+      return
+    }
     if (pushResult.code !== 0 && !pushResult.out.includes('up-to-date')) {
       vscode.window.showWarningMessage(`git push 실패: ${pushResult.out.slice(0, 200)}`)
       // 그래도 PR 생성 시도 — 이미 push 된 상태일 수 있음
@@ -2460,7 +2478,7 @@ class OrchestrAIViewProvider implements vscode.WebviewViewProvider, vscode.Dispo
       // Claude 없으면 사용자한테 직접 입력 받음
       const title = titleHint || await vscode.window.showInputBox({ title: 'PR title', value: branch.replace(/[-_/]/g, ' ') }) || branch
       const body = `Branch: \`${branch}\`\n\n## Commits\n\`\`\`\n${commits}\n\`\`\`\n\n## Diff stat\n\`\`\`\n${diffStat}\n\`\`\``
-      const create = await run('gh', ['pr', 'create', '--title', title, '--body', body])
+      const create = await run('gh', ['pr', 'create', '--title', title, '--body', body], 60_000)
       if (create.code === 0) {
         vscode.window.showInformationMessage('✅ PR 생성됨', 'Open').then(s => { if (s) vscode.env.openExternal(vscode.Uri.parse(create.out.trim())) })
       } else {
@@ -2504,8 +2522,12 @@ Be concise. Use conventional commit style if commits do.`
       aiBody = `## Commits\n\`\`\`\n${commits}\n\`\`\``
     }
 
-    // 6. gh pr create
-    const create = await run('gh', ['pr', 'create', '--title', aiTitle, '--body', aiBody])
+    // 6. gh pr create — 60초 timeout (네트워크 + 인증)
+    const create = await run('gh', ['pr', 'create', '--title', aiTitle, '--body', aiBody], 60_000)
+    if (create.timedOut) {
+      vscode.window.showErrorMessage('gh pr create 가 60초 내 응답 없음 — `gh auth login` 상태 확인')
+      return
+    }
     if (create.code === 0) {
       const url = create.out.trim()
       vscode.window.showInformationMessage(`✅ PR 생성됨: ${aiTitle}`, 'Open in browser').then(s => {

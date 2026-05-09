@@ -1,0 +1,48 @@
+version: 2
+updates:
+  # npm 의존성 — 보안 + 마이너/패치만 자동 PR. 메이저는 수동 검토.
+  - package-ecosystem: 'npm'
+    directory: '/'
+    schedule:
+      interval: 'weekly'
+      day: 'monday'
+    open-pull-requests-limit: 5
+    versioning-strategy: 'increase-if-necessary'
+    groups:
+      # 같은 카테고리는 한 PR 로 묶음 (PR 폭주 방지)
+      ai-sdk:
+        patterns:
+          - 'ai'
+          - 'ai-sdk-provider-*'
+          - '@ai-sdk/*'
+      anthropic-sdk:
+        patterns:
+          - '@anthropic-ai/*'
+      mcp:
+        patterns:
+          - '@modelcontextprotocol/*'
+      types:
+        patterns:
+          - '@types/*'
+      build:
+        patterns:
+          - 'esbuild'
+          - 'typescript'
+          - '@vscode/vsce'
+          - 'vitest'
+    ignore:
+      # 메이저 업그레이드는 수동 (breaking change 검토 필요)
+      - dependency-name: '*'
+        update-types: ['version-update:semver-major']
+    commit-message:
+      prefix: 'deps'
+      include: 'scope'
+
+  # GitHub Actions workflow 자체도 업데이트
+  - package-ecosystem: 'github-actions'
+    directory: '/'
+    schedule:
+      interval: 'monthly'
+    open-pull-requests-limit: 3
+    commit-message:
+      prefix: 'ci'
