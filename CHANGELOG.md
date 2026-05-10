@@ -1,5 +1,27 @@
 # Changelog
 
+## v0.1.18 — 2026-05-10 (부메랑 follow-up 컨텍스트 사고 fix)
+
+### 발견된 버그
+사용자가 boomerang 모드로 큰 작업 시킨 후 작업이 끝나고 follow-up 으로 "완성했어?" 같은 짧은 질문 보내면:
+1. boomerang 모드가 sticky 라서 또 plan → 새 boomerang 작업으로 분해
+2. planBoomerang 이 prior conversation 안 받아서 "Clarify user intent" 같은 쓸데없는 sub-task 생성
+3. sub-task Claude 도 prior conversation 모르고 AskUserQuestion 띄움
+
+### Fix 1 — 1회성 모드 종료 시 auto 자동 회귀
+- argue/team/loop/boomerang 끝나면 `_revertOverrideAfterOneShot()` 호출 → `_override = 'auto'`
+- claude/codex/gemini force 는 사용자 의도이므로 그대로 유지
+- webview 의 dropdown UI 도 즉시 갱신 (`overrideChanged` 메시지)
+
+### Fix 2 — planBoomerang 에 prior conversation 전달
+- 최근 6턴 history 를 planner 에 같이 보냄
+- planner 가 follow-up 으로 판단하면 `subTasks: []` 반환 → 일반 라우터로 fallback
+- 이전 작업 재실행 사고 차단
+
+### Fix 3 — boomerang sub-task 에 prior conversation 전달
+- 각 sub-task prompt 앞에 `## Prior conversation (do NOT redo these)` 블록 prepend
+- "이전에 만든 X 를 보강해" 같은 의존성 있는 sub-task 도 진짜 X 를 보고 작업 가능
+
 ## v0.1.17 — 2026-05-10 (e2e 테스트 5종 추가 — 105 → 152)
 
 지금까지 단위 테스트가 순수 함수만 다뤄서 STOP 같은 런타임 버그를 못 잡았던 문제 해결.

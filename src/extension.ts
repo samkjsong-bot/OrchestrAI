@@ -1607,6 +1607,18 @@ ${hit.kind === 'cmd' ? 'When done, the AI! comment line itself can stay — user
     this._post({ type: 'overrideChanged', mode })
   }
 
+  // 1회성 모드 (argue/team/loop/boomerang) 종료 시 auto 로 자동 회귀.
+  // 사용자가 부메랑 작업 끝낸 후 follow-up "완성했어?" 같은 거 말하면 그 자체가 또 부메랑으로
+  // 처리되는 사고 방지. claude/codex/gemini force 는 사용자 의도이므로 그대로 유지.
+  private _revertOverrideAfterOneShot() {
+    const oneShot = ['argue', 'team', 'loop', 'boomerang']
+    if (oneShot.includes(this._override)) {
+      this._override = 'auto'
+      this._post({ type: 'overrideChanged', mode: 'auto' })
+      log.info('mode', '1회성 모드 종료 → auto 회귀')
+    }
+  }
+
   setPermissionMode(mode: PermissionMode) {
     this._permissionMode = mode
     this._post({ type: 'permissionModeState', mode })
@@ -3273,6 +3285,7 @@ Be concise. Use conventional commit style if commits do.`
 
       this._inArgue = false
       this._post({ type: 'argueEnd', scoreboard: scoresByModel })
+      this._revertOverrideAfterOneShot()
       return
     }
 
@@ -3359,17 +3372,27 @@ ${result.failureSummary || result.output.slice(-3000)}
         })
         await this._persistMessages()
       }
+      this._revertOverrideAfterOneShot()
       return
     }
 
     // ── boomerang 모드: 큰 작업 자동 분할 → 병렬 위임 → 종합 ──
     if (this._override === 'boomerang') {
       this._post({ type: 'toast', message: '🪃 boomerang: 작업 분할 중...' })
-      const plan = await planBoomerang(userText)
+      // 이전 대화 history 도 같이 넘김 — planner 가 follow-up 인지 분류 가능
+      const priorHistory = this._messages
+        .filter(m => m.role === 'user' || m.role === 'assistant')
+        .slice(-6)
+        .map(m => ({ role: m.role as 'user' | 'assistant', content: m.content, model: m.model }))
+      const plan = await planBoomerang(userText, priorHistory)
       if (!plan || plan.subTasks.length === 0) {
-        this._post({ type: 'streamError', id: 'boomerang', error: 'boomerang plan 생성 실패. 일반 모드로 진행하려면 force를 auto로.' })
-        return
-      }
+        // planner 가 follow-up 으로 판단 (subTasks 비어있음) → 일반 대화로 fallback
+        log.info('boomerang', 'planner returned empty subtasks (follow-up?). Falling back to auto routing.')
+        this._post({ type: 'toast', message: '🪃 → auto: follow-up 으로 보여 일반 대화로 처리' })
+        this._override = 'auto'
+        this._post({ type: 'overrideChanged', mode: 'auto' })
+        // 아래 일반 라우터 경로로 떨어짐
+      } else {
       // plan을 사용자에게 표시
       this._post({ type: 'boomerangPlan', plan })
 
@@ -3380,10 +3403,19 @@ ${result.failureSummary || result.output.slice(-3000)}
         await Promise.all(group.map(async (taskId) => {
           const task = plan.subTasks.find(t => t.id === taskId)
           if (!task) return
+          // 이전 대화 history (boomerang 시작 직전까지) — sub-task 가 컨텍스트 인지하도록.
+          // "이전에 만든 X 를 마저" 같은 prompt 가 진짜 X 를 보고 작업 가능.
+          const historyBlock = priorHistory.length > 0
+            ? `## Prior conversation (do NOT redo these)\n${priorHistory.map(h => {
+                const tag = h.role === 'user' ? 'User' : `Assistant${h.model ? `(${h.model})` : ''}`
+                return `${tag}: ${h.content.slice(0, 600)}`
+              }).join('\n\n')}\n\n## Your sub-task\n`
+            : ''
+
           // 의존성 결과를 task prompt에 prepend
           const depResults = (task.dependsOn ?? []).map(d => `[${d} 결과]\n${results.get(d) ?? '(missing)'}`)
             .join('\n\n')
-          const fullPrompt = depResults ? `${task.prompt}\n\n${depResults}` : task.prompt
+          const fullPrompt = `${historyBlock}${task.prompt}${depResults ? '\n\n' + depResults : ''}`
 
           const decision: RoutingDecision = {
             model: task.model, effort: task.effort, confidence: 1, reason: 'boomerang-task',
@@ -3475,7 +3507,9 @@ ${result.failureSummary || result.output.slice(-3000)}
         this._post({ type: 'streamError', id: synthId, error: err instanceof Error ? err.message : String(err) })
       }
       await this._persistMessages()
+      this._revertOverrideAfterOneShot()
       return
+      }  // end of else (plan 있을 때)
     }
 
     // ── team 모드: Claude가 orchestrator. Codex(구현) / Gemini(텍스트·이미지) 동료를 툴로 호출 ──
@@ -3493,6 +3527,7 @@ ${result.failureSummary || result.output.slice(-3000)}
       this._postRoutingDecision(decision)
       await this._runTurn(decision, fileCtx, 'first', userMsg.id, 'architect')
       this._post({ type: 'teamEnd' })
+      this._revertOverrideAfterOneShot()
       return
     }
 

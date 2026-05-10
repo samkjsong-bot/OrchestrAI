@@ -50,11 +50,27 @@ function subscriptionEnv(): Record<string, string | undefined> {
   return env
 }
 
-// 사용자 input → 분할 plan
-export async function planBoomerang(userInput: string): Promise<BoomerangPlan | null> {
+// 사용자 input → 분할 plan.
+// 이전 대화 history 가 있으면 같이 전달 — plan 단계에서 컨텍스트 인지해야
+// "완성했어?" 같은 follow-up 을 "Clarify user intent" 로 분해하는 사고 방지.
+export async function planBoomerang(
+  userInput: string,
+  priorHistory?: Array<{ role: 'user' | 'assistant'; content: string; model?: string }>,
+): Promise<BoomerangPlan | null> {
   try {
+    let priorBlock = ''
+    if (priorHistory && priorHistory.length > 0) {
+      // 최근 6턴 정도만 — 너무 길면 plan token 낭비
+      const recent = priorHistory.slice(-6)
+      priorBlock = '\n\n## Prior conversation (for context — do NOT re-do these tasks):\n' +
+        recent.map(m => {
+          const tag = m.role === 'user' ? 'User' : `Assistant${m.model ? `(${m.model})` : ''}`
+          return `${tag}: ${m.content.slice(0, 800)}`
+        }).join('\n\n')
+    }
+
     const q = query({
-      prompt: `User task: ${userInput}\n\nDecompose into sub-tasks. Output JSON only.`,
+      prompt: `User task: ${userInput}\n${priorBlock}\n\nDecompose into sub-tasks for the LATEST user task only. If the latest user input is a short follow-up question about prior work (e.g. "완성했어?", "잘 됐어?"), output {"goal":"answer follow-up","subTasks":[]} so caller skips boomerang. Output JSON only.`,
       options: {
         model: 'claude-haiku-4-5',
         systemPrompt: PLANNER_SYSTEM,
