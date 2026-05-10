@@ -1,5 +1,41 @@
 # Changelog
 
+## v0.1.12 — 2026-05-10 (Aider 4종 + UX 보강)
+
+오픈소스 경쟁 익스텐션 (Aider/Roo/Continue/Cline) 분석 후 우리 인프라에 fit 좋은 4개 기능을 도입.
+
+### A. Smart commit message (Haiku 기반)
+- `src/util/commitMessage.ts` — staged diff 를 Haiku 가 1초 내 요약 → 의미 있는 commit subject
+- 매 턴 자동 commit 의 이전 generic 형식 (`[OrchestrAI] <응답 첫줄>`) → AI 가 변경 내용 보고 직접 작성
+- 실패 시 fallback 으로 떨어지므로 throw 없음
+
+### B. AI! 매직 코멘트 watch (Aider 시그니처)
+- 코드에 `// AI! refactor this` 또는 `# AI? what does this do` 작성 후 저장 → 자동 chat 트리거
+- AI! = 명령(수정 요청), AI? = 질문(코드는 그대로)
+- 별도 FileSystemWatcher (RAG 와 무관). 매직 토큰 + 주변 ±5 줄 컨텍스트 자동 첨부
+- setting `orchestrai.aiMagicComments` (default true) — 끄려면 false
+- 30초 cooldown 으로 중복 트리거 방지
+
+### C. Test-driven loop (Aider 의 "until tests pass")
+- `src/util/testRunner.ts` — npm test / pytest / cargo test / go test 자동 감지
+- `loop` 모드에서 매 iteration 끝나면 테스트 자동 실행
+- 통과 → 즉시 종료 (✅ 토스트)
+- 실패 → 실패 출력만 추출해서 다음 iteration prompt 에 주입 → 모델이 그것만 보고 fix
+- 테스트 명령 못 찾으면 기존 자체 종료 신호 fallback
+
+### D. Repo map (Aider 의 코드 그래프)
+- `src/util/repoMap.ts` — regex 기반 symbol(함수·클래스·메서드) 추출 (ts/js/py/go/rs/java/c++/cs/kt)
+- tree-sitter dep 없이 ~5KB code, vsix 크기 거의 안 늘어남
+- query 안의 식별자 → repo map lookup → 정의 위치 + signature 를 system prompt 에 첨부
+- embedding RAG 의 약점 ("이 함수 어디서 정의됐어?" 정확 매칭) 보완
+- `/index` 시 같이 빌드. 디스크 캐시 (workspace hash 키)
+
+### UX 보강
+- **Smart commit chip**: AI 가 생성한 commit subject 가 chip 안에 표시 (이전엔 hash 만)
+- **Repo map hit 인디케이터**: 보라색 카드로 "📍 repo map: N개 심볼 정의 첨부" + 클릭 → 파일 점프
+- **AI! 감지 버블**: 매직 코멘트 트리거 시 채팅에 노란/시안색 카드로 "🤖 AI! 매직 코멘트 감지 — file:line → instruction"
+- 자동 prompt 입력 진행 중 (locked) 이면 즉시 보내지 않고 입력창에 떨어뜨림 (현재 작업 보존)
+
 ## v0.1.11 — 2026-05-10 (글로벌 노출 + publish workflow 버그 fix)
 
 - **README 영어 단일** + `README.ko.md` 분리 (Marketplace 글로벌 검색 SEO ↑)

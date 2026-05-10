@@ -14,6 +14,7 @@ import { callGemini, setGeminiFallbackNotifier, setGeminiApiKey } from './provid
 import { callCustomProvider, type CustomProviderConfig } from './providers/customProvider'
 import { fetchPageWithBrowser } from './providers/browserTool'
 import { localeBlock } from './util/locale'
+import { startAiWatcher, type AiMagicHit } from './util/aiWatch'
 import { ChatMessage, RouterMode, RoutingDecision, Model, Effort, ChangeSummary } from './router/types'
 import { AuthStorage } from './auth/storage'
 import { ClaudeAuth } from './auth/claudeAuth'
@@ -1015,6 +1016,49 @@ class OrchestrAIViewProvider implements vscode.WebviewViewProvider, vscode.Dispo
       this._indexFileWatcher.onDidDelete(onChanged)
       this._subscriptions.push(this._indexFileWatcher)
     }
+
+    // AI! / AI? 매직 코멘트 watcher — RAG 와 무관하게 동작
+    try {
+      const aiW = startAiWatcher({
+        isEnabled: () => this._cfg<boolean>('aiMagicComments') !== false,
+        onHit: (hit) => { void this._onAiMagicHit(hit) },
+      })
+      this._subscriptions.push(aiW)
+    } catch (err) {
+      log.warn('aiwatch', 'startAiWatcher failed:', err)
+    }
+  }
+
+  // AI! 또는 AI? 매직 코멘트가 발견되면 자동으로 채팅에 주입.
+  private async _onAiMagicHit(hit: AiMagicHit) {
+    log.info('aiwatch', `${hit.kind === 'cmd' ? 'AI!' : 'AI?'} @ ${hit.filePath}:${hit.line} — ${hit.instruction.slice(0, 60)}`)
+
+    const ctxBlock = hit.contextLines.map((l, idx) => {
+      const lineNo = hit.line - 5 + idx + 1  // best-effort
+      return `${String(lineNo).padStart(4, ' ')} | ${l}`
+    }).join('\n')
+
+    const verb = hit.kind === 'cmd' ? 'Apply this instruction' : 'Answer this question (do NOT modify the file)'
+    const prompt = `[AI magic comment in ${hit.filePath}:${hit.line}]
+
+${verb}: ${hit.instruction}
+
+Surrounding code:
+\`\`\`
+${ctxBlock}
+\`\`\`
+
+${hit.kind === 'cmd' ? 'When done, the AI! comment line itself can stay — user will remove or update it.' : ''}`.trim()
+
+    // 채팅에 자동 주입 — 사용자가 입력 안 해도 된다
+    this._post({
+      type: 'aiMagicDetected',
+      kind: hit.kind,
+      filePath: hit.filePath,
+      line: hit.line,
+      instruction: hit.instruction,
+    })
+    this._post({ type: 'autoSubmit', text: prompt })
   }
 
   // 변경된 파일들 batched re-index
@@ -1078,7 +1122,17 @@ class OrchestrAIViewProvider implements vscode.WebviewViewProvider, vscode.Dispo
           ctrl.signal,
         )
       })
-      vscode.window.showInformationMessage(`✓ 코드베이스 인덱싱 완료 — ${this._codebaseIndex?.totalChunks ?? 0} chunks (${this._codebaseIndex?.totalFiles ?? 0} files)`)
+      // repo map (symbol 인덱스) — embedding 인덱싱에 비해 빠르므로 그냥 같이 빌드
+      try {
+        const { buildRepoMap } = await import('./util/repoMap')
+        const map = await buildRepoMap(root, this._context.globalStorageUri.fsPath)
+        vscode.window.showInformationMessage(
+          `✓ 인덱싱 완료 — ${this._codebaseIndex?.totalChunks ?? 0} chunks · ${map.totalSymbols} symbols (${this._codebaseIndex?.totalFiles ?? 0} files)`,
+        )
+      } catch (err) {
+        log.warn('repomap', 'build failed:', err)
+        vscode.window.showInformationMessage(`✓ 코드베이스 인덱싱 완료 — ${this._codebaseIndex?.totalChunks ?? 0} chunks (${this._codebaseIndex?.totalFiles ?? 0} files)`)
+      }
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
       if (msg !== 'aborted') vscode.window.showErrorMessage(`인덱싱 실패: ${msg}`)
@@ -3053,6 +3107,32 @@ Be concise. Use conventional commit style if commits do.`
         }
       }
     }
+
+    // Repo map: 쿼리 안의 식별자(함수·클래스명) 정의 위치를 추가로 첨부.
+    // embedding RAG 가 못 잡는 정확 매칭("이 함수 어디서 정의됐어?") 보완.
+    if (this._cfg<boolean>('codebaseRag.enabled') !== false) {
+      try {
+        const root = getWorkspaceRoot()
+        if (root) {
+          const { loadRepoMap, findRelevantSymbols, formatSymbolBlock } = await import('./util/repoMap')
+          const map = loadRepoMap(this._context.globalStorageUri.fsPath, root)
+          if (map) {
+            const symbols = findRelevantSymbols(userText, map, 8)
+            if (symbols.length > 0) {
+              const block = formatSymbolBlock(symbols)
+              ragContext = ragContext ? `${block}\n\n${ragContext}` : block
+              this._post({
+                type: 'repoMapHit',
+                symbols: symbols.map(s => ({ name: s.name, kind: s.kind, file: s.file, line: s.line })),
+              })
+              log.info('repomap', `${symbols.length} symbols matched in query`)
+            }
+          }
+        }
+      } catch (err) {
+        log.warn('repomap', 'lookup failed:', err)
+      }
+    }
     // ragContext는 system prompt에 첨부됨 (buildSystemPrompt + 별도 prepend로)
     ;(this as any)._ragContextForCurrentTurn = ragContext
 
@@ -3155,11 +3235,17 @@ Be concise. Use conventional commit style if commits do.`
     }
 
     // ── loop 모드 (Ralph Wiggum): "될 때까지" 반복. 모델이 결과 확인 후 부족하면 자동 다음 iteration ──
+    // Aider 풍 test-driven 통합 — package.json/pytest/cargo 등 감지되면 매 iteration 후 자동 실행.
     if (this._override === 'loop') {
       const MAX_ITERATIONS = 5
       const status = await this._authStorage.getStatus()
-      // 메인 모델은 Claude 우선 (Claude가 자체 검증 잘 함), 없으면 가능한 모델
       const mainModel: Model = status.claude ? 'claude' : status.codex ? 'codex' : status.gemini ? 'gemini' : 'claude'
+      const root = getWorkspaceRoot()
+      const { detectTestCommand, runTests } = await import('./util/testRunner')
+      const testCmd = root ? detectTestCommand(root) : null
+      if (testCmd) {
+        this._post({ type: 'toast', message: `🔁 loop: 테스트 자동 검증 활성 (${testCmd.cmd})` })
+      }
       let lastResult = ''
       for (let iter = 1; iter <= MAX_ITERATIONS; iter++) {
         if (this._currentAbort?.signal.aborted) break
@@ -3168,7 +3254,7 @@ Be concise. Use conventional commit style if commits do.`
           effort: inferredEffort,
           confidence: 1.0,
           reason: iter === 1 ? 'loop-start' : `loop-iter-${iter}`,
-          ruleMatched: `iteration ${iter}/${MAX_ITERATIONS}`,
+          ruleMatched: `iteration ${iter}/${MAX_ITERATIONS}${testCmd ? ' · TDD' : ''}`,
         }
         this._postRoutingDecision(decision)
         const ok = await this._runTurn(decision, iter === 1 ? fileCtx : null, iter === 1 ? 'first' : 'reply', userMsg.id, undefined)
@@ -3178,20 +3264,51 @@ Be concise. Use conventional commit style if commits do.`
         if (!last || last.role !== 'assistant') break
         lastResult = last.content
 
-        // 모델이 'DONE' 또는 '완료' 명시했으면 종료
+        // ── test-driven check ── (감지된 경우만)
+        if (testCmd && root) {
+          this._post({ type: 'toast', message: `🧪 loop iter ${iter}: 테스트 실행 중...` })
+          const result = await runTests(root)
+          if (result.ran) {
+            if (result.passed) {
+              this._post({ type: 'toast', message: `🔁 loop: ${iter}회 만에 테스트 통과 ✅` })
+              break
+            }
+            // 실패 — 다음 iteration prompt 에 test output 주입
+            if (iter >= MAX_ITERATIONS) {
+              this._post({ type: 'toast', message: `🔁 loop: max ${MAX_ITERATIONS}회 도달 — 테스트 여전히 실패` })
+              break
+            }
+            this._messages.push({
+              id: `loop-${iter}-${Date.now()}`,
+              role: 'user',
+              content: `[자동 iteration ${iter + 1}/${MAX_ITERATIONS} — 테스트 실패]
+방금 변경 후 \`${result.command}\` 가 실패함. 실패한 부분만 식별해서 fix.
+
+\`\`\`
+${result.failureSummary || result.output.slice(-3000)}
+\`\`\`
+
+위 실패만 해결. 같은 자리 반복 수정 금지 — 다른 접근 시도.`,
+              timestamp: Date.now(),
+            })
+            await this._persistMessages()
+            continue
+          }
+        }
+
+        // ── 모델 자체 종료 신호 (테스트 미감지 시 fallback) ──
         const tail = lastResult.trim().slice(-200).toLowerCase()
         if (/\bdone\b|✅\s*완료|^완료$|task complete|finished/.test(tail)) {
           this._post({ type: 'toast', message: `🔁 loop: ${iter}회 만에 완료` })
           break
         }
 
-        // max 도달
         if (iter >= MAX_ITERATIONS) {
           this._post({ type: 'toast', message: `🔁 loop: max ${MAX_ITERATIONS}회 도달` })
           break
         }
 
-        // 다음 iteration 자동 trigger — 사용자 메시지처럼 끼워 넣음
+        // 다음 iteration 자동 trigger — 일반 (테스트 미감지) 경로
         this._messages.push({
           id: `loop-${iter}-${Date.now()}`,
           role: 'user',
@@ -3932,6 +4049,7 @@ PATH RULES: paths are relative to workspace root. Don't prefix with "${gWsBase}/
       if (commit) {
         assistantMsg.commitHash = commit.hash
         assistantMsg.commitShort = commit.short
+        assistantMsg.commitMessage = commit.subject
       }
     }
 
@@ -3947,6 +4065,7 @@ PATH RULES: paths are relative to workspace root. Don't prefix with "${gWsBase}/
       changeSummary,
       commitHash: assistantMsg.commitHash,
       commitShort: assistantMsg.commitShort,
+      commitMessage: assistantMsg.commitMessage,
       planComplete: isPlanComplete,  // webview 가 'Act 로 실행' 버튼 표시
     })
     // 결과 자동 미리보기 (HTML → Simple Browser, dev script 있으면 안내)
@@ -4256,7 +4375,7 @@ Be concise. Korean if reviews are Korean.`
   private async _maybeAutoGitCommit(
     changedFiles: ChangedFile[],
     aiContent: string,
-  ): Promise<{ hash: string; short: string } | null> {
+  ): Promise<{ hash: string; short: string; subject: string } | null> {
     if (this._cfg<boolean>('autoGitCommit') === false) return null
     const root = getWorkspaceRoot()
     if (!root) return null
@@ -4293,9 +4412,12 @@ Be concise. Korean if reviews are Korean.`
       const status = await run(['diff', '--cached', '--name-only'])
       if (!status.stdout.trim()) return null  // 변경 없음
 
-      // commit 메시지 — AI 응답 첫 줄 (또는 prompt 요약)
+      // commit 메시지 — Haiku 가 staged diff 보고 생성. 실패 시 AI 응답 첫 줄로 fallback.
       const firstLine = aiContent.split('\n').find(l => l.trim()) ?? 'OrchestrAI changes'
-      const subject = firstLine.replace(/[#*`]/g, '').slice(0, 70)
+      const fallbackSubject = firstLine.replace(/[#*`]/g, '').slice(0, 70)
+      const { generateCommitMessage } = await import('./util/commitMessage')
+      const aiSubject = await generateCommitMessage(root, fallbackSubject)
+      const subject = aiSubject || fallbackSubject
       const fileCount = changedFiles.length
       const commitMsg = `[OrchestrAI] ${subject}\n\nFiles: ${fileCount}\nChanged: ${changedFiles.map(f => f.path).slice(0, 10).join(', ')}${changedFiles.length > 10 ? '...' : ''}`
 
@@ -4309,7 +4431,7 @@ Be concise. Korean if reviews are Korean.`
       if (!hash) return null
       const short = hash.slice(0, 7)
       log.info('git', `auto-committed ${short}: ${subject.slice(0, 50)}`)
-      return { hash, short }
+      return { hash, short, subject }
     } catch (err) {
       log.warn('git', 'auto-commit error:', err)
       return null

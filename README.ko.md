@@ -53,6 +53,10 @@ ext install samkj.orchestrai
 | **Browser tool** (Playwright + system Chrome) | ✅ | ❌ | △ | ✅ | ❌ |
 | **ORCHESTRAI.md** 프로젝트 룰 | ✅ | △ | ✅ | ✅ | ❌ |
 | 절약 추정 비용 표시 | ✅ | ❌ | ❌ | ❌ | ❌ |
+| **`AI!` 매직 코멘트** (Aider 풍) | ✅ | ❌ | ❌ | ❌ | ❌ |
+| **Test-driven loop** (테스트 실패 → 자동 fix) | ✅ | ❌ | ❌ | ❌ | ❌ |
+| **Repo map** (symbol 그래프 RAG 보강) | ✅ | ❌ | △ | ❌ | ❌ |
+| Smart commit 메시지 (diff 보고 AI 생성) | ✅ | △ | ❌ | ❌ | ❌ |
 | **API 과금 0원** (자체 구독 우회) | ✅ | ❌ | ❌ | ❌ | △ 구독 |
 
 ---
@@ -188,8 +192,22 @@ GitHub Gist 기반 system prompt 공유. 누구나 만들고 누구나 import.
 - 폰에서 명령 → VSCode가 처리 → 응답 폰으로 stream
 - 4096자 넘으면 자동 분할 발송
 
-### 자동 git commit (체크포인트)
-매 턴 끝나면 자동 commit. 망쳐도 한 턴씩 즉시 revert.
+### `AI!` 매직 코멘트 (Aider 풍)
+어느 코드 파일에든 주석으로:
+```ts
+// AI! 이 함수 async 로 리팩터링해줘
+function compute(input: string) { /* ... */ }
+```
+저장 → OrchestrAI 가 매직 토큰 자동 감지, 주변 컨텍스트 첨부해서 채팅 실행. `AI?` 는 코드 안 건드리고 답만. setting `orchestrai.aiMagicComments` 로 끄기 가능.
+
+### Test-driven loop
+`loop` 모드가 `npm test` / `pytest` / `cargo test` / `go test` 자동 감지 → 매 iteration 후 테스트 실행. 실패 → 실패 출력만 추출해서 다음 iter prompt 에 주입 → 모델이 그것만 보고 fix. 통과 → 즉시 종료.
+
+### Repo map (심볼 그래프 RAG)
+임베딩 chunk RAG 외에 워크스페이스 전체 symbol(함수·클래스·메서드·타입) 맵 별도 구축. query 안 식별자 → 정의 위치 + signature 자동 첨부. "이 함수 어디서 정의됐어?" 같은 정확 매칭 쿼리에서 embedding RAG 약점 보완. `/index` 시 같이 빌드.
+
+### 자동 git commit (체크포인트 + smart 메시지)
+매 턴 끝나면 자동 commit. commit subject 는 staged diff 보고 Haiku 가 ~1초 내 생성. 망쳐도 한 턴씩 즉시 revert.
 
 ### 자동 미리보기
 HTML 만들면 → Simple Browser 자동 열림  

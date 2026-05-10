@@ -2,7 +2,7 @@
   "name": "orchestrai",
   "displayName": "OrchestrAI",
   "description": "Multi-model AI in one VSCode sidebar — Claude + Codex + Gemini. Auto-routing, model debate, team delegation, until-it-works loop, codebase RAG, multi-model code review, Telegram phone bridge. Zero API billing (uses your existing subscriptions).",
-  "version": "0.1.11",
+  "version": "0.1.12",
   "publisher": "samkj",
   "license": "MIT",
   "icon": "resources/icon.png",
@@ -215,7 +215,12 @@
         "orchestrai.autoGitCommit": {
           "type": "boolean",
           "default": true,
-          "description": "매 턴 끝나면 자동으로 git commit (체크포인트). 망쳐도 이 턴 되돌리기 버튼으로 즉시 복구. git 저장소 안에서만 동작."
+          "description": "매 턴 끝나면 자동으로 git commit (체크포인트). 망쳐도 이 턴 되돌리기 버튼으로 즉시 복구. git 저장소 안에서만 동작. 메시지는 Haiku 가 staged diff 보고 자동 생성."
+        },
+        "orchestrai.aiMagicComments": {
+          "type": "boolean",
+          "default": true,
+          "description": "Aider 풍 매직 코멘트. 파일에 `// AI! refactor this` 또는 `# AI? what does this do` 작성 후 저장하면 자동으로 채팅에 prompt 주입. AI! = 명령(수정), AI? = 질문(답만)."
         },
         "orchestrai.contextWindow": {
           "type": "string",

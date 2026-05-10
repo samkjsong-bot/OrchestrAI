@@ -55,6 +55,10 @@ ext install samkj.orchestrai
 | **ORCHESTRAI.md** project rules | ✅ | △ | ✅ | ✅ | ❌ |
 | Estimated savings display | ✅ | ❌ | ❌ | ❌ | ❌ |
 | Built-in performance metrics (`/perf`) | ✅ | ❌ | ❌ | ❌ | ❌ |
+| **`AI!` magic comments** (Aider-style watch) | ✅ | ❌ | ❌ | ❌ | ❌ |
+| **Test-driven loop** (run tests, parse failures, retry) | ✅ | ❌ | ❌ | ❌ | ❌ |
+| **Repo map** (symbol-graph augmented RAG) | ✅ | ❌ | △ | ❌ | ❌ |
+| Smart commit messages (AI-written from diff) | ✅ | △ | ❌ | ❌ | ❌ |
 | **Zero API billing** (subscription bypass) | ✅ | ❌ | ❌ | ❌ | △ subscription |
 
 ---
@@ -189,8 +193,22 @@ Settings → connect Telegram → DM/Topics mode.
 - Send a command from your phone → VSCode processes → response streams back to phone
 - Auto-splits messages over 4096 chars
 
-### Auto git commit (checkpoints)
-Every turn ends with an auto-commit. Mess something up → revert one turn instantly.
+### `AI!` magic comments (Aider-style)
+Write a comment in any code file:
+```ts
+// AI! refactor this function to async
+function compute(input: string) { /* ... */ }
+```
+Save the file → OrchestrAI auto-detects the magic token, attaches surrounding context, and runs the instruction in chat. `AI?` for read-only questions (no file edits). Toggle with `orchestrai.aiMagicComments`.
+
+### Test-driven loop
+`loop` mode now auto-detects `npm test` / `pytest` / `cargo test` / `go test` and runs them after each iteration. If tests fail, the next iteration sees only the failing-test output and fixes specifically that. If tests pass, the loop terminates immediately.
+
+### Repo map (symbol-graph RAG)
+Beyond chunk-embedding RAG, OrchestrAI builds a repo-wide symbol map (functions, classes, methods, types). When your query mentions an identifier, its definition site is auto-attached as additional context — solves the classic embedding-RAG weakness on exact-match queries like "where is X defined?". Built alongside `/index`.
+
+### Auto git commit (checkpoints, with smart messages)
+Every turn ends with an auto-commit. Commit subject is AI-generated from the staged diff (Haiku, ~1s). Mess something up → revert one turn instantly.
 
 ### Auto preview
 HTML produced → Simple Browser opens automatically  
