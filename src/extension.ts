@@ -1731,6 +1731,37 @@ ${hit.kind === 'cmd' ? 'When done, the AI! comment line itself can stay — user
             reset()
             break
           }
+          case 'getPrefs': {
+            const cfg = vscode.workspace.getConfiguration('orchestrai')
+            const PREF_KEYS = [
+              'claudeModel', 'codexModel', 'geminiModel', 'thinkingMode',
+              'autoGitCommit', 'autoPreview', 'autoOpenDiff', 'aiMagicComments', 'inlineCompletion',
+              'codebaseRag.enabled', 'codebaseRag.autoIndex',
+              'contextWindow', 'codexEngine', 'confidenceThreshold',
+            ]
+            const prefs: Record<string, any> = {}
+            for (const k of PREF_KEYS) prefs[k] = cfg.get(k)
+            this._post({ type: 'prefsData', prefs })
+            break
+          }
+          case 'setPref': {
+            try {
+              const cfg = vscode.workspace.getConfiguration('orchestrai')
+              await cfg.update(msg.key, msg.value, vscode.ConfigurationTarget.Global)
+              // contextWindow 는 실시간 적용
+              if (msg.key === 'contextWindow') this._applyContextWindow()
+              log.info('prefs', `${msg.key} = ${JSON.stringify(msg.value)}`)
+            } catch (err) {
+              log.warn('prefs', `setPref ${msg.key} failed:`, err)
+              this._post({ type: 'toast', message: `설정 저장 실패: ${msg.key}` })
+            }
+            break
+          }
+          case 'openVscodeSettings': {
+            const k = msg.key ?? ''
+            await vscode.commands.executeCommand('workbench.action.openSettings', k)
+            break
+          }
           case 'spreadsheetAttach': await this._handleSpreadsheetAttach(msg.name, msg.dataBase64); break
           case 'docxAttach':         await this._handleDocxAttach(msg.name, msg.dataBase64); break
           case 'notebookAttach':     await this._handleNotebookAttach(msg.name, msg.text); break

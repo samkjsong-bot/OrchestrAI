@@ -1,5 +1,24 @@
 # Changelog
 
+## v0.1.14 — 2026-05-10 (환경설정 인패널화 — Ctrl+, 안 들어가도 됨)
+
+지금까지 Ctrl+, settings 검색해야만 토글할 수 있던 OrchestrAI 설정 전부를 사이드바 ⚙ 에서 직접 조작 가능하게 함.
+
+### 새 ⚙ → 환경설정 패널
+- 🧬 모델 변종: Claude / Codex / Gemini 각 변종 dropdown + Thinking auto/off/on/extra
+- 🤖 자동화: autoGitCommit / autoPreview / autoOpenDiff / aiMagicComments / inlineCompletion 토글
+- 🧭 RAG: codebaseRag.enabled / codebaseRag.autoIndex 토글
+- ⚡ 라우터·엔진: contextWindow segmented · codexEngine segmented · confidenceThreshold slider
+- 🔌 고급(MCP/customProviders/syncDir): VSCode 네이티브 settings 으로 점프
+
+### 구현
+- webview/chat.html: prefs-overlay 패널 + segmented/toggle/slider CSS + apply/save JS
+- extension.ts: getPrefs/setPref/openVscodeSettings 메시지 handler
+- 저장은 vscode.workspace.getConfiguration('orchestrai').update(key, value, Global) — 즉시 반영
+- contextWindow 변경 시 실시간 _applyContextWindow() 재실행
+
+이제 사용자는 Ctrl+, 안 들어가고 사이드바 안에서 모든 토글·dropdown·slider 조작 가능.
+
 ## v0.1.13 — 2026-05-10 (모델 변종 + thinking 사용자 강제)
 
 지금까지 effort(low/medium/high/extra-high)에 따라 모델 변종이 자동 결정됐고, thinking budget 도 effort 에 묶여 있었음. 이제 사용자가 settings 에서 직접 강제 가능.
