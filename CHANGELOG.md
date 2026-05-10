@@ -1,5 +1,28 @@
 # Changelog
 
+## v0.1.21 — 2026-05-11 (team mode 가짜 peer 대사 제거)
+
+### 발견 (사용자 로그)
+Team mode 에서 Codex 가 quota 429 실패하자 Claude orchestrator 가 자기 말풍선 안에 가짜 대사 채워넣음:
+```
+**Gemini**: 김치찌개 한 표! K-Soul 푸드...
+**Codex**: 지금 사용량 한도 초과라 참여 못 함 (약 38분 후 리셋).
+**Claude(나)**: 저는 삼겹살 한 표요...
+```
+
+기술적으론 Claude 가 peer tool 결과를 정확히 보고한 거지만, 시각적으론 한 말풍선 안에 셋의 카드형 prefix 가 박혀서 ventriloquism 같이 보임.
+
+### Fix 1 — team 모드 system prompt 강화
+- "ABSOLUTELY FORBIDDEN" 섹션에 `**Model**:` / `[Model] ...` 패턴 명시적 금지
+- peer 실패 시에도 narrative 금지 ("Codex 한도 초과" 같은 보고)
+- 투표 시엔 prefix 없이 직접 ("**Claude(나)**: 삼겹살" → "삼겹살.")
+
+### Fix 2 — team 모드 한정 narrow strip
+- `stripTeamImpersonation()` — 라인 시작 `**Model**:` / `[Model] ...` 패턴만 제거
+- 일반 라우팅의 ventriloquism strip 은 본인 의견까지 지웠지만 team 은 의미 명확해서 안전
+- false positive 거의 없음: "Codex 는 빠르다" 같은 일반 문장 안 잡음
+- 적용 후 webview 도 finalizeContent 로 갱신
+
 ## v0.1.20 — 2026-05-11 (provider 호출 로그 강화 — 진단성 ↑)
 
 v0.1.19 의 honest model label fix 검증 + 사용자가 "정말 X 모델이 답했나?" 추후 의심할 때 Output Channel 만 보면 즉시 답 나오게 로깅 보강.

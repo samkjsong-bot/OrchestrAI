@@ -619,6 +619,23 @@ export function actualModelName(model: Model, effort: Effort): string {
 // ventriloquism 후처리 — 라인 시작뿐 아니라 inline 도 잡음.
 // "blah blah **[Codex]** xxx **[Gemini]** yyy" 같은 한 줄 형식도 처리.
 // 알고리즘: tag 매치 위치로 content split → self segment / peer segment 분리 → peer 만 drop.
+// Team 모드 한정: `**Model**: ...` / `[Model] ...` / `Model(나): ...` 라인 시작 패턴만 제거.
+// 매우 좁은 패턴이라 false positive 거의 없음 — 사용자가 자연스럽게 "Codex 는 빠르다" 같은 일반 문장
+// 안 잡고, 모델명을 카드 prefix 로 쓴 라인만 제거.
+function stripTeamImpersonation(content: string): string {
+  const lines = content.split('\n')
+  const filtered: string[] = []
+  // ^**(Codex|Gemini|Claude)(\(나\))?**\s*[:：] 또는 ^\[(Codex|Gemini|Claude)\]\s
+  // 또는 ^(Codex|Gemini|Claude)\(나\)\s*[:：]
+  const impersonRe = /^\s*(?:\*\*)?\[?(?:Codex|Gemini|Claude)(?:\(나\))?\]?(?:\*\*)?\s*[:：]/i
+  for (const line of lines) {
+    if (impersonRe.test(line)) continue  // drop
+    filtered.push(line)
+  }
+  // 연속 빈 줄 정리
+  return filtered.join('\n').replace(/\n{3,}/g, '\n\n').trim()
+}
+
 function stripVentriloquizedLines(content: string, selfModel: Model): { sanitized: string; stripped: boolean } {
   const selfName = ({ claude: 'Claude', codex: 'Codex', gemini: 'Gemini' } as const)[selfModel].toLowerCase()
   // 인라인 매치 — 라인 시작 ^ 강제 안 함. markdown bold/italic/code 변형도 같이.
@@ -708,8 +725,16 @@ When you can answer directly (skip delegation):
 Output style — STRICT:
 - Brief plan (1-3 lines) → tool calls → STOP. After tools return, your wrap-up is OPTIONAL and must be ≤40 chars total.
 - Examples of valid wrap-up: "셋 다 답함", "✅ 완료", "OK", "Codex 가 처리". Or empty.
-- FORBIDDEN after tools: tables comparing models, "[Codex] xxx" / "[Gemini] xxx" lines, recap of what peers said, verdicts, "현황:" / "최종 판정:" / "정리:" headers, multi-paragraph summaries.
-- Reason: Codex/Gemini answers ALREADY render in their own bubbles next to yours. The user reads them directly. Your recap is noise + ventriloquism risk.
+- **ABSOLUTELY FORBIDDEN in your response (NO EXCEPTIONS — applies even if a peer call failed, or user asked you to "vote")**:
+  - "**Codex**: ..." / "**Gemini**: ..." / "**Claude**: ..." / "**Claude(나)**: ..." — markdown impersonation of peer voices
+  - "[Codex] ..." / "[Gemini] ..." / "[Claude] ..." — bracket-tagged peer voices
+  - Tables comparing what each peer said
+  - "Codex 는 X, Gemini 는 Y" style peer recap
+  - "현황:" / "최종 판정:" / "정리:" / "현재 스코어:" headers
+  - Multi-paragraph synthesis after tools
+- If you must vote (team brainstorming): say it DIRECTLY in first person without any model-name prefix. Bad: "**Claude(나)**: 삼겹살 한 표!". Good: "나는 삼겹살.".
+- If a peer call fails (Codex 429 / Gemini error), DO NOT narrate "Codex 는 한도 초과라 참여 못 함" — that's exactly what we forbid. The consult card already shows the failure. Just continue with the working peers.
+- Reason: Codex/Gemini answers ALREADY render in their own consult cards. Recap = noise + ventriloquism.
 - If you feel compelled to summarize, ignore that compulsion. Stop talking.
 - Each consult_codex(task) = ONE focused job with concrete paths + acceptance criteria, NOT the whole user message.`
       : ''
@@ -4104,10 +4129,19 @@ PATH RULES: paths are relative to workspace root. Don't prefix with "${gWsBase}/
     const changedFiles = this._changedFilesForTurn(turnId)
     const changeSummary = this._changeSummaryForTurn(turnId)
 
+    // Team 모드 한정 narrow strip — `**Model**: ` / `[Model] ...` 라인 시작 패턴만 제거.
+    // 일반 라우팅의 strip 은 본인 의견까지 지웠지만 team 모드는 의미가 명확해서 안전:
+    //   - Codex/Gemini 응답은 별도 consult 카드로 렌더되니 Claude 가 recap 할 필요 없음
+    //   - "**Claude(나)**: 삼겹살" 같은 prefix 도 제거 (Claude 가 자기 자신을 카드 형식으로 표시할 이유 없음)
+    let finalContent = result.content
+    if (this._override === 'team' || (effectiveDecision.reason ?? '').startsWith('team')) {
+      finalContent = stripTeamImpersonation(finalContent)
+    }
+
     const assistantMsg: ChatMessage = {
       id: assistantMsgId,
       role: 'assistant',
-      content: result.content,
+      content: finalContent,
       model: effectiveDecision.model,
       effort: effectiveDecision.effort,
       actualModel,
@@ -4116,9 +4150,13 @@ PATH RULES: paths are relative to workspace root. Don't prefix with "${gWsBase}/
       routing: effectiveDecision,
       timestamp: Date.now(),
     }
-    // strip 함수는 OFF — 본인 의견까지 지우는 부작용 더 컸음. 자연스러운 대화 우선.
-    // 다시 켜야 하면 stripVentriloquizedLines() 호출 복구.
+    // 일반 모드는 strip OFF — 본인 의견까지 지우는 부작용 더 컸음.
+    // team 은 위에서 좁은 패턴만 strip 함.
     this._messages.push(assistantMsg)
+    // strip 적용된 경우 webview content 도 갱신
+    if (finalContent !== result.content) {
+      this._post({ type: 'finalizeContent', id: assistantMsgId, content: finalContent })
+    }
     this._usage.record(effectiveDecision.model, result.inputTokens, result.outputTokens, this._inArgue)
     this._updateUsageStatusBar()
 
