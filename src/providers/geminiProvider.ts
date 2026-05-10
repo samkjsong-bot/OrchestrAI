@@ -211,6 +211,7 @@ export async function callGemini(
   if (abortSignal?.aborted) throw new Error('aborted')
   const userOverride = getGeminiModelOverride()
   const primaryModel = userOverride !== 'auto' ? userOverride : MODEL_BY_EFFORT[effort]
+  log.info('gemini', `call: model=${primaryModel}, effort=${effort}, override=${userOverride}, msgCount=${messages.length}`)
   let res = await runOnce(primaryModel, messages, onChunk, systemPrompt, abortSignal)
   let usedModel = primaryModel
 
@@ -254,6 +255,7 @@ export async function callGemini(
     )
   }
 
+  log.info('gemini', `done: usedModel=${usedModel}, contentChars=${res.content.length}, in=${res.inputTokens}, out=${res.outputTokens}`)
   return { content: res.content, inputTokens: res.inputTokens, outputTokens: res.outputTokens, usedModel }
 }
 

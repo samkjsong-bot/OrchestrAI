@@ -82,6 +82,7 @@ export async function callCodex(
   const userOverride = getCodexModelOverride()
   const primaryModel = userOverride !== 'auto' ? userOverride : MODEL_BY_EFFORT[effort]
   const FALLBACK_MODEL = 'gpt-5.4-mini'
+  log.info('codex', `call: model=${primaryModel}, effort=${effort}, override=${userOverride}, msgCount=${messages.length}`)
 
   // multimodal: 마지막 user message 의 <image name="..." mime="image/..." data:...></image> 태그 추출 → input_image content 로 변환
   // OpenAI Responses API 형식: { role, content: [{type: 'input_text', text: '...'}, {type: 'input_image', image_url: 'data:...'}] }
@@ -284,6 +285,7 @@ export async function callCodex(
     )
   }
 
+  log.info('codex', `done: usedModel=${usedModel}, contentChars=${fullContent.length}, in=${inputTokens}, out=${outputTokens}`)
   return { content: fullContent, inputTokens, outputTokens, usedModel }
 }
 

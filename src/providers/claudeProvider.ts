@@ -6,6 +6,7 @@ import * as vscode from 'vscode'
 import { query } from '@anthropic-ai/claude-agent-sdk'
 import { Effort } from '../router/types'
 import { getClaudeModelOverride, resolveThinkingBudget } from '../util/modelOverride'
+import { log } from '../util/log'
 
 // 코딩 작업이 많으니 Sonnet 4.6 default — 빠르고 정확. Opus는 풀스케일 reasoning만.
 const MODEL_BY_EFFORT: Record<Effort, string> = {
@@ -195,6 +196,7 @@ export async function callClaude(
       ).join('\n\n')
 
   const activeModel = modelOverride ?? modelForEffort(effort)
+  log.info('claude', `call: model=${activeModel}, effort=${effort}, override=${getClaudeModelOverride()}, msgCount=${messages.length}`)
   // 항상 AsyncIterable 로 — 그래야 q.interrupt() 가 동작 (streaming input mode 필요).
   // 텍스트 전용이면 1회 yield, multimodal 이면 image/document blocks.
   const promptArg: any = lastAttachments.length > 0
@@ -312,5 +314,6 @@ export async function callClaude(
     throw new Error(`rate_limit reached: ${fullContent.slice(0, 200)}`)
   }
 
+  log.info('claude', `done: usedModel=${activeModel}, contentChars=${fullContent.length}, in=${inputTokens}, out=${outputTokens}`)
   return { content: fullContent, inputTokens, outputTokens, usedModel: activeModel }
 }

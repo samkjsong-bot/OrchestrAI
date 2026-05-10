@@ -1,5 +1,15 @@
 # Changelog
 
+## v0.1.20 — 2026-05-11 (provider 호출 로그 강화 — 진단성 ↑)
+
+v0.1.19 의 honest model label fix 검증 + 사용자가 "정말 X 모델이 답했나?" 추후 의심할 때 Output Channel 만 보면 즉시 답 나오게 로깅 보강.
+
+각 provider 가 호출/완료 시 단일 라인 로그:
+- **호출 시**: `[claude/codex/gemini] call: model=X, effort=Y, override=Z, msgCount=N`
+- **완료 시**: `[claude/codex/gemini] done: usedModel=X, contentChars=N, in=NN, out=NN`
+
+설정 → ⚙ → 로그 보기 → 해당 turn 시각으로 스크롤하면 어느 provider 가 실제 호출됐고 fallback 으로 어느 모델 썼는지 추적 가능.
+
 ## v0.1.19 — 2026-05-10 (모델 라벨 거짓말 fix — fallback 후 실제 사용 모델 표시)
 
 ### 발견된 버그
