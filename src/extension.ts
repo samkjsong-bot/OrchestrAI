@@ -1821,7 +1821,10 @@ ${hit.kind === 'cmd' ? 'When done, the AI! comment line itself can stay — user
             // 현재 진행 중인 모든 LLM 호출·툴 루프 즉시 중단
             this._argueStop = true   // argue도 같이 멈춤
             this._currentAbort?.abort()
+            // generationStopped 즉시 + 백엔드 race 방지로 _isSending 도 강제 해제
+            this._isSending = false
             this._post({ type: 'generationStopped' })
+            this._post({ type: 'sendUnlocked' })  // webview send lock 해제 보강
             break
           case 'setPermissionMode':
             if (['ask', 'auto-edit', 'plan', 'smart-auto'].includes(msg.mode)) {

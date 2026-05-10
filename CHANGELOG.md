@@ -1,5 +1,24 @@
 # Changelog
 
+## v0.1.15 — 2026-05-10 (끼어들기 버그 + 음성인식 locale + UI 정렬)
+
+### 끼어들기 (interrupt) 안 듣던 버그 fix
+- 큐의 ⏩ "끼어들기" 버튼 또는 STOP 버튼 클릭 시 backend 가 `generationStopped` 만 보내고 send 락 안 풀어서 큐가 drain 안 됨
+- webview: `generationEnd` / `generationStopped` case 에서 `setSendLocked(false)` 호출 추가
+- backend: `stopGeneration` 메시지 처리 시 `_isSending = false` 즉시 + `sendUnlocked` post 보강
+- 효과: 응답 도중 새 메시지 입력 → ⏩ 끼어들기 클릭 → 즉시 새 prompt 시작
+
+### 음성인식 (Web Speech API) 개선
+- `recog.lang` 하드코딩 ko-KR → `navigator.language` 기반 자동 감지 (ko/en/ja/zh/es/de/fr/pt/ru)
+- 권한 사전 체크 — `navigator.mediaDevices.getUserMedia({audio:true})` 로 mic 권한 미리 확인
+- 에러별 친절 메시지: not-allowed / network / no-speech / audio-capture / service-not-allowed 한글 매핑
+- VSCode webview 가 mic 막아놓은 경우 (가장 흔한 원인) 명확히 안내
+
+### UI — override-bar 버튼 높이 정렬
+- ⚡ argue 와 ✦ auto dropdown 버튼 높이 다른 거슬리는 거 fix
+- `.override-bar` `align-items: center` + `.override-btn` `height: 22px` 강제
+- `.override-pick` inline-block → inline-flex (caret span 영향 차단)
+
 ## v0.1.14 — 2026-05-10 (환경설정 인패널화 — Ctrl+, 안 들어가도 됨)
 
 지금까지 Ctrl+, settings 검색해야만 토글할 수 있던 OrchestrAI 설정 전부를 사이드바 ⚙ 에서 직접 조작 가능하게 함.

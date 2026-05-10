@@ -820,6 +820,7 @@
     display: flex;
     gap: 4px;
     padding: 6px 12px 0;
+    align-items: center;     /* 모든 자식 세로 중앙 정렬 → auto dropdown 도 같은 baseline */
   }
 
   .override-btn {
@@ -833,6 +834,11 @@
     cursor: pointer;
     transition: all 0.15s;
     letter-spacing: 0.05em;
+    height: 22px;            /* 모든 override-btn 동일 높이 강제 (caret span 영향 차단) */
+    line-height: 1;
+    box-sizing: border-box;
+    display: inline-flex;
+    align-items: center;
   }
 
   .override-btn:hover { color: var(--text-dim); border-color: var(--border-bright); }
@@ -880,7 +886,7 @@
   .plan-act-btn:hover { background: #a78bfa33; border-color: #a78bfa99; color: #ddd6fe; }
 
   /* 라우팅 dropdown (auto / claude / codex / gemini 묶음) */
-  .override-pick { position: relative; display: inline-block; }
+  .override-pick { position: relative; display: inline-flex; align-items: center; }
   .override-pick .caret { font-size: 9px; opacity: 0.6; margin-left: 2px; }
   .route-popup {
     position: absolute; bottom: calc(100% + 4px); left: 0;
@@ -2935,6 +2941,8 @@
       case 'generationStopped':
         document.getElementById('gen-stop').classList.remove('visible')
         hideProgress()
+        // send 락 강제 해제 — streamEnd 가 abort 로 못 도착했을 수 있음
+        setSendLocked(false)
         // 큐의 다음 메시지 자동 발송 (있으면)
         setTimeout(() => _drainQueue(), 100)
         break
@@ -4148,26 +4156,59 @@
   }
 
   // ── Voice input (Web Speech API, 의존성 0) ─────────────────────────────
+  // VSCode webview 는 navigator.mediaDevices 권한 없을 수 있어 not-allowed 에러 자주 발생.
+  // 그 경우 친절한 안내 메시지 + 외부 IDE/브라우저로 우회 안내.
   let _voiceRecog = null
-  let _voiceFinalTextStartLen = 0  // 녹음 시작 시점의 textarea 길이 (final 텍스트 append 시점 계산용)
-  function toggleVoiceInput() {
+  let _voiceFinalTextStartLen = 0
+  function detectVoiceLang() {
+    // VSCode locale 따라 음성 언어 자동 결정. 대부분 OS lang 으로 fallback.
+    const nav = (navigator.language || 'ko-KR').toLowerCase()
+    if (nav.startsWith('ko')) return 'ko-KR'
+    if (nav.startsWith('ja')) return 'ja-JP'
+    if (nav.startsWith('zh')) return nav.includes('tw') ? 'zh-TW' : 'zh-CN'
+    if (nav.startsWith('es')) return 'es-ES'
+    if (nav.startsWith('de')) return 'de-DE'
+    if (nav.startsWith('fr')) return 'fr-FR'
+    if (nav.startsWith('pt')) return 'pt-BR'
+    if (nav.startsWith('ru')) return 'ru-RU'
+    return 'en-US'
+  }
+  async function toggleVoiceInput() {
     const SR = window.SpeechRecognition || window.webkitSpeechRecognition
-    if (!SR) return showToast('이 브라우저는 음성 입력 지원 안 함')
+    if (!SR) return showToast('이 브라우저는 음성 입력 지원 안 함 (Chromium 기반에서만 동작)')
     if (_voiceRecog) {
       try { _voiceRecog.stop() } catch {}
       return
     }
+    // 마이크 권한 사전 확인 — VSCode webview 가 mic 막아놓으면 여기서 catch
+    if (navigator.mediaDevices?.getUserMedia) {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+        // 권한만 확인하고 stream 자체는 즉시 닫음 (Web Speech API 가 별도로 마이크 잡음)
+        stream.getTracks().forEach(t => t.stop())
+      } catch (err) {
+        const name = err?.name || ''
+        if (name === 'NotAllowedError' || name === 'PermissionDeniedError') {
+          showToast('🎤 마이크 권한 거부됨 — VSCode 재시작 후 권한 허용 필요')
+        } else if (name === 'NotFoundError') {
+          showToast('🎤 마이크 장치 없음 — 마이크 연결 확인')
+        } else {
+          showToast('🎤 마이크 접근 실패: ' + (err?.message || name || 'unknown'))
+        }
+        return
+      }
+    }
     const recog = new SR()
-    recog.lang = 'ko-KR'
-    recog.continuous = true        // 길게 녹음 가능
-    recog.interimResults = true    // 중간 결과도 실시간 표시
+    recog.lang = detectVoiceLang()
+    recog.continuous = true
+    recog.interimResults = true
     const ta = document.getElementById('input')
     _voiceFinalTextStartLen = ta.value.length
     let interim = ''
     recog.onstart = () => {
       const btn = document.getElementById('voice-btn')
       if (btn) btn.classList.add('recording')
-      showToast('🎤 듣는 중... 다시 클릭해서 종료')
+      showToast(`🎤 듣는 중 (${recog.lang})... 다시 클릭해서 종료`)
     }
     recog.onresult = (e) => {
       let finalT = ''
@@ -4177,7 +4218,6 @@
         if (r.isFinal) finalT += r[0].transcript
         else interim += r[0].transcript
       }
-      // textarea 의 voice 부분만 갱신: 시작 길이 + 누적 final + interim
       const before = ta.value.slice(0, _voiceFinalTextStartLen)
       const sep = before && !/\s$/.test(before) ? ' ' : ''
       const accumulated = (recog._accumulated || '') + finalT
@@ -4186,7 +4226,18 @@
       autoResize(ta)
     }
     recog.onerror = (e) => {
-      showToast('음성 인식 오류: ' + (e.error || 'unknown'))
+      // Web Speech API 에러 종류별 친절 메시지
+      const code = e.error || 'unknown'
+      const msg = ({
+        'not-allowed': '마이크 권한 거부됨 — VSCode 재시작 후 허용',
+        'service-not-allowed': '브라우저/IDE 가 음성 서비스 차단',
+        'network': '네트워크 오류 — Web Speech API 는 Google 서버 사용 (오프라인 X)',
+        'no-speech': '음성 감지 안 됨 — 마이크 가까이서 말하기',
+        'audio-capture': '오디오 입력 장치 문제',
+        'aborted': '',  // 사용자가 stop — 알림 X
+      })[code]
+      if (msg) showToast('🎤 ' + msg)
+      else if (code !== 'aborted') showToast('🎤 음성 인식 오류: ' + code)
     }
     recog.onend = () => {
       const btn = document.getElementById('voice-btn')
@@ -4195,7 +4246,7 @@
       ta.focus()
     }
     _voiceRecog = recog
-    try { recog.start() } catch (err) { showToast('음성 시작 실패: ' + err) }
+    try { recog.start() } catch (err) { showToast('🎤 음성 시작 실패: ' + (err?.message || err)) }
   }
 
   function autoResize(el) {
