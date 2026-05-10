@@ -5,6 +5,7 @@
 import { Effort } from '../router/types'
 import { log } from '../util/log'
 import { isQuotaError } from '../util/quota'
+import { getGeminiModelOverride } from '../util/modelOverride'
 
 // 무료 티어: Pro는 5 RPM·100 RPD로 빡빡, Flash는 10 RPM·500 RPD로 여유.
 // medium은 Flash로 두고 Pro는 high에서만. 429 뜨면 자동 Flash 폴백.
@@ -208,7 +209,8 @@ export async function callGemini(
   abortSignal?: AbortSignal,
 ): Promise<{ content: string; inputTokens: number; outputTokens: number }> {
   if (abortSignal?.aborted) throw new Error('aborted')
-  const primaryModel = MODEL_BY_EFFORT[effort]
+  const userOverride = getGeminiModelOverride()
+  const primaryModel = userOverride !== 'auto' ? userOverride : MODEL_BY_EFFORT[effort]
   let res = await runOnce(primaryModel, messages, onChunk, systemPrompt, abortSignal)
 
   // Pro 쿼터 터졌으면 Flash로 폴백

@@ -61,6 +61,19 @@ ext install samkj.orchestrai
 
 ---
 
+## 🧬 모델 변종 사용자 선택 (provider 별)
+
+기본은 effort(low/medium/high/extra-high) 따라 자동. settings 에서 강제 override 가능:
+
+| Setting | 선택지 |
+|---|---|
+| `orchestrai.claudeModel` | `auto` · `claude-sonnet-4-6` · `claude-opus-4-7` · `claude-haiku-4-5` |
+| `orchestrai.codexModel` | `auto` · `gpt-5.4-mini` · `gpt-5.4` · `gpt-5.5` |
+| `orchestrai.geminiModel` | `auto` · `gemini-2.5-flash` · `gemini-2.5-pro` · `gemini-2.0-flash` |
+| `orchestrai.thinkingMode` | `auto` · `off` · `on` · `extra` (Claude / Gemini Pro 만) |
+
+`auto` 면 effort→model 매핑 유지(기본). 그 외 값이면 effort 무시하고 강제. `thinkingMode=extra` 면 모델 한도 풀(Sonnet 32k / Opus 64k tokens).
+
 ## 🎛 라우팅 모드 6+1종
 
 | | 동작 |

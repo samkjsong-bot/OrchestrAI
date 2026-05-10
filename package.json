@@ -2,7 +2,7 @@
   "name": "orchestrai",
   "displayName": "OrchestrAI",
   "description": "Multi-model AI in one VSCode sidebar — Claude + Codex + Gemini. Auto-routing, model debate, team delegation, until-it-works loop, codebase RAG, multi-model code review, Telegram phone bridge. Zero API billing (uses your existing subscriptions).",
-  "version": "0.1.12",
+  "version": "0.1.13",
   "publisher": "samkj",
   "license": "MIT",
   "icon": "resources/icon.png",
@@ -221,6 +221,54 @@
           "type": "boolean",
           "default": true,
           "description": "Aider 풍 매직 코멘트. 파일에 `// AI! refactor this` 또는 `# AI? what does this do` 작성 후 저장하면 자동으로 채팅에 prompt 주입. AI! = 명령(수정), AI? = 질문(답만)."
+        },
+        "orchestrai.claudeModel": {
+          "type": "string",
+          "default": "auto",
+          "enum": ["auto", "claude-sonnet-4-6", "claude-opus-4-7", "claude-haiku-4-5"],
+          "enumDescriptions": [
+            "Auto: effort 따라 자동 (sonnet 기본, extra-high 면 opus). 권장.",
+            "Sonnet 4.6: 빠르고 정확. 코딩 작업 default 권장.",
+            "Opus 4.7: 풀스케일 reasoning. 큰 그림·아키텍처용 (느리고 quota 큼).",
+            "Haiku 4.5: 가장 빠름·저렴. 메타 라우팅·짧은 답변용."
+          ],
+          "description": "Claude 모델 강제 — auto 면 effort 따라 자동 선택. Max 구독 쿼터 사용."
+        },
+        "orchestrai.codexModel": {
+          "type": "string",
+          "default": "auto",
+          "enum": ["auto", "gpt-5.4-mini", "gpt-5.4", "gpt-5.5"],
+          "enumDescriptions": [
+            "Auto: effort 따라 자동 (5.4 기본, low면 mini, high면 5.5). 권장.",
+            "GPT-5.4-mini: 빠르고 가벼운 작업. low effort 와 동일.",
+            "GPT-5.4: 표준. medium effort 와 동일.",
+            "GPT-5.5: 최고 reasoning (Pro 플랜 한도)."
+          ],
+          "description": "Codex (ChatGPT) 모델 강제 — auto 면 effort 따라 자동. ChatGPT Pro 구독 쿼터 사용."
+        },
+        "orchestrai.geminiModel": {
+          "type": "string",
+          "default": "auto",
+          "enum": ["auto", "gemini-2.5-flash", "gemini-2.5-pro", "gemini-2.0-flash"],
+          "enumDescriptions": [
+            "Auto: effort 따라 자동 (flash 기본, high 면 pro). 권장.",
+            "Gemini 2.5 Flash: 빠름·무료 tier 한도 큼.",
+            "Gemini 2.5 Pro: 강한 reasoning. 무료 tier RPM 작음.",
+            "Gemini 2.0 Flash: 안정적 fallback (1.5-flash 후속)."
+          ],
+          "description": "Gemini 모델 강제 — auto 면 effort 따라 자동. Google 무료 OAuth 사용."
+        },
+        "orchestrai.thinkingMode": {
+          "type": "string",
+          "default": "auto",
+          "enum": ["auto", "off", "on", "extra"],
+          "enumDescriptions": [
+            "Auto: effort 따라 thinking budget 자동 (low=off, medium=5k, high=16k, extra-high=64k). 권장.",
+            "Off: thinking 완전 비활성. 응답 속도 최대치.",
+            "On: medium budget(5k tokens) 강제 — effort 무관하게 항상 thinking.",
+            "Extra: 최대 budget(64k Claude / pro 한도) 강제 — 깊은 reasoning 필요할 때."
+          ],
+          "description": "Extended thinking 모드. Claude 와 Gemini Pro 만 지원. effort 와 독립적으로 제어 가능."
         },
         "orchestrai.contextWindow": {
           "type": "string",

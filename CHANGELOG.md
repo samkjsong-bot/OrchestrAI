@@ -1,5 +1,25 @@
 # Changelog
 
+## v0.1.13 — 2026-05-10 (모델 변종 + thinking 사용자 강제)
+
+지금까지 effort(low/medium/high/extra-high)에 따라 모델 변종이 자동 결정됐고, thinking budget 도 effort 에 묶여 있었음. 이제 사용자가 settings 에서 직접 강제 가능.
+
+### 추가 settings (4종)
+- `orchestrai.claudeModel` — auto / sonnet 4.6 / **opus 4.7** / haiku 4.5
+- `orchestrai.codexModel` — auto / gpt-5.4-mini / gpt-5.4 / gpt-5.5
+- `orchestrai.geminiModel` — auto / 2.5-flash / 2.5-pro / 2.0-flash
+- `orchestrai.thinkingMode` — auto / off / on / extra (effort 와 독립)
+
+### 동작
+- 모든 setting default = `auto` → 기존 동작 그대로 (effort 따라 변종 결정)
+- `auto` 외 값 선택 시 → effort 무시하고 그 모델/모드 강제
+- UI 의 actualModel 라벨도 override 반영
+- thinking: off=비활성, on=5k budget 강제, extra=모델 한도까지 (Sonnet 32k / Opus 64k)
+
+### Claude opus 4.7 업그레이드
+- 기본 effort=extra-high 매핑이 `claude-opus-4-6` → `claude-opus-4-7` 로
+- thinking budget 한도도 64k 그대로 (4-7 도 동일)
+
 ## v0.1.12 — 2026-05-10 (Aider 4종 + UX 보강)
 
 오픈소스 경쟁 익스텐션 (Aider/Roo/Continue/Cline) 분석 후 우리 인프라에 fit 좋은 4개 기능을 도입.

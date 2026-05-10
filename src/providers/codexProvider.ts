@@ -5,6 +5,7 @@
 import * as os from 'os'
 import { Effort } from '../router/types'
 import { log } from '../util/log'
+import { getCodexModelOverride } from '../util/modelOverride'
 
 const ENDPOINT = 'https://chatgpt.com/backend-api/codex/responses'
 const ORIGINATOR = 'codex_cli_rs'
@@ -77,7 +78,9 @@ export async function callCodex(
   }
   const verifiedAccountId: string = accountId  // closure에서 type narrowing 유지
 
-  const primaryModel = MODEL_BY_EFFORT[effort]
+  // 사용자 settings 에서 모델 강제했으면 그걸 우선
+  const userOverride = getCodexModelOverride()
+  const primaryModel = userOverride !== 'auto' ? userOverride : MODEL_BY_EFFORT[effort]
   const FALLBACK_MODEL = 'gpt-5.4-mini'
 
   // multimodal: 마지막 user message 의 <image name="..." mime="image/..." data:...></image> 태그 추출 → input_image content 로 변환

@@ -5,28 +5,35 @@
 import * as vscode from 'vscode'
 import { query } from '@anthropic-ai/claude-agent-sdk'
 import { Effort } from '../router/types'
+import { getClaudeModelOverride, resolveThinkingBudget } from '../util/modelOverride'
 
 // 코딩 작업이 많으니 Sonnet 4.6 default — 빠르고 정확. Opus는 풀스케일 reasoning만.
 const MODEL_BY_EFFORT: Record<Effort, string> = {
   low: 'claude-sonnet-4-6',
   medium: 'claude-sonnet-4-6',
   high: 'claude-sonnet-4-6',         // high도 Sonnet — 코드 작업엔 Opus보다 빠르고 동등
-  'extra-high': 'claude-opus-4-6',   // 풀스케일 프로젝트만 Opus (큰 그림 + 위임)
+  'extra-high': 'claude-opus-4-7',   // 풀스케일 프로젝트만 Opus (큰 그림 + 위임)
 }
 
-// thinking budget 확대 — 깊은 reasoning 활용
+// thinking budget — 사용자가 thinkingMode override 안 했을 때만 effort 기반 default 사용
 const THINKING_BUDGET: Record<Effort, number | undefined> = {
   low: undefined,                    // thinking 없음
-  medium: 5000,                      // 옛 3000 → 5000
-  high: 16000,                       // 옛 10000 → 16000 (코드 작업 깊이 ↑)
-  'extra-high': 64000,               // 옛 32000 → 64000 (Opus 4.6 thinking 한도)
+  medium: 5000,
+  high: 16000,
+  'extra-high': 64000,               // Opus 4.7 thinking 한도
 }
 
 function modelForEffort(effort: Effort | string): string {
+  // 사용자 override 우선
+  const override = getClaudeModelOverride()
+  if (override !== 'auto') return override
   return MODEL_BY_EFFORT[effort as Effort] ?? 'claude-sonnet-4-6'
 }
-function thinkingBudgetFor(effort: Effort | string): number | undefined {
-  return THINKING_BUDGET[effort as Effort]
+function thinkingBudgetFor(effort: Effort | string, model: string): number | undefined {
+  // 모델별 thinking budget 한도 (Sonnet 32k, Opus 64k, Haiku 미지원)
+  if (model.includes('haiku')) return undefined
+  const maxBudget = model.includes('opus') ? 64000 : 32000
+  return resolveThinkingBudget(effort as Effort, THINKING_BUDGET, maxBudget)
 }
 
 // 모델 자동 전환(예: extra-high opus → quota파산 후 sonnet) 시 UI에 띄울 콜백.
@@ -198,7 +205,7 @@ export async function callClaude(
       ...(abortSignal ? { abortSignal } : {}),
       maxTurns: 100,         // 사실상 무제한 — 무한 루프 방지용 상한만
       persistSession: false,
-      maxThinkingTokens: thinkingBudgetFor(effort),
+      maxThinkingTokens: thinkingBudgetFor(effort, activeModel),
       cwd: vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? process.cwd(),
       env: subscriptionEnv(),
       // SDK type 정의에 maxTokens 가 빠져있지만 cli.js 가 실제로 받음 (typedef outdated).

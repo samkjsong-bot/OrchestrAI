@@ -590,20 +590,28 @@ function modelLabel(m: Model): string {
 }
 
 // 모델 + effort → 실제 backend가 호출하는 모델 ID. UI 표시용 (어떤 변종으로 통했는지 명확히)
+// 사용자 settings 에 모델 override 있으면 그걸 우선 표시.
 export function actualModelName(model: Model, effort: Effort): string {
   if (typeof model === 'string' && model.startsWith('custom:')) {
     return model.slice(7)  // custom 은 사용자 정의 이름 그대로
   }
+  const cfg = vscode.workspace.getConfiguration('orchestrai')
   if (model === 'claude') {
-    if (effort === 'high' || effort === 'extra-high') return 'claude-opus-4-6'
+    const override = cfg.get<string>('claudeModel')
+    if (override && override !== 'auto') return override
+    if (effort === 'extra-high') return 'claude-opus-4-7'
     return 'claude-sonnet-4-6'
   }
   if (model === 'codex') {
+    const override = cfg.get<string>('codexModel')
+    if (override && override !== 'auto') return override
     if (effort === 'low') return 'gpt-5.4-mini'
     if (effort === 'high' || effort === 'extra-high') return 'gpt-5.5'
     return 'gpt-5.4'
   }
   // gemini
+  const override = cfg.get<string>('geminiModel')
+  if (override && override !== 'auto') return override
   if (effort === 'high' || effort === 'extra-high') return 'gemini-2.5-pro'
   return 'gemini-2.5-flash'
 }
