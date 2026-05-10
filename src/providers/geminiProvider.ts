@@ -207,11 +207,12 @@ export async function callGemini(
   onChunk: (text: string) => void,
   systemPrompt?: string,
   abortSignal?: AbortSignal,
-): Promise<{ content: string; inputTokens: number; outputTokens: number }> {
+): Promise<{ content: string; inputTokens: number; outputTokens: number; usedModel: string }> {
   if (abortSignal?.aborted) throw new Error('aborted')
   const userOverride = getGeminiModelOverride()
   const primaryModel = userOverride !== 'auto' ? userOverride : MODEL_BY_EFFORT[effort]
   let res = await runOnce(primaryModel, messages, onChunk, systemPrompt, abortSignal)
+  let usedModel = primaryModel
 
   // Pro 쿼터 터졌으면 Flash로 폴백
   if (res.error && isQuotaError(res.error) && primaryModel !== FALLBACK_MODEL) {
@@ -219,6 +220,7 @@ export async function callGemini(
     log.warn('gemini', `${primaryModel} quota exhausted, falling back to ${FALLBACK_MODEL}`)
     _fallbackNotifier?.(primaryModel, FALLBACK_MODEL, 'quota')
     res = await runOnce(FALLBACK_MODEL, messages, onChunk, systemPrompt, abortSignal)
+    if (!res.error && res.content) usedModel = FALLBACK_MODEL
   }
 
   // 빈 응답 (Pro의 thinking 모델이 long-context에서 종종 발생) → Flash 자동 폴백
@@ -229,6 +231,7 @@ export async function callGemini(
     log.warn('gemini', `${primaryModel} empty response, falling back to ${FALLBACK_MODEL}`)
     _fallbackNotifier?.(primaryModel, FALLBACK_MODEL, 'empty response (safety filter?)')
     res = await runOnce(FALLBACK_MODEL, messages, onChunk, systemPrompt, abortSignal)
+    if (!res.error && res.content) usedModel = FALLBACK_MODEL
   }
 
   // 2.5-flash 까지 RESOURCE_EXHAUSTED / 빈 응답이면 1.5-flash 로 최후 시도 (1.5 가 capacity 더 안정적)
@@ -238,6 +241,7 @@ export async function callGemini(
     log.warn('gemini', `2.5 series exhausted, last-resort fallback to ${STABLE_FALLBACK_MODEL}`)
     _fallbackNotifier?.(FALLBACK_MODEL, STABLE_FALLBACK_MODEL, '2.5 capacity exhausted, trying 1.5')
     res = await runOnce(STABLE_FALLBACK_MODEL, messages, onChunk, systemPrompt, abortSignal)
+    if (!res.error && res.content) usedModel = STABLE_FALLBACK_MODEL
   }
 
   if (res.error) {
@@ -250,6 +254,6 @@ export async function callGemini(
     )
   }
 
-  return { content: res.content, inputTokens: res.inputTokens, outputTokens: res.outputTokens }
+  return { content: res.content, inputTokens: res.inputTokens, outputTokens: res.outputTokens, usedModel }
 }
 

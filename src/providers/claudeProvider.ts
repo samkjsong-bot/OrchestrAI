@@ -175,7 +175,7 @@ export async function callClaude(
   extraMcpServers?: Record<string, any>,  // team 모드 등에서 동료 호출 툴 주입용
   abortSignal?: AbortSignal,
   modelOverride?: string,  // 내부 폴백용 — extra-high opus 쿼터 파산 시 sonnet으로 재시도
-): Promise<{ content: string; inputTokens: number; outputTokens: number }> {
+): Promise<{ content: string; inputTokens: number; outputTokens: number; usedModel: string }> {
   // 마지막 user 메시지에서 attachments 추출 — multimodal 처리용
   let lastAttachments: ExtractedAttachment[] = []
   const processedMessages = messages.map((m, i) => {
@@ -312,5 +312,5 @@ export async function callClaude(
     throw new Error(`rate_limit reached: ${fullContent.slice(0, 200)}`)
   }
 
-  return { content: fullContent, inputTokens, outputTokens }
+  return { content: fullContent, inputTokens, outputTokens, usedModel: activeModel }
 }

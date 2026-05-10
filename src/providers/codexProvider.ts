@@ -72,7 +72,7 @@ export async function callCodex(
   systemPrompt?: string,
   accountId?: string,
   abortSignal?: AbortSignal,
-): Promise<{ content: string; inputTokens: number; outputTokens: number }> {
+): Promise<{ content: string; inputTokens: number; outputTokens: number; usedModel: string }> {
   if (!accountId) {
     throw new Error('Codex 계정 ID가 없습니다. 다시 로그인해주세요.')
   }
@@ -149,6 +149,7 @@ export async function callCodex(
   }
 
   let { res, lastErr } = await tryFetch(primaryModel)
+  let usedModel = primaryModel
 
   // Pro 플랜 모델(gpt-5.5)이 quota 파산이면 mini로 폴백 (모든 챗GPT 구독 공통 가능)
   if (!res && lastErr && primaryModel !== FALLBACK_MODEL && isCodexQuotaError(lastErr.status, lastErr.text)) {
@@ -156,6 +157,7 @@ export async function callCodex(
     const retry = await tryFetch(FALLBACK_MODEL)
     res = retry.res
     if (!res) lastErr = retry.lastErr
+    else usedModel = FALLBACK_MODEL
   }
 
   if (!res) {
@@ -282,6 +284,6 @@ export async function callCodex(
     )
   }
 
-  return { content: fullContent, inputTokens, outputTokens }
+  return { content: fullContent, inputTokens, outputTokens, usedModel }
 }
 

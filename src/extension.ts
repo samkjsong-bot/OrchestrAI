@@ -3445,11 +3445,12 @@ ${result.failureSummary || result.output.slice(-3000)}
             } else {
               result = await this._runGeminiAgent([{ role: 'user', content: fullPrompt }], task.effort, sysPrompt, onChunk, subMsgId, userMsg.id)
             }
-            this._post({ type: 'streamEnd', id: subMsgId, tokens: result.outputTokens, actualModel: decision.actualModel })
+            const subActualModel = (result as any).usedModel ?? decision.actualModel
+            this._post({ type: 'streamEnd', id: subMsgId, tokens: result.outputTokens, actualModel: subActualModel })
             results.set(task.id, collected || result.content)
             const assistantMsg: ChatMessage = {
               id: subMsgId, role: 'assistant', content: collected || result.content,
-              model: task.model, effort: task.effort, actualModel: decision.actualModel,
+              model: task.model, effort: task.effort, actualModel: subActualModel,
               routing: decision, timestamp: Date.now(),
             }
             this._messages.push(assistantMsg)
@@ -3639,7 +3640,7 @@ ${result.failureSummary || result.output.slice(-3000)}
     onChunk: (text: string) => void,
     streamId: string,
     turnId?: string,
-  ): Promise<{ content: string; inputTokens: number; outputTokens: number }> {
+  ): Promise<{ content: string; inputTokens: number; outputTokens: number; usedModel?: string }> {
     // native engine: codex.exe mcp-server 통해 호출. tool/path/auth 다 codex가 처리.
     const engine = this._cfg<string>('codexEngine') ?? 'native'
     if (engine === 'native') {
@@ -3704,7 +3705,7 @@ ${result.failureSummary || result.output.slice(-3000)}
       const toolCall = parseCodexToolCall(result.content)
       if (!toolCall) {
         // tool 호출 없음. 이미 chunk forward 끝남.
-        return { content: result.content, inputTokens, outputTokens }
+        return { content: result.content, inputTokens, outputTokens, usedModel: (result as any).usedModel }
       }
 
       const label = formatCodexToolCall(toolCall)
@@ -3742,7 +3743,7 @@ ${result.failureSummary || result.output.slice(-3000)}
     onChunk: (text: string) => void,
     streamId: string,
     turnId?: string,
-  ): Promise<{ content: string; inputTokens: number; outputTokens: number }> {
+  ): Promise<{ content: string; inputTokens: number; outputTokens: number; usedModel?: string }> {
     const agentHistory = [...history]
     let inputTokens = 0
     let outputTokens = 0
@@ -3772,7 +3773,7 @@ ${result.failureSummary || result.output.slice(-3000)}
 
       const toolCall = parseCodexToolCall(result.content)
       if (!toolCall) {
-        return { content: result.content, inputTokens, outputTokens }
+        return { content: result.content, inputTokens, outputTokens, usedModel: (result as any).usedModel }
       }
 
       const label = formatCodexToolCall(toolCall)
@@ -4097,7 +4098,8 @@ PATH RULES: paths are relative to workspace root. Don't prefix with "${gWsBase}/
       return false
     }
 
-    const actualModel = actualModelName(effectiveDecision.model, effectiveDecision.effort)
+    // provider 가 fallback 한 후 실제 사용한 모델을 우선. 없으면 라벨 추론.
+    const actualModel = (result as any).usedModel ?? actualModelName(effectiveDecision.model, effectiveDecision.effort)
     effectiveDecision = { ...effectiveDecision, actualModel }
     const changedFiles = this._changedFilesForTurn(turnId)
     const changeSummary = this._changeSummaryForTurn(turnId)

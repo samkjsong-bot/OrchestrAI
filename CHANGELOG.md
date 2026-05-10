@@ -1,5 +1,24 @@
 # Changelog
 
+## v0.1.19 — 2026-05-10 (모델 라벨 거짓말 fix — fallback 후 실제 사용 모델 표시)
+
+### 발견된 버그
+사용자가 ChatGPT Pro weekly quota (gpt-5.5 한도) 다 썼는데도 메시지 헤더에 `gpt-5.5` 박혀서 답변 도착. 실제로는 quota 터지자 `gpt-5.4-mini` 로 자동 fallback 됐는데 **UI 라벨은 원래 모델 그대로**.
+
+기존: actualModelName(model, effort) 으로 호출 시점에 라벨 박고 끝 → fallback 정보 미반영.
+사용자 인지: "쿼터 끝났는데 어떻게 5.5가 답했지?" 의심 발생 (실제론 5.4-mini가 답했는데).
+
+### Fix
+- `callClaude` / `callCodex` / `callGemini` 모두 `usedModel` 필드 return
+  - Codex: 5.5 quota 터져 5.4-mini 로 fallback 시 usedModel = 'gpt-5.4-mini'
+  - Gemini: pro → flash → 1.5-flash 다단 fallback 마다 usedModel 갱신
+  - Claude: SDK가 내부 fallback 안 하므로 activeModel 그대로
+- `_runCodexAgent` / `_runGeminiAgent` 도 usedModel 전파
+- `_runTurn`: streamEnd 의 actualModel 을 result.usedModel 우선, 없으면 actualModelName fallback
+- boomerang sub-task: assistantMsg.actualModel 도 result.usedModel 사용
+
+이제 메시지 헤더 모델 라벨이 실제 호출된 모델과 일치.
+
 ## v0.1.18 — 2026-05-10 (부메랑 follow-up 컨텍스트 사고 fix)
 
 ### 발견된 버그
