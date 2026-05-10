@@ -1,8 +1,8 @@
 {
   "name": "orchestrai",
   "displayName": "OrchestrAI",
-  "description": "Claude + Codex + Gemini를 한 사이드바에서 — 자동 라우팅, 모델 토론(argue), 협업(team), 반복(loop), 분할(boomerang), 코드베이스 RAG, 멀티모델 리뷰, Telegram 폰 연동. 추가 API 과금 0원 (자체 구독·무료 티어 우회).",
-  "version": "0.1.10",
+  "description": "Multi-model AI in one VSCode sidebar — Claude + Codex + Gemini. Auto-routing, model debate, team delegation, until-it-works loop, codebase RAG, multi-model code review, Telegram phone bridge. Zero API billing (uses your existing subscriptions).",
+  "version": "0.1.11",
   "publisher": "samkj",
   "license": "MIT",
   "icon": "resources/icon.png",

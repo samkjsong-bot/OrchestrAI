@@ -76,15 +76,26 @@ jobs:
           prerelease: false
 
       # VSCode Marketplace publish (VSCE_PAT secret 필요 — 없으면 skip)
+      # NOTE: step-level env 는 step-level if 에서 평가 안 됨 → 안에서 shell 검사로 분기.
       - name: Publish to VSCode Marketplace
-        if: env.VSCE_PAT != ''
         env:
           VSCE_PAT: ${{ secrets.VSCE_PAT }}
-        run: npx vsce publish --packagePath orchestrai.vsix --no-dependencies
+        run: |
+          if [ -n "$VSCE_PAT" ]; then
+            echo "Publishing to VSCode Marketplace..."
+            npx vsce publish --packagePath orchestrai.vsix --no-dependencies
+          else
+            echo "VSCE_PAT not set — skipping VSCode Marketplace publish."
+          fi
 
       # Open VSX (Cursor/VSCodium/Theia 사용자용 — OVSX_PAT secret 필요)
       - name: Publish to Open VSX
-        if: env.OVSX_PAT != ''
         env:
           OVSX_PAT: ${{ secrets.OVSX_PAT }}
-        run: npx ovsx publish orchestrai.vsix --pat $OVSX_PAT
+        run: |
+          if [ -n "$OVSX_PAT" ]; then
+            echo "Publishing to Open VSX..."
+            npx ovsx publish orchestrai.vsix --pat "$OVSX_PAT"
+          else
+            echo "OVSX_PAT not set — skipping Open VSX publish."
+          fi

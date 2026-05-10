@@ -1,5 +1,46 @@
 # Changelog
 
+## v0.1.11 — 2026-05-10 (글로벌 노출 + publish workflow 버그 fix)
+
+- **README 영어 단일** + `README.ko.md` 분리 (Marketplace 글로벌 검색 SEO ↑)
+- `package.json` description 영어로 — Marketplace 카드 노출
+- 깨진 shields.io marketplace 배지 (retired) → 정상 정적 배지로 교체
+- **publish.yml fix**: step-level `env: VSCE_PAT` 가 step-level `if:` 에서 평가 안 되는 GitHub Actions 알려진 함정 회피 — shell 안에서 분기 검사로 변경 (이전 버전 publish 가 silent skip 됐을 가능성 차단)
+- 누락된 v0.1.8/v0.1.9/v0.1.10 changelog 항목 보강
+
+## v0.1.10 — 2026-05-10 (Marketplace UX)
+
+- `package.json` description 한국어 (롤백됨 — v0.1.11 에서 영어로 다시)
+- shields.io marketplace 배지 retired 처리
+
+## v0.1.9 — 2026-05-10 (perf instrumentation + i18n locale)
+
+### G. Performance instrumentation
+- `src/util/perf.ts` — `record/timed/timedAsync` 헬퍼 + `formatReport`
+- `history.ts buildTaggedHistory` 측정 부착
+- `/perf` slash 명령 (통계 출력) + `/perfreset` (초기화)
+
+### H. i18n locale-aware responses
+- `src/util/locale.ts` — `vscode.env.language` → ko/en/ja/zh/es/de/fr/pt/ru 매핑
+- `buildSystemPrompt` 에 `localeBlock()` inject — 모델이 사용자 locale 자동 인지하고 그 언어로 응답
+- 코드블록·기술 용어는 영어 유지
+
+### I. Whisper API
+- 보류 — chatgpt.com backend 형식 미공개, 1+일 분석 필요
+
+## v0.1.8 — 2026-05-09 (Word + Jupyter 첨부)
+
+- **Word (.docx)** — mammoth → markdown inline (모든 모델)
+- **Jupyter (.ipynb)** — cell 분리 + outputs 표시 (모든 모델)
+- 텔레그램 첨부 자동 다운로드 + OrchestrAI 자동 처리 (photo/document/voice/audio/video)
+- PDF 텍스트 fallback (Codex 용 — unpdf, 2.2MB)
+- **이메일** (.eml/.msg) — mailparser
+- **PowerPoint 노트** 추출 (jszip)
+- **RTF / ODT** — 정규식 / jszip
+- TgClient `downloadFile` + bridge `_onTelegramMessage` 다운로드 처리
+- 테스트 60 → 105 (+75%)
+- dispose 누수 fix — `_reindexTimer` clearTimeout + `_currentAbort` abort
+
 ## v0.1.7 — 2026-05-09 (첨부 형식 대확장 + GitHub 인프라)
 
 ### 첨부 파일 형식 (Claude Code 수준 + 일부 그 이상)

@@ -2,114 +2,118 @@
 
 # 🎼 OrchestrAI
 
-### **Claude · Codex · Gemini** — 한 사이드바에서 자동 라우팅·협업·토론
+### **Claude · Codex · Gemini** — auto-routing, debate, and collaboration in one VSCode sidebar
 
 `auto-route` · `argue ⚡` · `team 👥` · `loop 🔁` · `boomerang 🪃` · `RAG 🧭` · `Telegram 📱` · `zero billing 💰`
 
-추가 API 과금 없음 — 모두 사용자 자체 구독·무료 티어로 우회
+**Zero extra API billing** — uses your existing subscriptions and free tiers
 
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](./LICENSE)
 [![VSCode](https://img.shields.io/badge/VSCode-1.98%2B-blue?logo=visualstudiocode)](https://marketplace.visualstudio.com/items?itemName=samkj.orchestrai)
 [![Marketplace](https://img.shields.io/badge/Marketplace-OrchestrAI-007ACC?logo=visualstudiocode&logoColor=white)](https://marketplace.visualstudio.com/items?itemName=samkj.orchestrai)
 
-**[🛒 Marketplace 설치](https://marketplace.visualstudio.com/items?itemName=samkj.orchestrai)** · [📦 Releases](https://github.com/samkjsong-bot/OrchestrAI/releases) · [📖 CODEMAP](./CODEMAP.md) · [🐛 Issues](https://github.com/samkjsong-bot/OrchestrAI/issues)
+**[🛒 Install from Marketplace](https://marketplace.visualstudio.com/items?itemName=samkj.orchestrai)** · [📦 Releases](https://github.com/samkjsong-bot/OrchestrAI/releases) · [📖 CODEMAP](./CODEMAP.md) · [🐛 Issues](https://github.com/samkjsong-bot/OrchestrAI/issues)
 
 ```
 ext install samkj.orchestrai
 ```
 
+**English** · [한국어](./README.ko.md)
+
 </div>
 
 ---
 
-## ✨ 한눈에
+## ✨ At a glance
 
 | | OrchestrAI | Cursor | Continue | Cline/Roo | Copilot |
 |---|---|---|---|---|---|
-| 멀티모델 자동 라우팅 | ✅ pattern + LLM | ❌ 수동 | ❌ 수동 | ❌ 수동 | ❌ 수동 |
-| **모델 토론** (argue) | ✅ 0~10 채점 | ❌ | ❌ | ❌ | ❌ |
-| **Team mode** Claude→Codex/Gemini 위임 | ✅ | ❌ | ❌ | Roo만 | ❌ |
-| **Boomerang task** 자동 분할·병렬 | ✅ | ❌ | ❌ | Roo만 | ❌ |
-| **Ralph Wiggum loop** 될 때까지 | ✅ | ❌ | ❌ | ❌ | ❌ |
-| 코드베이스 RAG | ✅ | ✅ | ✅ | ❌ | △ |
-| **멀티모델 코드 리뷰** | ✅ | ❌ | ❌ | ❌ | ❌ |
-| **Telegram 폰 통합** Hub/Worker | ✅ | ❌ | ❌ | ❌ | ❌ |
-| Background agent + push 알림 | ✅ + Telegram | ✅ | ❌ | ❌ | ❌ |
+| Multi-model auto routing | ✅ pattern + LLM | ❌ manual | ❌ manual | ❌ manual | ❌ manual |
+| **Model debate** (argue) | ✅ scored 0–10 | ❌ | ❌ | ❌ | ❌ |
+| **Team mode** Claude → Codex/Gemini delegation | ✅ | ❌ | ❌ | Roo only | ❌ |
+| **Boomerang task** auto-split + parallel | ✅ | ❌ | ❌ | Roo only | ❌ |
+| **Ralph Wiggum loop** until-it-works | ✅ | ❌ | ❌ | ❌ | ❌ |
+| Codebase RAG | ✅ | ✅ | ✅ | ❌ | △ |
+| **Multi-model code review** | ✅ | ❌ | ❌ | ❌ | ❌ |
+| **Telegram phone bridge** Hub/Worker | ✅ | ❌ | ❌ | ❌ | ❌ |
+| Background agent + push notification | ✅ + Telegram | ✅ | ❌ | ❌ | ❌ |
 | Multi-IDE sync (OneDrive/Dropbox) | ✅ | △ | ❌ | ❌ | △ |
-| **Agent marketplace** (Gist 기반) | ✅ | ❌ | ❌ | ❌ | ❌ |
-| Inline ghost text 자동완성 | ✅ | ✅ | ✅ | ❌ | ✅ |
-| 자동 git commit 체크포인트 | ✅ | ✅ | ❌ | ❌ | ❌ |
-| 자동 IDE diff (engine 무관) | ✅ | ✅ | △ | ❌ | △ |
-| 자동 미리보기 HTML→Browser | ✅ | ❌ | ❌ | ❌ | ❌ |
-| 자동 quota 폴백 (모델 간) | ✅ | N/A | N/A | N/A | N/A |
-| **@ commands 풍부** | ✅ 7종 | △ | ✅ | ✅ | △ |
-| `/pr` 자동 (gh + AI title/body) | ✅ | ❌ | ❌ | ❌ | △ |
+| **Agent marketplace** (Gist-based) | ✅ | ❌ | ❌ | ❌ | ❌ |
+| Inline ghost text completion | ✅ | ✅ | ✅ | ❌ | ✅ |
+| Auto git commit checkpoints | ✅ | ✅ | ❌ | ❌ | ❌ |
+| Auto IDE diff (engine-agnostic) | ✅ | ✅ | △ | ❌ | △ |
+| Auto preview HTML → Browser | ✅ | ❌ | ❌ | ❌ | ❌ |
+| Auto quota fallback (cross-model) | ✅ | N/A | N/A | N/A | N/A |
+| **Rich @ commands** | ✅ 9 | △ | ✅ | ✅ | △ |
+| `/pr` automation (gh + AI title/body) | ✅ | ❌ | ❌ | ❌ | △ |
 | **Custom provider** (Ollama/LM Studio/OpenRouter) | ✅ | ❌ | ✅ | △ | ❌ |
-| **Plan→Act 분리 흐름** | ✅ | ❌ | ❌ | ✅ | ❌ |
-| **Composer 다중 파일 review** (collapse + revert) | ✅ | ✅ | △ | △ | ❌ |
-| **Voice input** (한국어) | ✅ | △ | ❌ | ❌ | ❌ |
+| **Plan → Act flow split** | ✅ | ❌ | ❌ | ✅ | ❌ |
+| **Composer multi-file review** (collapse + revert) | ✅ | ✅ | △ | △ | ❌ |
+| **Voice input** (multilingual, Korean default) | ✅ | △ | ❌ | ❌ | ❌ |
 | **Browser tool** (Playwright + system Chrome) | ✅ | ❌ | △ | ✅ | ❌ |
-| **ORCHESTRAI.md** 프로젝트 룰 | ✅ | △ | ✅ | ✅ | ❌ |
-| 절약 추정 비용 표시 | ✅ | ❌ | ❌ | ❌ | ❌ |
-| **API 과금 0원** (자체 구독 우회) | ✅ | ❌ | ❌ | ❌ | △ 구독 |
+| **Locale-aware responses** (auto-detect VSCode lang) | ✅ 9 langs | ❌ | ❌ | ❌ | ❌ |
+| **ORCHESTRAI.md** project rules | ✅ | △ | ✅ | ✅ | ❌ |
+| Estimated savings display | ✅ | ❌ | ❌ | ❌ | ❌ |
+| Built-in performance metrics (`/perf`) | ✅ | ❌ | ❌ | ❌ | ❌ |
+| **Zero API billing** (subscription bypass) | ✅ | ❌ | ❌ | ❌ | △ subscription |
 
 ---
 
-## 🎛 라우팅 모드 6+1종
+## 🎛 Routing modes (6 + 1)
 
-| | 동작 |
+| | Behavior |
 |---|---|
-| `auto` | pattern → LLM(Haiku) 순 자동 라우팅 |
-| `claude` / `codex` / `gemini` | 모델 강제 |
-| `argue` ⚡ | 모델들이 라운드 로빈 토론, Haiku가 0~10점 채점 |
-| `team` 👥 | Claude orchestrator → Codex/Gemini 위임 (consult tool) |
-| `loop` 🔁 | "될 때까지" 반복 (Ralph Wiggum 패턴, max 5회) |
-| `boomerang` 🪃 | 큰 작업 자동 분할 → 병렬 위임 → 종합 |
+| `auto` | Pattern → LLM (Haiku) auto routing |
+| `claude` / `codex` / `gemini` | Force specific model |
+| `argue` ⚡ | Round-robin debate, Haiku scores 0–10 |
+| `team` 👥 | Claude orchestrator → Codex/Gemini consult tool |
+| `loop` 🔁 | Repeat until done (Ralph Wiggum pattern, max 5) |
+| `boomerang` 🪃 | Auto-split big task → parallel delegation → synthesis |
 
-## 🧰 권한 모드 4종
+## 🧰 Permission modes (4)
 
-`ask` / `auto-edit` / `plan` / `smart-auto` — Claude SDK의 `permissionMode`로 매핑.
-**Plan 모드** turn 끝나면 보라색 "▶ Act 모드로 실행" 버튼 → 클릭 시 자동 auto-edit 전환 + plan 따라 실행 (Cline 식 흐름).
+`ask` / `auto-edit` / `plan` / `smart-auto` — mapped to Claude SDK `permissionMode`.
+**Plan mode**: when a turn ends, a purple "▶ Run in Act mode" button appears → clicking it auto-switches to auto-edit and executes the plan (Cline-style flow).
 
-## 💬 @ commands (입력창에 `@` 치면 자동완성)
+## 💬 @ commands (type `@` in input for autocomplete)
 
-| Command | 동작 |
+| Command | Action |
 |---|---|
-| `@claude` / `@codex` / `@gemini` | 모델 강제 |
-| `@<custom>` | settings 의 `customProviders` 에 등록한 OpenAI compatible (Ollama/LM Studio/OpenRouter 등) |
-| `@file` | 파일 picker → 다중 선택해서 입력창 첨부 |
-| `@codebase` | RAG 명시 호출 → 검색어 입력 → top-K chunk 첨부 |
-| `@terminal` | 활성 터미널 선택 영역 첨부 (먼저 텍스트 select) |
-| `@git` | git status / diff / log -10 첨부 |
-| `@web` | URL fetch (정적 HTML) |
-| `@browser` | Playwright + system Chrome (JS 실행 후, SPA 지원) |
-| `@problem` | VS Code Problems 패널 진단 첨부 |
+| `@claude` / `@codex` / `@gemini` | Force model |
+| `@<custom>` | Any OpenAI-compatible provider registered in `customProviders` (Ollama / LM Studio / OpenRouter) |
+| `@file` | File picker → multi-select attachments |
+| `@codebase` | Explicit RAG call → keyword input → top-K chunks attached |
+| `@terminal` | Attach selection from active terminal |
+| `@git` | Attach `git status` / `diff` / `log -10` |
+| `@web` | URL fetch (static HTML) |
+| `@browser` | Playwright + system Chrome (JS-rendered SPAs) |
+| `@problem` | Attach VS Code Problems panel diagnostics |
 
-## ⚙ 슬래시 명령
+## ⚙ Slash commands
 
 ```
-/clear            대화 초기화
-/plan             plan 모드 진입
-/auto             auto-edit 모드
-/team             team 모드
-/argue            argue 토론 모드
-/loop             반복 모드
-/effort high      effort 강제
-/review           multi-model 코드 리뷰 (3개 모델 + Haiku 종합)
-/index            코드베이스 인덱싱
-/pr [title]       gh CLI + AI 가 PR title/body 자동 생성
-/bg <task>        background agent 시작
-/agent ...        agent marketplace (import / list / use / remove)
-/perf             성능 통계 출력
-/perfreset        성능 통계 초기화
+/clear            Reset conversation
+/plan             Enter plan mode
+/auto             Switch to auto-edit
+/team             Team mode
+/argue            Argue (debate) mode
+/loop             Loop mode
+/effort high      Force high-effort reasoning
+/review           Multi-model code review (3 models + Haiku synthesis)
+/index            Index codebase
+/pr [title]       gh CLI + AI auto-generates PR title/body
+/bg <task>        Start background agent
+/agent ...        Agent marketplace (import / list / use / remove)
+/perf             Show performance metrics
+/perfreset        Reset performance metrics
 ```
 
-## 🎤 음성 입력
-입력창의 🎤 버튼 → 한국어 default. 녹음 중 빨간 pulse. 다시 클릭으로 종료. 사용자 locale 자동 감지.
+## 🎤 Voice input
+🎤 button in input → multilingual (Korean default). Red pulse while recording. Click again to stop. Auto-detects user locale from VSCode language.
 
 ## 🔌 Custom Provider (LM Studio / Ollama / OpenRouter / vLLM / OpenAI compatible)
 
-VSCode Settings 에 추가하면 `@<name>` mention 으로 호출:
+Add to VSCode Settings → invoke via `@<name>` mention:
 
 ```json
 "orchestrai.customProviders": [
@@ -120,59 +124,58 @@ VSCode Settings 에 추가하면 `@<name>` mention 으로 호출:
 ]
 ```
 
-## 📎 첨부 파일 (Claude Code 수준)
+## 📎 Attachments (Claude Code parity)
 
-drag & drop / paste / 파일 picker — 모두 자동 분기:
+Drag & drop / paste / file picker — auto-routed by format:
 
-| 형식 | Claude | Codex | Gemini | 처리 |
+| Format | Claude | Codex | Gemini | Handling |
 |---|---|---|---|---|
-| 텍스트/코드 (md/json/ts/py/sh/sql 등 40+) | ✅ | ✅ | ✅ | inline 코드블록 |
-| 이미지 (png/jpg/gif/webp/svg) | ✅ | ✅ | ✅ | base64 multimodal |
-| PDF | ✅ | ❌ | ✅ | base64 multimodal (Codex 는 텍스트 fallback) |
-| 엑셀 (xlsx/xls/xlsm/ods) | ✅ | ✅ | ✅ | SheetJS → CSV |
+| Text/code (md/json/ts/py/sh/sql, 40+) | ✅ | ✅ | ✅ | Inline code block |
+| Images (png/jpg/gif/webp/svg) | ✅ | ✅ | ✅ | base64 multimodal |
+| PDF | ✅ | ❌ | ✅ | base64 multimodal (text fallback for Codex) |
+| Excel (xlsx/xls/xlsm/ods) | ✅ | ✅ | ✅ | SheetJS → CSV |
 | Word (.docx) | ✅ | ✅ | ✅ | mammoth → markdown |
-| Jupyter (.ipynb) | ✅ | ✅ | ✅ | cell 분리 |
-| PowerPoint (.pptx) | ✅ | ✅ | ✅ | jszip 슬라이드+노트 텍스트 |
-| 이메일 (.eml/.msg) | ✅ | ✅ | ✅ | mailparser |
-| RTF / ODT | ✅ | ✅ | ✅ | inline 텍스트 |
-| 음성 (mp3/wav/m4a/flac/ogg) | ❌ | ❌ | ✅ | Gemini multimodal |
-| 영상 (mp4/mov/webm) | ❌ | ❌ | ✅ | Gemini multimodal |
+| Jupyter (.ipynb) | ✅ | ✅ | ✅ | Cell separation |
+| PowerPoint (.pptx) | ✅ | ✅ | ✅ | jszip slide+notes text |
+| Email (.eml/.msg) | ✅ | ✅ | ✅ | mailparser |
+| RTF / ODT | ✅ | ✅ | ✅ | Inline text |
+| Audio (mp3/wav/m4a/flac/ogg) | ❌ | ❌ | ✅ | Gemini multimodal |
+| Video (mp4/mov/webm) | ❌ | ❌ | ✅ | Gemini multimodal |
 
-multimodal 첨부 시 auto 모드면 자동으로 Gemini 라우팅. 음성/영상은 Gemini 만 인식.
+When multimodal attachments are present in `auto` mode, the router prefers Gemini. Audio/video are Gemini-only.
 
-## 📋 ORCHESTRAI.md (프로젝트 룰)
+## 📋 ORCHESTRAI.md (project rules)
 
-워크스페이스 루트에 `ORCHESTRAI.md` 파일 만들면 자동 로드됨 → 모든 모델 system prompt 에 prepend.
-컨벤션, 금지 사항, 스택 정보, 도메인 지식 등을 한 번에 통합 주입.
+Create `ORCHESTRAI.md` in your workspace root → auto-loaded → prepended to every model's system prompt. Conventions, taboos, stack info, domain knowledge — injected once for all models.
 
-## 🌐 응답 언어 자동 감지 (Locale)
+## 🌐 Locale-aware responses
 
-VSCode 언어 설정 자동 감지 → 모델한테 "이 사용자 언어로 답하라" system prompt inject. 지원: ko / en / ja / zh / es / de / fr / pt / ru. 코드블록·기술 용어는 영어 유지.
+OrchestrAI auto-detects your VSCode language and tells the AI to respond in that language by default. Supported: ko / en / ja / zh / es / de / fr / pt / ru. Code blocks and technical terms stay in English.
 
-## 🚀 핵심 기능
+## 🚀 Highlights
 
-### 자동 인덱싱 + RAG
-질문하면 코드베이스에서 관련 chunk를 자동 검색해 컨텍스트로 첨부. Cursor/Continue 수준.
+### Auto indexing + RAG
+Asks come with auto-attached relevant chunks from your codebase. Cursor/Continue parity.
 ```
-/index   ← 첫 번째 인덱싱
-이후 자동
+/index   ← first-time index
+afterwards: automatic
 ```
 
-### 멀티모델 코드 리뷰
-세 모델이 각자 리뷰 → Haiku가 종합 점수.
+### Multi-model code review
+Three models review independently → Haiku synthesizes a final score.
 ```
 /review            (last commit)
 /review staged     (staged changes)
 ```
 
-### 백그라운드 에이전트 + Telegram push
-큰 작업 던지고 자거나 외출. 완료되면 폰으로 알림.
+### Background agent + Telegram push
+Hand off a long task and walk away. Get notified on your phone when done.
 ```
-/bg 좀비 서바이벌 게임 풀버전 만들어줘
+/bg build a full zombie survival game
 ```
 
 ### Agent marketplace
-GitHub Gist 기반 system prompt 공유. 누구나 만들고 누구나 import.
+Share system prompts via GitHub Gist. Anyone can publish, anyone can import.
 ```
 /agent import https://gist.github.com/USER/HASH
 /agent list
@@ -180,34 +183,37 @@ GitHub Gist 기반 system prompt 공유. 누구나 만들고 누구나 import.
 /agent off
 ```
 
-### Telegram 브릿지 (폰 통합)
-설정 → Telegram 연결 → DM/Topics 모드.
-- Topics 모드: 그룹 안에서 워크스페이스별 자동 분리
-- 폰에서 명령 → VSCode가 처리 → 응답 폰으로 stream
-- 4096자 넘으면 자동 분할 발송
+### Telegram bridge (phone integration)
+Settings → connect Telegram → DM/Topics mode.
+- Topics mode: separate threads per workspace inside one group
+- Send a command from your phone → VSCode processes → response streams back to phone
+- Auto-splits messages over 4096 chars
 
-### 자동 git commit (체크포인트)
-매 턴 끝나면 자동 commit. 망쳐도 한 턴씩 즉시 revert.
+### Auto git commit (checkpoints)
+Every turn ends with an auto-commit. Mess something up → revert one turn instantly.
 
-### 자동 미리보기
-HTML 만들면 → Simple Browser 자동 열림  
-package.json dev script → ▶ 실행 버튼  
-Python/Node → ▶ run
+### Auto preview
+HTML produced → Simple Browser opens automatically  
+package.json dev script → ▶ Run button  
+Python / Node files → ▶ run
+
+### Built-in performance metrics
+`/perf` shows timing breakdown of router/history/IO operations. `/perfreset` clears the counters. Useful for tuning RAG window size, custom providers, or local model latency.
 
 ---
 
-## 📦 설치
+## 📦 Installation
 
-### 빠른 설치 (권장)
-1. [Releases](https://github.com/samkjsong-bot/OrchestrAI/releases)에서 `orchestrai.vsix` 다운로드
-2. VSCode → 확장 패널 → `…` → "VSIX에서 설치"
+### Quick install (recommended)
+1. Download `orchestrai.vsix` from [Releases](https://github.com/samkjsong-bot/OrchestrAI/releases)
+2. VSCode → Extensions panel → `…` → "Install from VSIX"
 
-또는 터미널:
+Or via terminal:
 ```bash
 code --install-extension orchestrai.vsix
 ```
 
-### 직접 빌드
+### Build from source
 ```bash
 git clone https://github.com/samkjsong-bot/OrchestrAI.git
 cd OrchestrAI
@@ -216,49 +222,49 @@ npm run package
 code --install-extension orchestrai.vsix
 ```
 
-## 🔐 사전 준비
+## 🔐 Prerequisites
 
-OrchestrAI 자체엔 API 키 0개 필요. 각 모델별 인증만:
+OrchestrAI itself requires zero API keys. Authentication is per model:
 
-| 모델 | 필요한 것 | 무료? |
+| Model | Requirement | Free? |
 |---|---|---|
-| Claude | 로컬 `claude` CLI 로그인 | Max 구독 필요 |
-| Codex | OrchestrAI 안에서 ChatGPT OAuth | ChatGPT Pro 구독 필요 |
-| Gemini | 로컬 `gemini` CLI 로그인 | ✅ Google 무료 |
-| 이미지 생성 (옵션) | Gemini API 키 | △ |
+| Claude | Local `claude` CLI login | Requires Max subscription |
+| Codex | ChatGPT OAuth (inside OrchestrAI) | Requires ChatGPT Pro |
+| Gemini | Local `gemini` CLI login | ✅ Google free tier |
+| Image generation (optional) | Gemini API key | △ |
 
-설치 후: 사이드바 → ⚙ 설정 → 계정 연결.
+After install: sidebar → ⚙ Settings → connect accounts.
 
-## 💡 사용 팁
+## 💡 Usage tips
 
-- **단순 질문**: 그냥 입력 → auto 라우팅
-- **앱/게임 만들기**: `🪃 boom` 모드 → 자동 분할 + 병렬
-- **모델 의견 비교**: `⚡ argue` 모드 → 토론 + 채점
-- **될 때까지 반복**: `🔁 loop` 모드
-- **외출 작업**: `/bg <작업>` + 폰 텔레그램 대기
-- **PR 리뷰**: `/review`
+- **Quick question** → just type, auto routes
+- **Build an app/game** → `🪃 boom` mode (auto-split + parallel)
+- **Compare model opinions** → `⚡ argue` mode (debate + score)
+- **Until-it-works** → `🔁 loop` mode
+- **Long off-screen task** → `/bg <task>` + Telegram on phone
+- **PR review** → `/review`
 
-## 🏗 스택
+## 🏗 Stack
 
 - TypeScript + esbuild
 - `@anthropic-ai/claude-agent-sdk` (Claude tool loop)
 - `ai` + `ai-sdk-provider-gemini-cli` (Gemini ESM)
-- `codex.exe mcp-server` (Codex CLI 네이티브 MCP)
-- 자체 Telegram polling, 자체 fetch SSE
+- `codex.exe mcp-server` (Codex CLI native MCP)
+- Self-rolled Telegram polling, custom fetch SSE
 
-자세한 구조: [CODEMAP.md](./CODEMAP.md)
+Architecture details: [CODEMAP.md](./CODEMAP.md)
 
-## 🤝 라이선스
+## 🤝 License
 
 [MIT](./LICENSE)
 
-## 🙏 영감
+## 🙏 Inspiration
 
-- Claude Code for VSCode — UI/UX 일부 참고
-- Codex CLI — fingerprint 우회 경로
-- Roo Code — boomerang task 패턴
-- Cursor — RAG/checkpoint 아이디어
-- Geoffrey Huntley — Ralph Wiggum loop 명명
+- Claude Code for VSCode — partial UI/UX reference
+- Codex CLI — fingerprint bypass path
+- Roo Code — boomerang task pattern
+- Cursor — RAG / checkpoint ideas
+- Geoffrey Huntley — Ralph Wiggum loop naming
 
 ---
 
