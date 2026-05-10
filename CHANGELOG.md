@@ -1,5 +1,20 @@
 # Changelog
 
+## v0.1.16 — 2026-05-10 (STOP 버튼 실제로 작동하게 — Claude SDK interrupt)
+
+v0.1.15 까지의 STOP 버튼 실패 원인:
+- `abortSignal` 만 SDK 에 넘겨서는 spawned `claude` CLI subprocess 가 안 죽음
+- Claude Agent SDK 의 `Query.interrupt()` 는 **streaming input mode** 에서만 동작 (타입 정의 주석에 명시)
+- 텍스트 prompt = `string` 일 때는 SDK 가 input stream 즉시 닫음 → control request "interrupt" 못 보냄
+- 그래서 사용자가 STOP 눌러도 진행 중인 tool 호출(Read/Edit/Bash) 다 끝날 때까지 계속 동작했음
+
+수정:
+- 텍스트 전용 prompt 도 `singleMessageStream()` AsyncIterable 로 wrap → SDK 가 streaming input mode 로 동작
+- `q.interrupt()` abort listener 등록 — abortSignal 발화 시 즉시 SDK 에 control request 전송
+- `for await` 루프 안에서도 매 메시지마다 `abortSignal.aborted` 체크 → SDK 가 늦게 stop 해도 우리가 일찍 break
+
+이제 긴 리팩토링 도중 STOP 누르면 진짜로 멈춤.
+
 ## v0.1.15 — 2026-05-10 (끼어들기 버그 + 음성인식 locale + UI 정렬)
 
 ### 끼어들기 (interrupt) 안 듣던 버그 fix

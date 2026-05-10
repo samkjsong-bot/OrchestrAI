@@ -124,6 +124,17 @@ function extractAttachments(content: string): { text: string; attachments: Extra
   return { text, attachments }
 }
 
+// 텍스트 전용 prompt 도 streaming input 으로 — q.interrupt() 가 streaming 모드에서만 동작.
+// 일회성 string prompt 면 SDK 가 input stream 을 즉시 닫아서 interrupt control request 못 받음.
+async function* singleMessageStream(promptText: string): AsyncIterable<any> {
+  yield {
+    type: 'user',
+    session_id: `orchestrai-${Date.now()}`,
+    parent_tool_use_id: null,
+    message: { role: 'user', content: promptText },
+  }
+}
+
 // SDKUserMessage AsyncIterable 만들어 query 에 전달 — multimodal content blocks 사용
 async function* makeMultimodalInputStream(
   promptText: string,
@@ -184,10 +195,11 @@ export async function callClaude(
       ).join('\n\n')
 
   const activeModel = modelOverride ?? modelForEffort(effort)
-  // attachments 있으면 AsyncIterable<SDKUserMessage> 로 multimodal, 없으면 기존 string prompt
+  // 항상 AsyncIterable 로 — 그래야 q.interrupt() 가 동작 (streaming input mode 필요).
+  // 텍스트 전용이면 1회 yield, multimodal 이면 image/document blocks.
   const promptArg: any = lastAttachments.length > 0
     ? makeMultimodalInputStream(promptText, lastAttachments)
-    : promptText
+    : singleMessageStream(promptText)
   const q = query({
     prompt: promptArg,
     options: {
@@ -214,12 +226,28 @@ export async function callClaude(
     },
   })
 
+  // STOP 버튼 클릭 시 abortSignal 만으로는 spawned `claude` CLI subprocess 가 안 죽음.
+  // 반드시 q.interrupt() 도 같이 호출해야 SDK 가 control request "interrupt" 보내서
+  // 진행 중인 tool 호출 / LLM stream 즉시 종료.
+  let interruptCalled = false
+  if (abortSignal) {
+    const onAbort = () => {
+      if (interruptCalled) return
+      interruptCalled = true
+      try { void (q as any).interrupt?.() } catch {}
+    }
+    if (abortSignal.aborted) onAbort()
+    else abortSignal.addEventListener('abort', onAbort, { once: true })
+  }
+
   let fullContent = ''
   let inputTokens = 0
   let outputTokens = 0
   let apiKeySource: string | undefined
 
   for await (const msg of q) {
+    // 매 메시지마다 abort 체크 — SDK가 늦게 stop 해도 우리가 일찍 break
+    if (abortSignal?.aborted) break
     if (msg.type === 'system' && msg.subtype === 'init') {
       apiKeySource = msg.apiKeySource
       if (apiKeySource === 'env') {
