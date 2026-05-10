@@ -51,6 +51,7 @@ node_modules/@types/**
 node_modules/**/*.wasm.map
 
 # NOTE: Claude Agent SDK의 vendor/ripgrep은 포함해야 Grep·Glob 툴 동작함. 제외 금지.
+
 # NOTE: gemini-cli-core / claude-agent-sdk 가 transitive 로 가져온 거 직접 빼지 마세요.
 #       동적 require 라 빌드 type-check 에선 안 잡혀도 런타임에 깨집니다 — 0.1.4 / 0.1.5 의 교훈.
 #       googleapis / opentelemetry / web-tree-sitter / tree-sitter-bash / @img 등 다 keep.

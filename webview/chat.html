@@ -2140,7 +2140,7 @@
 
   <div class="input-wrap">
     <input id="image-input" type="file"
-           accept="image/*,application/pdf,audio/*,video/*,text/*,.md,.markdown,.txt,.json,.yaml,.yml,.toml,.csv,.tsv,.log,.xml,.html,.htm,.svg,.css,.scss,.less,.ts,.tsx,.js,.jsx,.mjs,.cjs,.py,.rb,.go,.rs,.java,.kt,.swift,.c,.cc,.cpp,.h,.hpp,.cs,.php,.lua,.sh,.bash,.zsh,.ps1,.bat,.cmd,.sql,.dockerfile,.gitignore,.env,.xlsx,.xls,.xlsm,.ods,.docx,.ipynb,.pptx,.mp3,.wav,.m4a,.flac,.ogg,.mp4,.mov,.webm"
+           accept="image/*,application/pdf,audio/*,video/*,text/*,.md,.markdown,.txt,.json,.yaml,.yml,.toml,.csv,.tsv,.log,.xml,.html,.htm,.svg,.css,.scss,.less,.ts,.tsx,.js,.jsx,.mjs,.cjs,.py,.rb,.go,.rs,.java,.kt,.swift,.c,.cc,.cpp,.h,.hpp,.cs,.php,.lua,.sh,.bash,.zsh,.ps1,.bat,.cmd,.sql,.dockerfile,.gitignore,.env,.xlsx,.xls,.xlsm,.ods,.docx,.ipynb,.pptx,.mp3,.wav,.m4a,.flac,.ogg,.mp4,.mov,.webm,.eml,.msg,.rtf,.odt"
            multiple hidden onchange="handleImageFiles(this.files)">
     <div class="attach-preview" id="attach-preview"></div>
     <textarea id="input" placeholder="무엇을 만들까요... (@ 치면 모델 선택)" rows="1"
@@ -4078,6 +4078,26 @@
     if (!file) return false
     return /\.pptx$/i.test(file.name || '')
   }
+  // PDF — multimodal X 강제 시 (Codex 한테) 또는 사용자 선택. 기본은 base64 multimodal 우선.
+  function isPdf(file) {
+    if (!file) return false
+    return (file.type || '') === 'application/pdf' || /\.pdf$/i.test(file.name || '')
+  }
+  // 이메일
+  function isEmail(file) {
+    if (!file) return false
+    return /\.(eml|msg)$/i.test(file.name || '')
+  }
+  // RTF
+  function isRtf(file) {
+    if (!file) return false
+    return /\.rtf$/i.test(file.name || '') || (file.type || '') === 'application/rtf'
+  }
+  // ODT (OpenDocument Text)
+  function isOdt(file) {
+    if (!file) return false
+    return /\.odt$/i.test(file.name || '')
+  }
 
   // 이미지 / PDF — base64 dataUrl 로 attachments 배열에 (Claude/Gemini multimodal)
   // 엑셀 — 백엔드에서 SheetJS 로 csv 변환 → inline
@@ -4122,6 +4142,35 @@
         const base64 = String(reader.result || '').replace(/^data:[^;]+;base64,/, '')
         showToast(`🎴 ${file.name} 슬라이드 추출 중...`)
         postToExtension({ type: 'pptxAttach', name: file.name, dataBase64: base64 })
+      }
+      reader.readAsDataURL(file)
+      return
+    }
+    // 이메일 (.eml/.msg)
+    if (isEmail(file)) {
+      reader.onload = () => {
+        const base64 = String(reader.result || '').replace(/^data:[^;]+;base64,/, '')
+        showToast(`📧 ${file.name} 이메일 파싱 중...`)
+        postToExtension({ type: 'emailAttach', name: file.name, dataBase64: base64 })
+      }
+      reader.readAsDataURL(file)
+      return
+    }
+    // RTF — 텍스트로 읽고 백엔드에서 정규식 처리
+    if (isRtf(file)) {
+      reader.onload = () => {
+        showToast(`📄 ${file.name} RTF 처리 중...`)
+        postToExtension({ type: 'rtfAttach', name: file.name, text: String(reader.result || '') })
+      }
+      reader.readAsText(file)
+      return
+    }
+    // ODT — ZIP 이라 base64
+    if (isOdt(file)) {
+      reader.onload = () => {
+        const base64 = String(reader.result || '').replace(/^data:[^;]+;base64,/, '')
+        showToast(`📄 ${file.name} ODT 처리 중...`)
+        postToExtension({ type: 'odtAttach', name: file.name, dataBase64: base64 })
       }
       reader.readAsDataURL(file)
       return

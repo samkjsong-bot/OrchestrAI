@@ -356,6 +356,41 @@ export class TelegramBridge implements vscode.Disposable {
       log.warn('telegram', `rejected chat ${msg.chat.id}`)
       return
     }
+    // 첨부 파일 (photo / document / voice / audio / video) 처리
+    // 사용자가 폰에서 사진/문서 보내면 OrchestrAI 가 받아서 첨부로 처리
+    const file = msg.photo?.[msg.photo.length - 1]  // photo 는 여러 해상도 — 가장 큰 거
+              ?? msg.document ?? msg.voice ?? msg.audio ?? msg.video
+    if (file?.file_id) {
+      try {
+        const downloaded = await this.client.downloadFile(file.file_id)
+        const filename = file.file_name || (
+          msg.photo ? 'photo.jpg' :
+          msg.voice ? 'voice.ogg' :
+          msg.audio ? `audio.${(file.mime_type ?? 'mp3').split('/').pop()}` :
+          msg.video ? 'video.mp4' :
+          'document.bin'
+        )
+        const mime = file.mime_type || downloaded.mime || (
+          msg.photo ? 'image/jpeg' :
+          msg.voice ? 'audio/ogg' :
+          msg.audio ? 'audio/mpeg' :
+          msg.video ? 'video/mp4' :
+          'application/octet-stream'
+        )
+        const dataUrl = `data:${mime};base64,${downloaded.buffer.toString('base64')}`
+        const caption = (msg.caption ?? '').trim()
+        log.info('telegram', `received attachment ${filename} (${mime}, ${(downloaded.size ?? 0).toLocaleString()} bytes) from telegram`)
+        // sendFromExternal 로 처리 — provider 의 _handleSend 가 attachments 받음
+        const externalText = caption || `(텔레그램에서 첨부: ${filename})`
+        await this.host.sendFromExternal(externalText, [{ name: filename, mime, dataUrl }])
+        return
+      } catch (err) {
+        log.warn('telegram', `attachment download failed: ${err instanceof Error ? err.message : err}`)
+        await this.client.sendMessage(this.chatId, `첨부 파일 다운로드 실패: ${err instanceof Error ? err.message : err}`)
+        return
+      }
+    }
+
     const text = (msg.text ?? '').trim()
     if (!text) return
 

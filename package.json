@@ -2,7 +2,7 @@
   "name": "orchestrai",
   "displayName": "OrchestrAI",
   "description": "Multi-model orchestrator — Claude + Codex + Gemini in one VSCode panel. Auto-routing, argue/team/loop/boomerang modes, codebase RAG, multi-model code review, Telegram bridge. Zero API billing (uses your existing subscriptions).",
-  "version": "0.1.7",
+  "version": "0.1.8",
   "publisher": "samkj",
   "license": "MIT",
   "icon": "resources/icon.png",
@@ -329,7 +329,7 @@
     ]
   },
   "scripts": {
-    "build": "esbuild src/extension.ts --bundle --outfile=dist/extension.js --external:vscode --external:@anthropic-ai/claude-agent-sdk --external:ai --external:ai-sdk-provider-gemini-cli --external:@google/gemini-cli-core --external:zod --external:playwright-core --external:chromium-bidi --external:xlsx --external:mammoth --external:jszip --platform=node --format=cjs",
+    "build": "esbuild src/extension.ts --bundle --outfile=dist/extension.js --external:vscode --external:@anthropic-ai/claude-agent-sdk --external:ai --external:ai-sdk-provider-gemini-cli --external:@google/gemini-cli-core --external:zod --external:playwright-core --external:chromium-bidi --external:xlsx --external:mammoth --external:jszip --external:unpdf --external:mailparser --platform=node --format=cjs",
     "watch": "npm run build -- --watch",
     "dev": "npm run watch",
     "package": "npm run build && vsce package -o orchestrai.vsix",
@@ -351,8 +351,10 @@
     "ai-sdk-provider-gemini-cli": "^2.0.1",
     "chromium-bidi": "^15.0.0",
     "jszip": "^3.10.1",
+    "mailparser": "^3.9.8",
     "mammoth": "^1.12.0",
     "playwright-core": "^1.59.1",
+    "unpdf": "^1.6.2",
     "xlsx": "^0.18.5"
   }
 }

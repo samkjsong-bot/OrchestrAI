@@ -1659,6 +1659,10 @@ class OrchestrAIViewProvider implements vscode.WebviewViewProvider, vscode.Dispo
           case 'docxAttach':         await this._handleDocxAttach(msg.name, msg.dataBase64); break
           case 'notebookAttach':     await this._handleNotebookAttach(msg.name, msg.text); break
           case 'pptxAttach':         await this._handlePptxAttach(msg.name, msg.dataBase64); break
+          case 'pdfTextAttach':      await this._handlePdfTextAttach(msg.name, msg.dataBase64); break
+          case 'emailAttach':        await this._handleEmailAttach(msg.name, msg.dataBase64); break
+          case 'rtfAttach':          await this._handleRtfAttach(msg.name, msg.text); break
+          case 'odtAttach':          await this._handleOdtAttach(msg.name, msg.dataBase64); break
           case 'setOverride':   this._override = msg.mode; break
           case 'toggleContext': this._useFileContext = msg.enabled; break
           case 'clearChat':
@@ -2505,12 +2509,23 @@ class OrchestrAIViewProvider implements vscode.WebviewViewProvider, vscode.Dispo
           return na - nb
         })
       const blocks: string[] = [`### ${name} (PowerPoint, ${slidePaths.length} slides)`]
+      // notes 도 추출 — ppt/notesSlides/notesSlide{N}.xml
       for (let i = 0; i < slidePaths.length; i++) {
         const xml = await zip.file(slidePaths[i])!.async('string')
         // <a:t>text</a:t> 패턴 — 각 슬라이드의 텍스트 (제목/본문 다)
         const texts = [...xml.matchAll(/<a:t[^>]*>([^<]*)<\/a:t>/g)].map(m => m[1])
         const slideText = texts.filter(t => t.trim()).join('\n')
-        blocks.push(`\n#### Slide ${i + 1}\n${slideText || '(empty)'}`)
+        // 발표자 노트
+        const notesPath = `ppt/notesSlides/notesSlide${i + 1}.xml`
+        let notesText = ''
+        const notesFile = zip.file(notesPath)
+        if (notesFile) {
+          const notesXml = await notesFile.async('string')
+          const notesTexts = [...notesXml.matchAll(/<a:t[^>]*>([^<]*)<\/a:t>/g)].map(m => m[1])
+          // notes 안에 보통 슬라이드 번호도 포함되니 짧은 거 제외
+          notesText = notesTexts.filter(t => t.trim().length > 2).join('\n')
+        }
+        blocks.push(`\n#### Slide ${i + 1}\n${slideText || '(empty)'}${notesText ? `\n\n_Notes_: ${notesText}` : ''}`)
       }
       const final = blocks.join('\n')
       const truncated = final.length > 100_000
@@ -2520,6 +2535,116 @@ class OrchestrAIViewProvider implements vscode.WebviewViewProvider, vscode.Dispo
       const msg = err instanceof Error ? err.message : String(err)
       this._post({ type: 'toast', message: `PowerPoint 변환 실패: ${msg.slice(0, 120)}` })
       log.warn('pptx', `${name} parse failed: ${msg}`)
+    }
+  }
+
+  // PDF text 추출 — unpdf (~2.2MB, Mozilla pdfjs 의 light 버전).
+  // Claude/Gemini multimodal 지원하지만 Codex 가 PDF 못 받으니 text fallback 으로 inline.
+  private async _handlePdfTextAttach(name: string, dataBase64: string) {
+    try {
+      const { extractText, getDocumentProxy } = await (Function('return import("unpdf")')() as Promise<typeof import('unpdf')>)
+      const buffer = Uint8Array.from(Buffer.from(dataBase64, 'base64'))
+      const pdf = await getDocumentProxy(buffer)
+      const result = await extractText(pdf, { mergePages: true })
+      const text = Array.isArray(result.text) ? result.text.join('\n\n') : String(result.text || '')
+      const pages = result.totalPages || (pdf as any).numPages || '?'
+      const truncated = text.length > 100_000
+      this._post({
+        type: 'appendInput',
+        text: `### ${name} (PDF text-extract, ${pages} pages, ${text.length} chars)\n\n${truncated ? text.slice(0, 100_000) + '\n\n... [truncated]' : text}`,
+      })
+      log.info('pdf', `${name} → ${text.length} chars (${pages} pages)`)
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      this._post({ type: 'toast', message: `PDF text 추출 실패: ${msg.slice(0, 120)}` })
+      log.warn('pdf', `${name} parse failed: ${msg}`)
+    }
+  }
+
+  // 이메일 (.eml/.msg) — mailparser (~100KB)
+  private async _handleEmailAttach(name: string, dataBase64: string) {
+    try {
+      // @types/mailparser 별도 설치 안 했으니 any 캐스팅
+      const { simpleParser } = require('mailparser') as { simpleParser: (input: Buffer) => Promise<any> }
+      const buffer = Buffer.from(dataBase64, 'base64')
+      const parsed = await simpleParser(buffer)
+      const blocks: string[] = [`### ${name} (Email)`]
+      if (parsed.from) blocks.push(`**From**: ${parsed.from.text}`)
+      if (parsed.to) {
+        const toText = Array.isArray(parsed.to) ? parsed.to.map((a: any) => a.text).join(', ') : parsed.to.text
+        blocks.push(`**To**: ${toText}`)
+      }
+      if (parsed.subject) blocks.push(`**Subject**: ${parsed.subject}`)
+      if (parsed.date) blocks.push(`**Date**: ${parsed.date.toISOString()}`)
+      blocks.push('')
+      const body = parsed.text || (parsed.html ? String(parsed.html).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim() : '(empty body)')
+      blocks.push(body.slice(0, 50_000))
+      if (parsed.attachments && parsed.attachments.length > 0) {
+        blocks.push(`\n**Attachments**: ${parsed.attachments.length} files (${parsed.attachments.map((a: any) => a.filename || '?').join(', ')})`)
+      }
+      this._post({ type: 'appendInput', text: blocks.join('\n') })
+      log.info('email', `${name} parsed (subject: ${parsed.subject?.slice(0, 50)})`)
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      this._post({ type: 'toast', message: `이메일 파싱 실패: ${msg.slice(0, 120)}` })
+    }
+  }
+
+  // RTF — 간단한 정규식 기반 추출 (라이브러리 X). \\기호는 plain text 변환.
+  private async _handleRtfAttach(name: string, text: string) {
+    try {
+      // Strip RTF control sequences
+      let plain = text
+        .replace(/\\par[d]?\s*/g, '\n')
+        .replace(/\\line\s*/g, '\n')
+        .replace(/\\tab\s*/g, '\t')
+        .replace(/\\\\/g, '\\')
+        .replace(/\\['"`-]/g, '')
+        .replace(/\\u(-?\d+)\??/g, (_, code) => {
+          try { return String.fromCharCode(parseInt(code) % 65536) } catch { return '' }
+        })
+        .replace(/\{[^{}]*?\}/g, '')  // 그룹 제거 (다른 컨트롤)
+        .replace(/\\[a-z]+(-?\d+)?[ ]?/gi, '')
+        .replace(/[{}]/g, '')
+        .replace(/\n{3,}/g, '\n\n')
+        .trim()
+      if (!plain) plain = '(empty after RTF parsing)'
+      const truncated = plain.length > 100_000
+      this._post({
+        type: 'appendInput',
+        text: `### ${name} (RTF, ${plain.length} chars)\n\n${truncated ? plain.slice(0, 100_000) + '\n\n... [truncated]' : plain}`,
+      })
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      this._post({ type: 'toast', message: `RTF 파싱 실패: ${msg.slice(0, 120)}` })
+    }
+  }
+
+  // ODT — ZIP+XML, content.xml 안의 <text:p> 추출 (jszip 활용)
+  private async _handleOdtAttach(name: string, dataBase64: string) {
+    try {
+      const JSZip = require('jszip')
+      const buffer = Buffer.from(dataBase64, 'base64')
+      const zip = await JSZip.loadAsync(buffer)
+      const contentFile = zip.file('content.xml')
+      if (!contentFile) {
+        this._post({ type: 'toast', message: 'ODT content.xml 없음' })
+        return
+      }
+      const xml = await contentFile.async('string')
+      // <text:p>...</text:p> 안의 텍스트 추출, 다른 XML 태그 제거
+      const paragraphs = [...xml.matchAll(/<text:p[^>]*>([\s\S]*?)<\/text:p>/g)]
+        .map(m => m[1].replace(/<[^>]+>/g, '').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').trim())
+        .filter(Boolean)
+      const text = paragraphs.join('\n\n')
+      const truncated = text.length > 100_000
+      this._post({
+        type: 'appendInput',
+        text: `### ${name} (ODT, ${paragraphs.length} paragraphs, ${text.length} chars)\n\n${truncated ? text.slice(0, 100_000) + '\n\n... [truncated]' : text}`,
+      })
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      this._post({ type: 'toast', message: `ODT 파싱 실패: ${msg.slice(0, 120)}` })
     }
   }
 

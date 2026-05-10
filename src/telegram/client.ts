@@ -14,13 +14,32 @@ export interface TgFrom {
   username?: string
 }
 
+export interface TgFile {
+  file_id: string
+  file_unique_id: string
+  file_size?: number
+  // 종류별 추가 메타
+  width?: number          // photo
+  height?: number
+  duration?: number       // voice/audio/video
+  mime_type?: string      // document/audio/video
+  file_name?: string      // document
+}
+
 export interface TgMessage {
   message_id: number
   message_thread_id?: number   // forum topic id (그룹 채팅에서 주제별 분리 시)
   chat: TgChat
   from?: TgFrom
   text?: string
+  caption?: string             // photo/video 의 캡션
   date: number
+  // 첨부 파일 — 한 메시지에 하나만
+  photo?: TgFile[]             // 여러 해상도. 보통 마지막 (가장 큰 거) 사용
+  document?: TgFile
+  voice?: TgFile
+  audio?: TgFile
+  video?: TgFile
 }
 
 export interface TgSendResult {
@@ -45,6 +64,24 @@ export class TelegramClient {
     const data = await res.json() as any
     if (!data.ok) throw new Error(`Telegram getMe failed: ${data.description}`)
     return data.result
+  }
+
+  // file_id → 다운로드 URL → 실제 바이트
+  async downloadFile(fileId: string): Promise<{ buffer: Buffer; mime?: string; size?: number }> {
+    const r1 = await fetch(this.url('getFile') + `?file_id=${encodeURIComponent(fileId)}`)
+    const data1 = await r1.json() as any
+    if (!data1.ok) throw new Error(`Telegram getFile failed: ${data1.description}`)
+    const filePath = data1.result?.file_path
+    if (!filePath) throw new Error('Telegram getFile: file_path 없음')
+    const downloadUrl = `https://api.telegram.org/file/bot${this.token}/${filePath}`
+    const r2 = await fetch(downloadUrl)
+    if (!r2.ok) throw new Error(`Telegram file download failed: ${r2.status}`)
+    const arrayBuffer = await r2.arrayBuffer()
+    return {
+      buffer: Buffer.from(arrayBuffer),
+      mime: r2.headers.get('content-type') ?? undefined,
+      size: arrayBuffer.byteLength,
+    }
   }
 
   async sendMessage(
