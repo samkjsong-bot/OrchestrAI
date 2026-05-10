@@ -1,5 +1,26 @@
 # Changelog
 
+## v0.1.17 — 2026-05-10 (e2e 테스트 5종 추가 — 105 → 152)
+
+지금까지 단위 테스트가 순수 함수만 다뤄서 STOP 같은 런타임 버그를 못 잡았던 문제 해결.
+
+### 신규 테스트 파일 5개 (+47 케이스)
+- **test/aiWatch.test.ts** (11) — 매직 코멘트 정규식 (TS/JS/PY/SQL), cooldown, 컨텍스트 ±5줄
+- **test/repoMap.test.ts** (13) — TS/Python/Go/Rust 언어별 symbol 추출, EXCLUDE_DIRS, CamelCase / snake_case 매칭, 한국어 query
+- **test/testRunner.test.ts** (9) — npm/pytest/cargo/go 명령 감지, vitest/pytest/cargo/go 실패 출력 파싱
+- **test/modelOverride.test.ts** (8) — auto/off/on/extra thinking budget 해소, 모델 한도 적용
+- **test/claudeAbort.test.ts** (4) — **v0.1.16 fix 회귀 검증**: abort 발화 → q.interrupt() 호출, stream 더 이상 chunk 안 받음, pre-aborted signal
+
+### Mock 인프라 보강
+- test/mocks/vscode.ts: `createOutputChannel` / `createStatusBarItem` / `Uri.parse` / `ConfigurationTarget` / `ProgressLocation` / `env.language` 추가 (real vscode 모듈 의존 모듈 테스트 가능)
+- test/mocks/claude-sdk.ts: 진짜 Query 인터페이스 흉내 — `interrupt()` 추적, abortSignal honor, custom message stream 주입
+
+### Bug fix (테스트 작성하면서 발견)
+- testRunner.extractFailureSummary: vitest 필터가 AssertionError 잡아서 pytest 필터 못 가던 버그
+  - 모든 testrunner 패턴 (vitest/jest/pytest/cargo/go panic) 한 번에 OR 매칭으로 통합
+
+3번 연속 실행 모두 152/152 통과 확인 — race condition / flakiness 없음.
+
 ## v0.1.16 — 2026-05-10 (STOP 버튼 실제로 작동하게 — Claude SDK interrupt)
 
 v0.1.15 까지의 STOP 버튼 실패 원인:

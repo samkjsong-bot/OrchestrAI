@@ -98,25 +98,22 @@ export async function runTests(cwd: string, timeoutMs = 120_000): Promise<TestRu
 export function extractFailureSummary(output: string): string {
   const lines = output.split('\n')
 
-  // vitest / jest 패턴
-  const vitestFails = lines.filter(l =>
-    /^\s*(FAIL|✗|×)\s/.test(l) ||
-    /^\s*Tests:\s+\d+ failed/.test(l) ||
-    /^\s*Error:/.test(l) ||
-    /AssertionError/.test(l),
+  // vitest / jest / pytest / cargo / go 모두 — 실패 단서 줄을 OR 로 합쳐서 한 번에 추출.
+  // 필터를 분리하면 AssertionError 같은 공통 단서가 첫 필터에 잡혀 더 풍부한 다른 필터까지 안 감.
+  const fails = lines.filter(l =>
+    /^\s*(FAIL|✗|×)\s/.test(l) ||                  // vitest/jest
+    /^\s*Tests:\s+\d+ failed/.test(l) ||            // vitest summary
+    /^\s*Error:/.test(l) ||                         // 일반
+    /\bFAILED\b/.test(l) ||                         // pytest
+    /^\s*E\s+/.test(l) ||                           // pytest E
+    /^=+ FAILURES =+$/.test(l) ||                   // pytest banner
+    /AssertionError/.test(l) ||                     // 공통
+    /^test result: FAILED/.test(l) ||               // cargo
+    /^FAIL\b/.test(l) ||                            // go
+    /panic:/.test(l),                               // go panic
   )
-  if (vitestFails.length > 0 && vitestFails.length < 50) {
-    return vitestFails.join('\n')
-  }
-
-  // pytest 패턴
-  const pytestFails = lines.filter(l =>
-    /FAILED\s/.test(l) ||
-    /^\s*E\s+/.test(l) ||
-    /^=+ FAILURES =+$/.test(l),
-  )
-  if (pytestFails.length > 0 && pytestFails.length < 50) {
-    return pytestFails.join('\n')
+  if (fails.length > 0 && fails.length < 80) {
+    return fails.join('\n')
   }
 
   // fallback — 마지막 60줄
