@@ -2,7 +2,7 @@
   "name": "orchestrai",
   "displayName": "OrchestrAI",
   "description": "Multi-model orchestrator — Claude + Codex + Gemini in one VSCode panel. Auto-routing, argue/team/loop/boomerang modes, codebase RAG, multi-model code review, Telegram bridge. Zero API billing (uses your existing subscriptions).",
-  "version": "0.1.8",
+  "version": "0.1.9",
   "publisher": "samkj",
   "license": "MIT",
   "icon": "resources/icon.png",

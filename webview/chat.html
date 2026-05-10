@@ -2929,6 +2929,16 @@
         postToExtension({ type: 'createPR', titleHint: arg })
         return true
       }
+      case 'perf': {
+        // /perf — 핵심 함수 실행 시간 통계 표시
+        postToExtension({ type: 'showPerf' })
+        return true
+      }
+      case 'perfreset': {
+        postToExtension({ type: 'resetPerf' })
+        showToast('perf 통계 초기화')
+        return true
+      }
       case 'bg':
       case 'background': {
         if (!arg) { showToast('사용법: /bg <작업내용>'); return true }

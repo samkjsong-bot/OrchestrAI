@@ -4,6 +4,7 @@
 
 import { Model, ChatMessage } from '../router/types'
 import type { CompactionState } from './compaction'
+import { record as perfRecord } from './perf'
 
 // 모델별 최대 메시지 수. Claude/Codex 는 자체적으로 거의 무제한 보내는 패턴 따라감.
 // Gemini 만 따로 작게 — 무료 OAuth tier 의 안전 필터가 컨텍스트 길이 + 다양성에 민감해서
@@ -46,6 +47,7 @@ export function buildTaggedHistory(
   forModel: Model,
   compaction?: CompactionState,
 ): TrimmedHistory {
+  const _perfStart = performance.now()
   const relevant = messages.filter(m => m.role === 'user' || m.role === 'assistant')
   const limit = getMaxMessages(forModel)
 
@@ -86,6 +88,7 @@ export function buildTaggedHistory(
 
   const estimatedTokens = mapped.reduce((sum, m) => sum + estimateTokens(m.content), 0)
 
+  perfRecord('buildTaggedHistory', performance.now() - _perfStart)
   return {
     messages: mapped,
     totalMessages: relevant.length,

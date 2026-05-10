@@ -13,6 +13,7 @@ import { OrchestrAICompletionProvider } from './providers/inlineCompletion'
 import { callGemini, setGeminiFallbackNotifier, setGeminiApiKey } from './providers/geminiProvider'
 import { callCustomProvider, type CustomProviderConfig } from './providers/customProvider'
 import { fetchPageWithBrowser } from './providers/browserTool'
+import { localeBlock } from './util/locale'
 import { ChatMessage, RouterMode, RoutingDecision, Model, Effort, ChangeSummary } from './router/types'
 import { AuthStorage } from './auth/storage'
 import { ClaudeAuth } from './auth/claudeAuth'
@@ -895,7 +896,10 @@ Choose per action:
     ? `\n\nPROJECT RULES (from ORCHESTRAI.md — these are the user's convention guardrails. follow them strictly):\n${projectRules}\n`
     : ''
 
-  const prompt = `${base}${rulesBlock}${localTools}${mcpBlock}${modeBlock}`
+  // 사용자 locale (VSCode 언어) 자동 감지 → 모델 응답 언어 조절
+  const localeHint = localeBlock()
+
+  const prompt = `${base}${localeHint}${rulesBlock}${localTools}${mcpBlock}${modeBlock}`
 
   if (!ctx) return prompt
 
@@ -1655,6 +1659,16 @@ class OrchestrAIViewProvider implements vscode.WebviewViewProvider, vscode.Dispo
           case 'mentionCommand': await this._handleMentionCommand(msg.cmd); break
           case 'createPR':       await this._handleCreatePR(msg.titleHint ?? ''); break
           case 'revertFile':     await this._handleRevertFile(msg.path); break
+          case 'showPerf': {
+            const { formatReport } = await import('./util/perf')
+            this._post({ type: 'appendInput', text: `## 📊 Performance metrics\n\n${formatReport()}` })
+            break
+          }
+          case 'resetPerf': {
+            const { reset } = await import('./util/perf')
+            reset()
+            break
+          }
           case 'spreadsheetAttach': await this._handleSpreadsheetAttach(msg.name, msg.dataBase64); break
           case 'docxAttach':         await this._handleDocxAttach(msg.name, msg.dataBase64); break
           case 'notebookAttach':     await this._handleNotebookAttach(msg.name, msg.text); break
