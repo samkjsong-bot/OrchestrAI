@@ -1,5 +1,37 @@
 # Changelog
 
+## v0.1.27 — 2026-05-11 (Custom provider 1급 시민화 + Steering)
+
+### Custom Provider (Ollama / LM Studio / OpenRouter) 본격 통합
+- **환경설정 패널에서 등록·편집·삭제** — settings.json 직접 편집 불필요
+- **🔍 로컬 LLM 자동 감지** — Ollama (port 11434) / LM Studio (port 1234) 자동 probe → 설치된 모델 dropdown 으로 선택해서 1-click 등록
+- **삭제 (×) 버튼 fix** — VSCode webview 의 `confirm()` 차단 우회 (2-click 확인 패턴)
+- **활성 풀 체크박스** + **🎯 대장 모델 dropdown** 에 등록된 custom 자동 노출
+- **@mention popup 에 custom 안 보이던 race fix** — webviewReady 시점에 재push
+- **라우터 active swap** — 비활성/미로그인 built-in 골라도 active 안의 custom 으로 자동 swap
+- **argue / team mode 참여** — active 안의 custom 도 라운드 로빈에 포함, team 은 `consult_<name>` tool 동적 등록
+
+### Custom provider 라벨/정체성 fix
+- 헤더가 `GEMINI` 로 표시되던 버그 (fallthrough) — 이제 custom 이름 그대로
+- `.msg-ai.custom` 보라 그라데이션 (built-in 과 시각적 분리)
+- **Gemma 가 자기를 "Gemini" 라고 답하던 사고** — `modelLabel()` fallthrough 가 system prompt 에 "You are Gemini" 박았던 문제 fix
+
+### Steering — 진짜 mid-stream injection
+- `ControllableUserStream` — push() 가능한 AsyncIterable
+- Claude streaming input 모드 활용 — 사용자 mid-task 메시지를 abort 없이 LLM 한테 직접 전달
+- LLM 이 자율 판단 (일시정지 / 마무리 후 정리 / 즉시 반영)
+- 큐 첫 메시지: **📤 steer** (Claude push) / **⚡ 중단** (abort + start) / **✕ 제거**
+- 키워드 분류 없음 — 사용자가 명시 선택
+
+### UX
+- 환경설정 풋터에 **현재 버전 표시** + GitHub Releases 링크
+- 입력창 mention Tab 자동완성 — `mentionStartPos` backtrack 으로 보정 (이상하게 끼어들던 버그 fix)
+- 진단 로그 보강: `[provider] call/done`, `[save] pushing`, `[persist] saved`
+
+### CI/dev
+- `npm run build` = typecheck + bundle (v0.1.26 부터)
+- `npm run typecheck` 단독 가능
+
 ## v0.1.26 — 2026-05-11 (`npm run build` 에 type check 통합 — 푸시 전 자동 검증)
 
 v0.1.24 같은 사고 (잘못된 import path 로 publish workflow 죽음) 방지.
