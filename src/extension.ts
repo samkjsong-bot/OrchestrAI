@@ -585,9 +585,12 @@ function buildContextBlock(ctx: FileContext): string {
 }
 
 function modelLabel(m: Model): string {
-  return m === 'claude' ? 'Claude (Anthropic)'
-    : m === 'codex' ? 'Codex (OpenAI GPT-5)'
-    : 'Gemini (Google)'
+  const s = String(m)
+  if (s === 'claude') return 'Claude (Anthropic)'
+  if (s === 'codex') return 'Codex (OpenAI GPT-5)'
+  if (s === 'gemini') return 'Gemini (Google)'
+  if (s.startsWith('custom:')) return s.slice(7)
+  return s
 }
 
 // 모델 + effort → 실제 backend가 호출하는 모델 ID. UI 표시용 (어떤 변종으로 통했는지 명확히)
@@ -1791,6 +1794,8 @@ ${hit.kind === 'cmd' ? 'When done, the AI! comment line itself can stay — user
             for (const k of PREF_KEYS) prefs[k] = cfg.get(k)
             // 커스텀 provider 목록도 같이 보내서 UI 가 동적으로 체크박스·dropdown 옵션 만들 수 있게
             prefs.customProviders = cfg.get('customProviders') ?? []
+            // 익스텐션 버전 같이 push — prefs panel 풋터에 표시
+            prefs.version = vscode.extensions.getExtension('samkj.orchestrai')?.packageJSON?.version ?? 'dev'
             this._post({ type: 'prefsData', prefs })
             break
           }
