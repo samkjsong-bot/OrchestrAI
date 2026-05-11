@@ -508,6 +508,15 @@
     border: 1px solid var(--gemini-glow);
   }
 
+  /* custom provider (Ollama / LM Studio / OpenRouter) — 보라 계열 (built-in 과 시각적 분리) */
+  .msg-ai.custom .bubble {
+    background: rgba(167, 139, 250, 0.07);
+    border: 1px solid rgba(167, 139, 250, 0.3);
+  }
+  .msg-ai.custom .model-tag {
+    color: #a78bfa;
+  }
+
   .msg-header {
     display: flex;
     align-items: center;
@@ -3983,11 +3992,20 @@
           drawnCount++
         } else if (m.role === 'assistant') {
           const model = m.model || 'claude'
-          const modelLabel = model === 'claude' ? 'Claude' : model === 'codex' ? 'Codex' : 'Gemini'
+          // custom:<name> 면 그 name 을 라벨로 사용. built-in 외 모두 fallthrough 로 'Gemini' 박혔던 버그 fix.
+          const modelLabel = model === 'claude' ? 'Claude'
+            : model === 'codex' ? 'Codex'
+            : model === 'gemini' ? 'Gemini'
+            : (typeof model === 'string' && model.startsWith('custom:')) ? model.slice(7)
+            : String(model)
+          // 클래스명은 custom 도 안전한 ASCII 식별자만 — 색상 매핑 없으면 generic 'custom' 적용
+          const modelClass = (model === 'claude' || model === 'codex' || model === 'gemini')
+            ? model
+            : 'custom'
           const actualModel = m.actualModel || m.routing?.actualModel || ''
           const actualName = actualModel ? `<span class="actual-model">${escapeHtml(actualModel)}</span>` : ''
           const el = document.createElement('div')
-          el.className = `msg msg-ai ${model}`
+          el.className = `msg msg-ai ${modelClass}`
           el.dataset.model = model
           el.id = `msg-${m.id}`
           const verdictHtml = m.verdict
@@ -4251,10 +4269,17 @@
     setSendLocked(true)
     const messages = document.getElementById('messages')
     const el = document.createElement('div')
-    el.className = `msg msg-ai ${decision.model}`
-    el.dataset.model = decision.model
+    const model = decision.model
+    // custom:<name> 라벨 + 안전 class 분기 (custom 이 'gemini' 로 잘못 박히던 버그 fix)
+    const modelLabel = model === 'claude' ? 'Claude'
+      : model === 'codex' ? 'Codex'
+      : model === 'gemini' ? 'Gemini'
+      : (typeof model === 'string' && model.startsWith('custom:')) ? model.slice(7)
+      : String(model)
+    const modelClass = (model === 'claude' || model === 'codex' || model === 'gemini') ? model : 'custom'
+    el.className = `msg msg-ai ${modelClass}`
+    el.dataset.model = model
     el.id = `msg-${id}`
-    const modelLabel = decision.model === 'claude' ? 'Claude' : decision.model === 'codex' ? 'Codex' : 'Gemini'
     const actualName = decision.actualModel ? `<span class="actual-model">${escapeHtml(decision.actualModel)}</span>` : ''
     el.innerHTML = `<div class="bubble">
       <div class="msg-header">
@@ -4779,22 +4804,41 @@
   function insertMention(idOrCmd) {
     const item = getMentionItems().find(m => m.id === idOrCmd)
     const ta = document.getElementById('input')
+    // mentionStartPos 신뢰성 검증 — 그 위치에 진짜 '@' 가 있는지.
+    // 없으면 cursor 에서 backtrack 으로 '@' 찾아서 보정 (race / stale 값 방지).
+    let start = mentionStartPos
+    let end = ta.selectionStart
+    if (start < 0 || start >= ta.value.length || ta.value[start] !== '@') {
+      const beforeCursor = ta.value.slice(0, end)
+      const atIdx = beforeCursor.lastIndexOf('@')
+      if (atIdx < 0) {
+        // @ 자체 없으면 그냥 abort
+        closeMention()
+        ta.focus()
+        return
+      }
+      start = atIdx
+    }
+    // end 도 보정 — @ 뒤의 word chars 끝까지 지움 (이미 typed 한 부분 자동 교체)
+    let e = start + 1
+    while (e < ta.value.length && /[a-zA-Z0-9_\-]/.test(ta.value[e])) e++
+    end = Math.max(end, e)
+
     closeMention()
+
     // command 일 경우: 백엔드에 즉시 요청 (file picker / git / problem / terminal 등)
     if (item && item.kind === 'cmd') {
-      const before = ta.value.slice(0, mentionStartPos)
-      const after = ta.value.slice(ta.selectionStart)
-      ta.value = before + after  // @ 부분 제거
+      ta.value = ta.value.slice(0, start) + ta.value.slice(end)
+      const cursorAt = start
+      ta.setSelectionRange(cursorAt, cursorAt)
       ta.focus()
       autoResize(ta)
       postToExtension({ type: 'mentionCommand', cmd: item.id })
       return
     }
-    // 모델 또는 custom mention — 텍스트에 그대로 삽입 (백엔드가 @<name> 보고 force routing)
-    const before = ta.value.slice(0, mentionStartPos)
-    const after = ta.value.slice(ta.selectionStart)
-    ta.value = before + '@' + idOrCmd + ' ' + after
-    const newPos = mentionStartPos + idOrCmd.length + 2
+    // 모델 또는 custom mention — '@<id> ' 삽입
+    ta.value = ta.value.slice(0, start) + '@' + idOrCmd + ' ' + ta.value.slice(end)
+    const newPos = start + idOrCmd.length + 2
     ta.setSelectionRange(newPos, newPos)
     ta.focus()
     autoResize(ta)
