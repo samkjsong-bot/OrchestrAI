@@ -289,14 +289,25 @@
     to { opacity: 1; transform: translateY(0); }
   }
 
+  /* user 메시지는 sticky — 스크롤 내려도 viewport 상단에 고정.
+     여러 user message 가 있으면 각자 자기 차례에 stick → 다음 user message 가 오면 밀려남.
+     Claude Code 패턴 그대로. */
+  .msg-user {
+    position: sticky;
+    top: 0;
+    z-index: 5;
+    background: var(--bg);
+    padding-top: 4px;
+  }
   .msg-user .bubble {
-    background: var(--surface2);
-    border: 1px solid var(--border);
+    background: linear-gradient(135deg, #6d4cb822 0%, #6d4cb811 100%);
+    border: 1px solid #a78bfa55;
     border-radius: 10px 10px 2px 10px;
     padding: 10px 14px;
     margin-left: 32px;
     color: var(--text);
     line-height: 1.6;
+    box-shadow: 0 1px 0 rgba(167,139,250,0.08);
   }
 
   .attachments {

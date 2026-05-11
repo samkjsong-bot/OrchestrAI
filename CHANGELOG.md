@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.1.22 — 2026-05-11 (사용자 말풍선 시각 개선)
+
+- **색**: 회색 (`--surface2`) → 보라 그라데이션 (`#6d4cb822 → #6d4cb811`, 보더 `#a78bfa55`). Codex 의 회백색 카드와 분리감 확실.
+- **Sticky**: `position: sticky; top: 0` — 스크롤 내려도 viewport 상단에 user 메시지 고정. 여러 user 메시지 있으면 각자 자기 차례에 stick, 다음 user 메시지가 오면 밀려남. Claude Code 패턴.
+
 ## v0.1.21 — 2026-05-11 (team mode 가짜 peer 대사 제거)
 
 ### 발견 (사용자 로그)
