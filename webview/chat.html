@@ -2301,7 +2301,11 @@
       <div class="prefs-section">
         <div class="prefs-section-title">🔧 Custom Provider (Ollama / LM Studio / OpenRouter)</div>
         <div id="pref-custom-list"></div>
-        <button id="pref-custom-add-btn" onclick="toggleCustomForm()" class="prefs-add-btn">+ provider 추가</button>
+        <button onclick="probeLocalProviders()" class="prefs-add-btn" style="margin-bottom:4px">
+          🔍 로컬 LLM 자동 감지 (Ollama / LM Studio)
+        </button>
+        <div id="pref-probe-results"></div>
+        <button id="pref-custom-add-btn" onclick="toggleCustomForm()" class="prefs-add-btn">+ 수동 추가 (OpenRouter 등)</button>
         <div id="pref-custom-form" style="display:none">
           <div class="prefs-form-row">
             <label class="prefs-label">이름</label>
@@ -3088,6 +3092,9 @@
       case 'prefsData':
         applyPrefsToUI(msg.prefs || {})
         break
+      case 'probeResults':
+        renderProbeResults(msg.results || [])
+        break
       case 'boomerangPlan':
         showBoomerangPlan(msg.plan)
         break
@@ -3454,6 +3461,68 @@
     cancelCustomForm()
     showToast(_editingCpIdx >= 0 ? `${name} 수정됨` : `${name} 등록됨`)
   }
+  // ── 로컬 LLM 자동 감지 ─────────────────────────────
+  function probeLocalProviders() {
+    const root = document.getElementById('pref-probe-results')
+    root.innerHTML = '<div style="color:var(--text-muted);font-size:10px;padding:6px;text-align:center">🔍 로컬 포트 스캔 중...</div>'
+    postToExtension({ type: 'probeLocalProviders' })
+  }
+  function renderProbeResults(results) {
+    const root = document.getElementById('pref-probe-results')
+    if (!root) return
+    if (!results || results.length === 0) {
+      root.innerHTML = '<div style="color:var(--text-muted);font-size:10px;padding:6px 0;font-style:italic">로컬 LLM 서버 발견 안 됨 — Ollama (port 11434) 또는 LM Studio (port 1234) 실행 중인지 확인</div>'
+      return
+    }
+    const existing = new Set((_currentPrefs?.customProviders ?? []).map(c => `${c.baseUrl}|${c.model}`))
+    root.innerHTML = '<div style="font-size:10px;color:var(--text-dim);margin:6px 0 4px">📡 발견된 서버:</div>' +
+      results.map(srv => {
+        const safeLabel = (srv.label || srv.baseUrl).replace(/[<>&"]/g, c => ({'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;'}[c]))
+        if (!srv.models || srv.models.length === 0) {
+          return `<div class="prefs-cp-card">
+            <div class="cp-info">
+              <div class="cp-name">${safeLabel}</div>
+              <div class="cp-model" style="color:#f87171">설치된 모델 없음</div>
+            </div>
+          </div>`
+        }
+        const opts = srv.models.map(m => {
+          const key = `${srv.baseUrl}|${m}`
+          const reg = existing.has(key)
+          return `<option value="${m.replace(/"/g, '&quot;')}" ${reg ? 'disabled' : ''}>${m}${reg ? ' (등록됨)' : ''}</option>`
+        }).join('')
+        const id = `probe-${srv.baseUrl.replace(/[^\w]/g, '')}`
+        return `<div class="prefs-cp-card">
+          <div class="cp-info">
+            <div class="cp-name">${safeLabel}</div>
+            <div class="cp-model"><select id="${id}" class="prefs-select" style="font-size:10px;padding:3px 6px;width:100%"><option value="">-- 모델 선택 --</option>${opts}</select></div>
+          </div>
+          <button onclick="registerProbedModel('${srv.baseUrl.replace(/'/g, "\\'")}','${id}','${srv.kind}')">+ 등록</button>
+        </div>`
+      }).join('')
+  }
+  function registerProbedModel(baseUrl, selectId, kind) {
+    const sel = document.getElementById(selectId)
+    if (!sel || !sel.value) {
+      showToast('모델 먼저 선택')
+      return
+    }
+    const model = sel.value
+    // 이름은 model 첫 단어 / 콜론 앞 부분 (예: "qwen2.5-coder:32b" → "qwen2.5-coder")
+    // 중복 방지 위해 충돌 시 -2, -3 붙임
+    let baseName = model.split(/[:@\/]/)[0].toLowerCase().replace(/[^a-z0-9_-]/g, '-')
+    if (!baseName) baseName = kind || 'local'
+    const list = Array.isArray(_currentPrefs?.customProviders) ? [..._currentPrefs.customProviders] : []
+    let name = baseName
+    let n = 2
+    while (list.some(c => c?.name === name)) name = `${baseName}-${n++}`
+    list.push({ name, baseUrl, model })
+    savePref('customProviders', list)
+    showToast(`${name} (${model}) 등록됨`)
+    // 발견 결과 다시 그림 — "(등록됨)" 표시 갱신
+    setTimeout(() => probeLocalProviders(), 400)
+  }
+
   function deleteCustomProvider(idx) {
     const list = Array.isArray(_currentPrefs?.customProviders) ? [..._currentPrefs.customProviders] : []
     const cp = list[idx]

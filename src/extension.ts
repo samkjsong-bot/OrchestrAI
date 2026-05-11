@@ -1812,6 +1812,37 @@ ${hit.kind === 'cmd' ? 'When done, the AI! comment line itself can stay — user
             }
             break
           }
+          case 'probeLocalProviders': {
+            // 로컬에 흔히 도는 LLM 서버 자동 감지 — 사용자가 settings 안 건드리고 모델 dropdown 으로 선택
+            const probe = async (url: string, kind: 'ollama' | 'lmstudio' | 'openai', parser: (data: any) => string[]) => {
+              try {
+                const ctrl = new AbortController()
+                const tid = setTimeout(() => ctrl.abort(), 1500)
+                const res = await fetch(url, { signal: ctrl.signal })
+                clearTimeout(tid)
+                if (!res.ok) return null
+                const data: any = await res.json()
+                const models = parser(data)
+                return { kind, baseUrl: url.replace(/\/(api\/tags|v1\/models)$/, '').replace(/\/$/, '') + (kind === 'ollama' ? '/v1' : '/v1'), models, label: '' }
+              } catch {
+                return null
+              }
+            }
+            const results: Array<{ kind: string; baseUrl: string; models: string[]; label: string }> = []
+            // Ollama — http://localhost:11434/api/tags 가 정식 모델 리스트 (v1/models 도 가능)
+            const ollama = await probe('http://localhost:11434/api/tags', 'ollama', (d) =>
+              Array.isArray(d?.models) ? d.models.map((m: any) => String(m?.name ?? '')).filter(Boolean) : [],
+            )
+            if (ollama) results.push({ ...ollama, label: `Ollama @ localhost:11434 — ${ollama.models.length} 모델` })
+            // LM Studio — http://localhost:1234/v1/models (OpenAI 표준)
+            const lmstudio = await probe('http://localhost:1234/v1/models', 'lmstudio', (d) =>
+              Array.isArray(d?.data) ? d.data.map((m: any) => String(m?.id ?? '')).filter(Boolean) : [],
+            )
+            if (lmstudio) results.push({ ...lmstudio, label: `LM Studio @ localhost:1234 — ${lmstudio.models.length} 모델` })
+            // 추가: Jan, Text-Generation-WebUI 같은 거 보강하고 싶으면 여기에
+            this._post({ type: 'probeResults', results })
+            break
+          }
           case 'openVscodeSettings': {
             const k = msg.key ?? ''
             await vscode.commands.executeCommand('workbench.action.openSettings', k)
