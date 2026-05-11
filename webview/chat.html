@@ -3523,24 +3523,56 @@
     setTimeout(() => probeLocalProviders(), 400)
   }
 
+  // VSCode webview 에서 confirm() 은 차단됨 → 2-click pattern 으로 확인.
+  // 첫 클릭: 버튼 라벨 "?" 로 바뀜 + 3초 안에 다시 클릭하면 실제 삭제.
+  let _cpDeletePending = { idx: -1, timer: null }
   function deleteCustomProvider(idx) {
     const list = Array.isArray(_currentPrefs?.customProviders) ? [..._currentPrefs.customProviders] : []
     const cp = list[idx]
     if (!cp) return
-    if (!confirm(`"${cp.name}" 삭제하시겠어요? (활성 풀에서도 자동 제거됨)`)) return
-    list.splice(idx, 1)
-    savePref('customProviders', list)
-    // 활성 목록에서도 같이 제거
-    const active = Array.isArray(_currentPrefs?.activeProviders) ? _currentPrefs.activeProviders : []
-    const filtered = active.filter(a => a !== 'custom:' + cp.name)
-    if (filtered.length !== active.length) {
-      savePref('activeProviders', filtered.length > 0 ? filtered : ['claude', 'codex', 'gemini'])
+    // 같은 행 두 번 클릭 → 실제 삭제
+    if (_cpDeletePending.idx === idx) {
+      clearTimeout(_cpDeletePending.timer)
+      _cpDeletePending = { idx: -1, timer: null }
+      list.splice(idx, 1)
+      savePref('customProviders', list)
+      // 활성 목록에서도 같이 제거
+      const active = Array.isArray(_currentPrefs?.activeProviders) ? _currentPrefs.activeProviders : []
+      const filtered = active.filter(a => a !== 'custom:' + cp.name)
+      if (filtered.length !== active.length) {
+        savePref('activeProviders', filtered.length > 0 ? filtered : ['claude', 'codex', 'gemini'])
+      }
+      // captain 도 그 모델이면 auto 로 복귀
+      if (_currentPrefs?.captain === 'custom:' + cp.name) {
+        savePref('captain', 'auto')
+      }
+      showToast(`${cp.name} 삭제됨`)
+      return
     }
-    // captain 도 그 모델이면 auto 로 복귀
-    if (_currentPrefs?.captain === 'custom:' + cp.name) {
-      savePref('captain', 'auto')
+    // 첫 클릭 — 확인 모드로 전환
+    const btns = document.querySelectorAll('.cp-delete')
+    const btn = btns[idx]
+    if (!btn) {
+      // 못 찾으면 즉시 삭제 fallback
+      _cpDeletePending = { idx, timer: null }
+      deleteCustomProvider(idx)
+      return
     }
-    showToast(`${cp.name} 삭제됨`)
+    const origText = btn.textContent
+    btn.textContent = '확인?'
+    btn.style.color = '#f87171'
+    btn.style.borderColor = '#f87171'
+    if (_cpDeletePending.timer) clearTimeout(_cpDeletePending.timer)
+    _cpDeletePending = {
+      idx,
+      timer: setTimeout(() => {
+        btn.textContent = origText
+        btn.style.color = ''
+        btn.style.borderColor = ''
+        _cpDeletePending = { idx: -1, timer: null }
+      }, 3000),
+    }
+    showToast(`${cp.name} 삭제 — 다시 ×눌러서 확인 (3초)`)
   }
 
   // ── 압축 알림 (헤더 아래 sticky 배너) ──
