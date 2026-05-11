@@ -1791,7 +1791,7 @@ ${hit.kind === 'cmd' ? 'When done, the AI! comment line itself can stay — user
               await cfg.update(msg.key, msg.value, vscode.ConfigurationTarget.Global)
               if (msg.key === 'contextWindow') this._applyContextWindow()
               // captain / activeProviders 변경되면 webview UI 도 즉시 갱신 — team/boomerang disable 등
-              if (msg.key === 'captain' || msg.key === 'activeProviders') {
+              if (msg.key === 'captain' || msg.key === 'activeProviders' || msg.key === 'customProviders') {
                 const PREF_KEYS = [
                   'captain', 'activeProviders',
                   'claudeModel', 'codexModel', 'geminiModel', 'thinkingMode',

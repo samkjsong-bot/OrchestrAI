@@ -1523,6 +1523,93 @@
     background: white;
     transform: translateX(14px);
   }
+
+  /* Custom provider list 항목 */
+  .prefs-cp-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    padding: 8px 10px;
+    margin-bottom: 6px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+  }
+  .prefs-cp-card .cp-info { flex: 1; min-width: 0; }
+  .prefs-cp-card .cp-name { color: var(--text); font-weight: 500; }
+  .prefs-cp-card .cp-model { color: var(--text-dim); font-size: 10px; margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .prefs-cp-card .cp-url { color: var(--text-muted); font-size: 9px; margin-top: 1px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .prefs-cp-card button {
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--text-muted);
+    border-radius: 3px;
+    padding: 3px 8px;
+    font-size: 10px;
+    cursor: pointer;
+  }
+  .prefs-cp-card button:hover { color: var(--text); border-color: var(--border-bright); }
+  .prefs-cp-card .cp-delete:hover { color: #f87171; border-color: #f87171; }
+
+  .prefs-add-btn {
+    width: 100%;
+    background: transparent;
+    border: 1px dashed var(--border);
+    color: var(--text-dim);
+    border-radius: 5px;
+    padding: 7px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    cursor: pointer;
+    margin-bottom: 8px;
+  }
+  .prefs-add-btn:hover { border-color: var(--accent); color: var(--accent); }
+
+  .prefs-form-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 4px 0;
+  }
+  .prefs-input {
+    flex: 1;
+    background: var(--surface);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 5px 8px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+  }
+  .prefs-input:focus { outline: 1px solid var(--accent); border-color: var(--accent); }
+  .prefs-form-actions {
+    display: flex;
+    gap: 6px;
+    margin-top: 8px;
+  }
+  .prefs-save-btn {
+    flex: 1;
+    background: var(--accent);
+    color: white;
+    border: none;
+    border-radius: 4px;
+    padding: 6px;
+    font-size: 11px;
+    cursor: pointer;
+  }
+  .prefs-save-btn:hover { opacity: 0.85; }
+  .prefs-cancel-btn {
+    flex: 0 0 80px;
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--text-muted);
+    border-radius: 4px;
+    padding: 6px;
+    font-size: 11px;
+    cursor: pointer;
+  }
   .settings-item-icon { font-size: 18px; flex-shrink: 0; }
   .settings-item-body { flex: 1; min-width: 0; }
   .settings-item-title {
@@ -2205,9 +2292,39 @@
           <label>Gemini 활성</label>
           <input type="checkbox" id="pref-active-gemini" onchange="saveActiveProvider()">
         </div>
-        <!-- custom providers (Ollama/LM Studio/OpenRouter 등) 동적 추가 위치 -->
+        <!-- custom providers (Ollama/LM Studio/OpenRouter 등) 활성 체크박스 동적 추가 -->
         <div id="pref-custom-active-list"></div>
-        <div class="prefs-hint">비활성 시 라우팅·argue·boomerang 에서 제외됨. custom provider 는 settings 의 <code>customProviders</code> 에 추가 후 자동 노출.</div>
+        <div class="prefs-hint">비활성 시 라우팅·argue·boomerang 에서 제외됨.</div>
+      </div>
+
+      <!-- 🔧 Custom provider 등록·편집·삭제 UI -->
+      <div class="prefs-section">
+        <div class="prefs-section-title">🔧 Custom Provider (Ollama / LM Studio / OpenRouter)</div>
+        <div id="pref-custom-list"></div>
+        <button id="pref-custom-add-btn" onclick="toggleCustomForm()" class="prefs-add-btn">+ provider 추가</button>
+        <div id="pref-custom-form" style="display:none">
+          <div class="prefs-form-row">
+            <label class="prefs-label">이름</label>
+            <input type="text" class="prefs-input" id="pref-cp-name" placeholder="qwen / llama / openrouter">
+          </div>
+          <div class="prefs-form-row">
+            <label class="prefs-label">URL</label>
+            <input type="text" class="prefs-input" id="pref-cp-baseUrl" placeholder="http://localhost:11434/v1">
+          </div>
+          <div class="prefs-form-row">
+            <label class="prefs-label">모델 ID</label>
+            <input type="text" class="prefs-input" id="pref-cp-model" placeholder="qwen2.5-coder:32b">
+          </div>
+          <div class="prefs-form-row">
+            <label class="prefs-label">API Key</label>
+            <input type="password" class="prefs-input" id="pref-cp-apiKey" placeholder="(로컬 모델은 비어도 OK)">
+          </div>
+          <div class="prefs-form-actions">
+            <button onclick="saveCustomProvider()" class="prefs-save-btn">저장</button>
+            <button onclick="cancelCustomForm()" class="prefs-cancel-btn">취소</button>
+          </div>
+          <div class="prefs-hint">예: Ollama → <code>http://localhost:11434/v1</code> / LM Studio → <code>http://localhost:1234/v1</code> / OpenRouter → <code>https://openrouter.ai/api/v1</code></div>
+        </div>
       </div>
 
       <div class="prefs-section">
@@ -3203,6 +3320,27 @@
         </div>`
       }).join('')
     }
+    // 커스텀 provider 등록 카드 (edit/delete)
+    const cpRoot = document.getElementById('pref-custom-list')
+    if (cpRoot) {
+      cpRoot.innerHTML = customProviders.length === 0
+        ? '<div style="color:var(--text-muted);font-size:10px;padding:6px 0;font-style:italic">등록된 provider 없음 — 아래 [+] 로 추가</div>'
+        : customProviders.map((cp, idx) => {
+            if (!cp?.name) return ''
+            const safeName = String(cp.name).replace(/"/g, '&quot;')
+            const safeModel = String(cp.model || '').replace(/[<>&"]/g, c => ({'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;'}[c]))
+            const safeUrl = String(cp.baseUrl || '').replace(/[<>&"]/g, c => ({'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;'}[c]))
+            return `<div class="prefs-cp-card">
+              <div class="cp-info">
+                <div class="cp-name">${safeName}</div>
+                <div class="cp-model">${safeModel}</div>
+                <div class="cp-url">${safeUrl}</div>
+              </div>
+              <button onclick="editCustomProvider(${idx})">edit</button>
+              <button class="cp-delete" onclick="deleteCustomProvider(${idx})">×</button>
+            </div>`
+          }).join('')
+    }
     sel('pref-claudeModel', prefs.claudeModel ?? 'auto')
     sel('pref-codexModel', prefs.codexModel ?? 'auto')
     sel('pref-geminiModel', prefs.geminiModel ?? 'auto')
@@ -3252,6 +3390,88 @@
   }
   function onConfidenceSlide(input) {
     document.getElementById('pref-confidenceVal').textContent = Number(input.value).toFixed(2)
+  }
+
+  // ── Custom Provider 등록·편집·삭제 ──
+  let _editingCpIdx = -1  // 편집 모드일 때 인덱스, 신규면 -1
+  function toggleCustomForm() {
+    const form = document.getElementById('pref-custom-form')
+    const visible = form.style.display !== 'none'
+    if (visible) {
+      cancelCustomForm()
+    } else {
+      _editingCpIdx = -1
+      document.getElementById('pref-cp-name').value = ''
+      document.getElementById('pref-cp-baseUrl').value = ''
+      document.getElementById('pref-cp-model').value = ''
+      document.getElementById('pref-cp-apiKey').value = ''
+      form.style.display = 'block'
+      document.getElementById('pref-cp-name').focus()
+    }
+  }
+  function cancelCustomForm() {
+    document.getElementById('pref-custom-form').style.display = 'none'
+    _editingCpIdx = -1
+  }
+  function editCustomProvider(idx) {
+    const list = _currentPrefs?.customProviders ?? []
+    const cp = list[idx]
+    if (!cp) return
+    _editingCpIdx = idx
+    document.getElementById('pref-cp-name').value = cp.name || ''
+    document.getElementById('pref-cp-baseUrl').value = cp.baseUrl || ''
+    document.getElementById('pref-cp-model').value = cp.model || ''
+    document.getElementById('pref-cp-apiKey').value = cp.apiKey || ''
+    document.getElementById('pref-custom-form').style.display = 'block'
+    document.getElementById('pref-cp-name').focus()
+  }
+  function saveCustomProvider() {
+    const name = document.getElementById('pref-cp-name').value.trim()
+    const baseUrl = document.getElementById('pref-cp-baseUrl').value.trim()
+    const model = document.getElementById('pref-cp-model').value.trim()
+    const apiKey = document.getElementById('pref-cp-apiKey').value.trim()
+    if (!name || !baseUrl || !model) {
+      showToast('이름·URL·모델 모두 필수')
+      return
+    }
+    if (!/^[a-z0-9_-]+$/i.test(name)) {
+      showToast('이름은 영문/숫자/-/_ 만 가능 (mention 키로 사용됨)')
+      return
+    }
+    const list = Array.isArray(_currentPrefs?.customProviders) ? [..._currentPrefs.customProviders] : []
+    const entry = { name, baseUrl, model, ...(apiKey ? { apiKey } : {}) }
+    if (_editingCpIdx >= 0) {
+      list[_editingCpIdx] = entry
+    } else {
+      // 이름 중복 체크
+      if (list.some(c => c?.name === name)) {
+        showToast(`이름 "${name}" 이미 등록됨 — edit 으로 수정`)
+        return
+      }
+      list.push(entry)
+    }
+    savePref('customProviders', list)
+    cancelCustomForm()
+    showToast(_editingCpIdx >= 0 ? `${name} 수정됨` : `${name} 등록됨`)
+  }
+  function deleteCustomProvider(idx) {
+    const list = Array.isArray(_currentPrefs?.customProviders) ? [..._currentPrefs.customProviders] : []
+    const cp = list[idx]
+    if (!cp) return
+    if (!confirm(`"${cp.name}" 삭제하시겠어요? (활성 풀에서도 자동 제거됨)`)) return
+    list.splice(idx, 1)
+    savePref('customProviders', list)
+    // 활성 목록에서도 같이 제거
+    const active = Array.isArray(_currentPrefs?.activeProviders) ? _currentPrefs.activeProviders : []
+    const filtered = active.filter(a => a !== 'custom:' + cp.name)
+    if (filtered.length !== active.length) {
+      savePref('activeProviders', filtered.length > 0 ? filtered : ['claude', 'codex', 'gemini'])
+    }
+    // captain 도 그 모델이면 auto 로 복귀
+    if (_currentPrefs?.captain === 'custom:' + cp.name) {
+      savePref('captain', 'auto')
+    }
+    showToast(`${cp.name} 삭제됨`)
   }
 
   // ── 압축 알림 (헤더 아래 sticky 배너) ──
