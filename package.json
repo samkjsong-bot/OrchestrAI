@@ -225,15 +225,8 @@
         "orchestrai.captain": {
           "type": "string",
           "default": "auto",
-          "enum": ["auto", "claude", "codex", "gemini", "none"],
-          "enumDescriptions": [
-            "Auto: 활성 + 로그인된 것 중 Claude > Codex > Gemini 우선 (현재 동작). 권장.",
-            "Claude 강제 — 모든 메타 작업 (plan/judge/synth/commit) Claude.",
-            "Codex 강제 — 모든 메타 작업 Codex (단, ChatGPT 구독 쿼터 소모).",
-            "Gemini 강제 — 메타 작업 Gemini (무료 tier RPM 주의).",
-            "없음 — team/boomerang 모드 비활성, smart commit fallback, argue 점수 X. 단순 라우터로만 사용."
-          ],
-          "description": "대장 모델 — boomerang planner / argue judge / smart commit / synthesis 담당. custom provider 도 mention 으로 등록되면 자동 후보 포함."
+          "examples": ["auto", "claude", "codex", "gemini", "none", "custom:qwen", "custom:llama"],
+          "markdownDescription": "대장 모델 — boomerang planner / argue judge / smart commit / synthesis 담당.\n\n값 종류:\n- `auto`: 활성 중 Claude > Codex > Gemini 우선 (권장)\n- `claude` / `codex` / `gemini`: 강제\n- `none`: collab 모드 비활성, smart commit fallback\n- `custom:<name>`: customProviders 에 등록한 OpenAI compatible (Ollama / LM Studio / OpenRouter)\n\n사이드바 ⚙ → 환경설정에서 dropdown 으로 선택 가능."
         },
         "orchestrai.activeProviders": {
           "type": "array",

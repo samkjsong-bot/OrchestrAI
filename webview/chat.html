@@ -2180,6 +2180,7 @@
         <div class="prefs-row">
           <label class="prefs-label">대장 모델</label>
           <select class="prefs-select" id="pref-captain" onchange="savePref('captain', this.value)">
+            <!-- 기본 옵션. custom 은 applyPrefsToUI 에서 동적 추가. -->
             <option value="auto">auto (활성 중 우선순위)</option>
             <option value="claude">Claude 강제</option>
             <option value="codex">Codex 강제</option>
@@ -2190,17 +2191,19 @@
         <div class="prefs-hint">↓ boomerang plan / argue judge / smart commit / synthesis 담당</div>
         <div class="prefs-toggle-row">
           <label>Claude 활성</label>
-          <input type="checkbox" id="pref-active-claude" onchange="saveActiveProvider('claude', this.checked)">
+          <input type="checkbox" id="pref-active-claude" onchange="saveActiveProvider()">
         </div>
         <div class="prefs-toggle-row">
           <label>Codex 활성</label>
-          <input type="checkbox" id="pref-active-codex" onchange="saveActiveProvider('codex', this.checked)">
+          <input type="checkbox" id="pref-active-codex" onchange="saveActiveProvider()">
         </div>
         <div class="prefs-toggle-row">
           <label>Gemini 활성</label>
-          <input type="checkbox" id="pref-active-gemini" onchange="saveActiveProvider('gemini', this.checked)">
+          <input type="checkbox" id="pref-active-gemini" onchange="saveActiveProvider()">
         </div>
-        <div class="prefs-hint">비활성 시 라우팅·argue·boomerang 에서 제외됨</div>
+        <!-- custom providers (Ollama/LM Studio/OpenRouter 등) 동적 추가 위치 -->
+        <div id="pref-custom-active-list"></div>
+        <div class="prefs-hint">비활성 시 라우팅·argue·boomerang 에서 제외됨. custom provider 는 settings 의 <code>customProviders</code> 에 추가 후 자동 노출.</div>
       </div>
 
       <div class="prefs-section">
@@ -3159,6 +3162,21 @@
         b.classList.toggle('active', b.getAttribute('data-val') === String(val))
       })
     }
+    // 커스텀 provider 목록 — captain dropdown + active checkbox 동적 추가용
+    const customProviders = Array.isArray(prefs.customProviders) ? prefs.customProviders : []
+    const captainSel = document.getElementById('pref-captain')
+    if (captainSel) {
+      // 기존 custom option 제거 후 재추가 (settings 바뀌면 갱신)
+      Array.from(captainSel.querySelectorAll('option[data-custom]')).forEach(o => o.remove())
+      for (const cp of customProviders) {
+        if (!cp?.name) continue
+        const opt = document.createElement('option')
+        opt.value = 'custom:' + cp.name
+        opt.textContent = `${cp.name} (${cp.model || '?'}) — custom`
+        opt.setAttribute('data-custom', '1')
+        captainSel.appendChild(opt)
+      }
+    }
     sel('pref-captain', prefs.captain ?? 'auto')
     const activeArr = Array.isArray(prefs.activeProviders) && prefs.activeProviders.length > 0
       ? prefs.activeProviders
@@ -3166,6 +3184,21 @@
     chk('pref-active-claude', activeArr.includes('claude'))
     chk('pref-active-codex',  activeArr.includes('codex'))
     chk('pref-active-gemini', activeArr.includes('gemini'))
+    // 커스텀 provider 활성 체크박스 동적 렌더
+    const customList = document.getElementById('pref-custom-active-list')
+    if (customList) {
+      customList.innerHTML = customProviders.map(cp => {
+        if (!cp?.name) return ''
+        const key = 'custom:' + cp.name
+        const enabled = activeArr.includes(key)
+        const safeName = String(cp.name).replace(/"/g, '&quot;')
+        const safeModel = String(cp.model || '').replace(/"/g, '&quot;')
+        return `<div class="prefs-toggle-row">
+          <label>${safeName} <span style="color:var(--text-muted);font-size:10px">(${safeModel})</span> 활성</label>
+          <input type="checkbox" data-custom-active="${safeName}" ${enabled ? 'checked' : ''} onchange="saveActiveProvider()">
+        </div>`
+      }).join('')
+    }
     sel('pref-claudeModel', prefs.claudeModel ?? 'auto')
     sel('pref-codexModel', prefs.codexModel ?? 'auto')
     sel('pref-geminiModel', prefs.geminiModel ?? 'auto')
@@ -3188,14 +3221,17 @@
   function savePref(key, value) {
     postToExtension({ type: 'setPref', key, value })
   }
-  function saveActiveProvider(name, enabled) {
-    // 현재 list 가져와서 toggle 후 setPref
+  function saveActiveProvider() {
+    // 모든 checkbox (built-in + custom) 현재 상태 종합 → setPref
     const list = []
     if (document.getElementById('pref-active-claude').checked) list.push('claude')
     if (document.getElementById('pref-active-codex').checked) list.push('codex')
     if (document.getElementById('pref-active-gemini').checked) list.push('gemini')
+    // custom 체크박스 (동적 렌더)
+    document.querySelectorAll('input[data-custom-active]').forEach(cb => {
+      if (cb.checked) list.push('custom:' + cb.getAttribute('data-custom-active'))
+    })
     if (list.length === 0) {
-      // 전부 끄면 default 로 복귀 (서비스 다 죽이는 사고 방지)
       showToast('최소 1개는 활성 상태여야 합니다 — 기본값으로 복귀')
       document.getElementById('pref-active-claude').checked = true
       document.getElementById('pref-active-codex').checked = true

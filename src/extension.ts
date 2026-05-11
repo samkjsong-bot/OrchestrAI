@@ -1780,6 +1780,8 @@ ${hit.kind === 'cmd' ? 'When done, the AI! comment line itself can stay — user
             ]
             const prefs: Record<string, any> = {}
             for (const k of PREF_KEYS) prefs[k] = cfg.get(k)
+            // 커스텀 provider 목록도 같이 보내서 UI 가 동적으로 체크박스·dropdown 옵션 만들 수 있게
+            prefs.customProviders = cfg.get('customProviders') ?? []
             this._post({ type: 'prefsData', prefs })
             break
           }
@@ -1800,6 +1802,7 @@ ${hit.kind === 'cmd' ? 'When done, the AI! comment line itself can stay — user
                 const cfg2 = vscode.workspace.getConfiguration('orchestrai')
                 const prefs: Record<string, any> = {}
                 for (const k of PREF_KEYS) prefs[k] = cfg2.get(k)
+                prefs.customProviders = cfg2.get('customProviders') ?? []
                 this._post({ type: 'prefsData', prefs })
               }
               log.info('prefs', `${msg.key} = ${JSON.stringify(msg.value)}`)
@@ -3257,12 +3260,19 @@ Be concise. Use conventional commit style if commits do.`
     // 매 턴마다 Claude Haiku 판정이 0~10점 채점 → UI 스코어보드로 실시간 노출
     if (runtimeOverride === 'argue') {
       const status = await this._authStorage.getStatus()
-      // 활성 + 로그인된 provider 만 토론 참여 (사용자가 active 에서 뺀 건 제외)
+      // 활성 + 로그인된 provider 만 토론 참여 (사용자가 active 에서 뺀 건 제외).
+      // custom:<name> 형식도 active 에 들어 있으면 토론 라운드에 포함.
       const active = getActiveProviders()
       const order: Model[] = []
       if (active.includes('claude') && status.claude) order.push('claude')
       if (active.includes('codex')  && status.codex)  order.push('codex')
       if (active.includes('gemini') && status.gemini) order.push('gemini')
+      // custom providers — settings 에 등록되어 있으면 무조건 통과 (로컬/외부 endpoint, 자체 auth)
+      for (const a of active) {
+        if (typeof a === 'string' && a.startsWith('custom:')) {
+          order.push(a as Model)
+        }
+      }
 
       if (order.length < 2) {
         this._post({ type: 'streamError', id: 'argue', error: 'argue 모드는 최소 2개 활성 모델 필요 (환경설정에서 active providers 확인)' })
