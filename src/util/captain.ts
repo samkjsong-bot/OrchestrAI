@@ -56,6 +56,9 @@ export function getCaptain(auth: AuthStatus): CaptainChoice {
   if (active.includes('claude') && auth.claude) return 'claude'
   if (active.includes('codex') && auth.codex) return 'codex'
   if (active.includes('gemini') && auth.gemini) return 'gemini'
+  // 모든 built-in 이 비활성/미로그인 상태면 active 안의 첫 custom provider 사용 (로컬 모델 등)
+  const firstCustom = active.find(a => typeof a === 'string' && a.startsWith('custom:'))
+  if (firstCustom) return firstCustom
   return 'none'
 }
 

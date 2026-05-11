@@ -3701,10 +3701,50 @@ ${result.failureSummary || result.output.slice(-3000)}
       }
     }
 
-    const decision = await orchestrator.route(routingInput, this._override)
+    let decision = await orchestrator.route(routingInput, this._override)
+    // 라우터가 비활성/미로그인 모델 골랐으면 active 안에서 swap (custom 도 포함)
+    decision = await this._coerceToActive(decision)
     this._postRoutingDecision(decision)
 
     await this._runTurn(decision, fileCtx, undefined, userMsg.id)
+  }
+
+  // 라우터가 비활성 또는 미로그인 모델 결정했으면 active + 가능한 모델로 swap.
+  // 사용자가 Claude 비활성 + Gemma(custom) 만 활성한 경우 patternRouter 가 claude 골라도 → gemma 로 swap.
+  private async _coerceToActive(decision: RoutingDecision): Promise<RoutingDecision> {
+    // mention 이나 override 처럼 명시 선택된 결정은 그대로 (사용자 의도 존중)
+    if (decision.reason === 'override' || decision.reason === 'mention') return decision
+    const active = getActiveProviders()
+    const m = decision.model
+    // built-in 이고 active + 로그인 상태면 OK
+    if (m === 'claude' || m === 'codex' || m === 'gemini') {
+      const status = await this._authStorage.getStatus()
+      if (active.includes(m) && status[m]) return decision
+    }
+    // custom 이면 active 에만 있으면 OK
+    if (typeof m === 'string' && m.startsWith('custom:')) {
+      if (active.includes(m)) return decision
+    }
+    // swap 후보 — active 순서로 (Claude > Codex > Gemini > custom)
+    const status = await this._authStorage.getStatus()
+    const candidates: Model[] = []
+    if (active.includes('claude') && status.claude) candidates.push('claude')
+    if (active.includes('codex')  && status.codex)  candidates.push('codex')
+    if (active.includes('gemini') && status.gemini) candidates.push('gemini')
+    for (const a of active) {
+      if (typeof a === 'string' && a.startsWith('custom:')) candidates.push(a as Model)
+    }
+    if (candidates.length === 0) return decision  // 어쩔 수 없음 — 호출 단계에서 error 처리
+    const swapped = candidates[0]
+    if (swapped === m) return decision
+    log.info('router', `decision swap: ${m} → ${swapped} (not in active pool or not logged in)`)
+    return {
+      ...decision,
+      model: swapped,
+      reason: `${decision.reason} → active swap`,
+      ruleMatched: `${decision.ruleMatched ?? ''} | swap to ${swapped}`,
+      actualModel: actualModelName(swapped, decision.effort),
+    }
   }
 
   // util/history로 이전 대화 사이즈를 슬랩만 압축 (자전 리팩토링)
