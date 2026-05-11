@@ -1,5 +1,18 @@
 # Changelog
 
+## v0.1.26 — 2026-05-11 (`npm run build` 에 type check 통합 — 푸시 전 자동 검증)
+
+v0.1.24 같은 사고 (잘못된 import path 로 publish workflow 죽음) 방지.
+
+`package.json` scripts 재편:
+- `typecheck`: `tsc --noEmit` (전체 type 검사)
+- `bundle`: esbuild 만 (기존 build 내용)
+- `build`: `typecheck && bundle` — type 오류 있으면 bundle 안 함, push 도 못 함
+- `watch` / `dev`: `bundle` 만 사용 (iteration 빠르게 유지)
+- `package`: `build && vsce package` — vsix 만들기 전 type 검증
+
+publish.yml 의 별도 `npx tsc --noEmit` step 도 그대로 (이중 안전망).
+
 ## v0.1.25 — 2026-05-11 (v0.1.24 publish workflow 실패 hotfix)
 
 v0.1.24 에서 captain.ts 에 미구현 코덱스 분기 placeholder 로 `import { AuthStorage } from '../auth/authStorage'` 적었는데 실제 파일명은 `storage.ts`. type check 통과 못해서 publish workflow 실패.

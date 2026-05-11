@@ -2,7 +2,7 @@
   "name": "orchestrai",
   "displayName": "OrchestrAI",
   "description": "Multi-model AI in one VSCode sidebar — Claude + Codex + Gemini. Auto-routing, model debate, team delegation, until-it-works loop, codebase RAG, multi-model code review, Telegram phone bridge. Zero API billing (uses your existing subscriptions).",
-  "version": "0.1.25",
+  "version": "0.1.26",
   "publisher": "samkj",
   "license": "MIT",
   "icon": "resources/icon.png",
@@ -403,8 +403,10 @@
     ]
   },
   "scripts": {
-    "build": "esbuild src/extension.ts --bundle --outfile=dist/extension.js --external:vscode --external:@anthropic-ai/claude-agent-sdk --external:ai --external:ai-sdk-provider-gemini-cli --external:@google/gemini-cli-core --external:zod --external:playwright-core --external:chromium-bidi --external:xlsx --external:mammoth --external:jszip --external:unpdf --external:mailparser --platform=node --format=cjs",
-    "watch": "npm run build -- --watch",
+    "typecheck": "tsc --noEmit",
+    "bundle": "esbuild src/extension.ts --bundle --outfile=dist/extension.js --external:vscode --external:@anthropic-ai/claude-agent-sdk --external:ai --external:ai-sdk-provider-gemini-cli --external:@google/gemini-cli-core --external:zod --external:playwright-core --external:chromium-bidi --external:xlsx --external:mammoth --external:jszip --external:unpdf --external:mailparser --platform=node --format=cjs",
+    "build": "npm run typecheck && npm run bundle",
+    "watch": "npm run bundle -- --watch",
     "dev": "npm run watch",
     "package": "npm run build && vsce package -o orchestrai.vsix",
     "test": "vitest run",
