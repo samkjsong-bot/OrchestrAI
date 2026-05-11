@@ -136,6 +136,61 @@ async function* singleMessageStream(promptText: string): AsyncIterable<any> {
   }
 }
 
+// 사용자 mid-stream steering 용 controllable stream.
+// 초기 prompt 한 번 yield 후 push() 호출되면 추가 user 메시지 yield → AI 가 그걸 보고 판단.
+// close() 호출되면 종료.
+export class ControllableUserStream {
+  private buffer: any[] = []
+  private resolvers: Array<(v: any) => void> = []
+  private done = false
+  private sessionId: string
+
+  constructor(initialText: string) {
+    this.sessionId = `orchestrai-${Date.now()}`
+    this.buffer.push({
+      type: 'user',
+      session_id: this.sessionId,
+      parent_tool_use_id: null,
+      message: { role: 'user', content: initialText },
+    })
+  }
+
+  // 사용자가 mid-stream 으로 보낸 메시지를 stream 에 push — LLM 이 다음 turn 에서 봄.
+  push(text: string) {
+    if (this.done) return
+    const msg = {
+      type: 'user',
+      session_id: this.sessionId,
+      parent_tool_use_id: null,
+      message: { role: 'user', content: `[user steering mid-task] ${text}` },
+    }
+    if (this.resolvers.length > 0) {
+      this.resolvers.shift()!(msg)
+    } else {
+      this.buffer.push(msg)
+    }
+  }
+
+  close() {
+    this.done = true
+    for (const r of this.resolvers) r(undefined)
+    this.resolvers = []
+  }
+
+  async *[Symbol.asyncIterator]() {
+    while (true) {
+      if (this.buffer.length > 0) {
+        yield this.buffer.shift()
+        continue
+      }
+      if (this.done) return
+      const next = await new Promise<any>(resolve => this.resolvers.push(resolve))
+      if (next === undefined) return
+      yield next
+    }
+  }
+}
+
 // SDKUserMessage AsyncIterable 만들어 query 에 전달 — multimodal content blocks 사용
 async function* makeMultimodalInputStream(
   promptText: string,
@@ -176,6 +231,7 @@ export async function callClaude(
   extraMcpServers?: Record<string, any>,  // team 모드 등에서 동료 호출 툴 주입용
   abortSignal?: AbortSignal,
   modelOverride?: string,  // 내부 폴백용 — extra-high opus 쿼터 파산 시 sonnet으로 재시도
+  steeringStream?: ControllableUserStream,  // 외부 push 가능한 streaming input (mid-stream steering)
 ): Promise<{ content: string; inputTokens: number; outputTokens: number; usedModel: string }> {
   // 마지막 user 메시지에서 attachments 추출 — multimodal 처리용
   let lastAttachments: ExtractedAttachment[] = []
@@ -197,11 +253,14 @@ export async function callClaude(
 
   const activeModel = modelOverride ?? modelForEffort(effort)
   log.info('claude', `call: model=${activeModel}, effort=${effort}, override=${getClaudeModelOverride()}, msgCount=${messages.length}`)
-  // 항상 AsyncIterable 로 — 그래야 q.interrupt() 가 동작 (streaming input mode 필요).
-  // 텍스트 전용이면 1회 yield, multimodal 이면 image/document blocks.
-  const promptArg: any = lastAttachments.length > 0
-    ? makeMultimodalInputStream(promptText, lastAttachments)
-    : singleMessageStream(promptText)
+  // 항상 AsyncIterable 로 — 그래야 q.interrupt() / mid-stream steering 가능 (streaming input mode 필요).
+  // steeringStream 주입되면 그걸 그대로 사용 (외부에서 push() 가능)
+  // multimodal 이면 image/document blocks, 텍스트 전용이면 single yield
+  const promptArg: any = steeringStream
+    ? steeringStream  // 외부 control — extension.ts 가 push() 호출 가능
+    : lastAttachments.length > 0
+      ? makeMultimodalInputStream(promptText, lastAttachments)
+      : singleMessageStream(promptText)
   const q = query({
     prompt: promptArg,
     options: {

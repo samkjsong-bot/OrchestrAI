@@ -1779,6 +1779,12 @@
     background: #fbbf2410;
   }
   .queued-msg-btn.interrupt:hover { background: #fbbf2425; }
+  .queued-msg-btn.steer {
+    color: #60a5fa;
+    border-color: #60a5fa55;
+    background: #60a5fa10;
+  }
+  .queued-msg-btn.steer:hover { background: #60a5fa25; }
   .queued-msg-btn.remove:hover { color: #ef4444; border-color: #ef4444; }
   .queued-msg-status {
     font-size: 9px;
@@ -5251,15 +5257,21 @@
       const status = isFirst
         ? '<span class="queued-msg-status">⏳ 작업 끝나면 자동 처리</span>'
         : '<span class="queued-msg-status">⏳ 대기</span>'
-      // 첫 큐 메시지에만 "지금 중단 후 처리" 옵션 — 사용자가 선택 (default 는 큐 대기)
+      // 첫 큐 메시지에만 옵션 두 개:
+      //   📤 steer — 현재 LLM 한테 push (abort X, LLM 이 판단)
+      //   ⚡ 중단 — 현재 작업 abort 후 이 메시지 처리
+      const steerBtn = isFirst
+        ? `<button class="queued-msg-btn steer" onclick="steerActiveMsg('${q.id}')" title="현재 진행 중인 LLM 에게 이 메시지를 push — LLM 이 판단해서 일시정지하거나 마무리 후 정리. Claude 모드 한정.">📤 steer</button>`
+        : ''
       const abortBtn = isFirst
-        ? `<button class="queued-msg-btn interrupt" onclick="interruptQueueMsg('${q.id}')" title="현재 작업 즉시 abort + 이 메시지 바로 처리. 안 누르면 작업 끝까지 기다림.">⚡ 지금 중단</button>`
+        ? `<button class="queued-msg-btn interrupt" onclick="interruptQueueMsg('${q.id}')" title="현재 작업 즉시 abort + 이 메시지 바로 처리.">⚡ 중단</button>`
         : ''
       return `<div class="queued-msg" data-id="${q.id}">
         <span class="queued-msg-icon">✏️</span>
         <span class="queued-msg-text" title="${escapeHtml(q.text)}">${escapeHtml(q.text || '(image only)')}</span>
         <div class="queued-msg-actions">
           ${status}
+          ${steerBtn}
           ${abortBtn}
           <button class="queued-msg-btn remove" onclick="removeQueueMsg('${q.id}')" title="큐에서 제거">✕</button>
         </div>
@@ -5271,6 +5283,16 @@
     const idx = messageQueue.findIndex(q => q.id === id)
     if (idx >= 0) messageQueue.splice(idx, 1)
     renderMessageQueue()
+  }
+
+  function steerActiveMsg(id) {
+    const idx = messageQueue.findIndex(q => q.id === id)
+    if (idx < 0) return
+    const item = messageQueue[idx]
+    // 큐에서 제거 + extension 에 steer 메시지 전달 (현재 stream 에 push)
+    messageQueue.splice(idx, 1)
+    renderMessageQueue()
+    postToExtension({ type: 'steerActive', text: item.text, attachments: item.attachments })
   }
 
   function interruptQueueMsg(id) {

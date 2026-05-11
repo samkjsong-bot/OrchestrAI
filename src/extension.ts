@@ -975,6 +975,7 @@ class OrchestrAIViewProvider implements vscode.WebviewViewProvider, vscode.Dispo
   private _compaction?: CompactionState  // 압축본 저장 — 각 model에 [요약 + 최근원문] 으로 보냄
   private _compactingNow = false
   private _currentAbort?: AbortController  // 현재 진행 중인 generation 중단용
+  private _activeSteering?: import('./providers/claudeProvider').ControllableUserStream  // mid-stream steering 용 push 가능 stream
   private _statusBarItem: vscode.StatusBarItem
   private _telegramBridge?: TelegramBridge
   private _codebaseIndex: CodebaseIndex | null = null
@@ -1913,6 +1914,26 @@ ${hit.kind === 'cmd' ? 'When done, the AI! comment line itself can stay — user
             this._isSending = false
             this._post({ type: 'generationStopped' })
             this._post({ type: 'sendUnlocked' })  // webview send lock 해제 보강
+            break
+          case 'steerActive':
+            // 사용자 mid-stream steering — Claude 활성 stream 에 push.
+            // Claude 가 다음 tool turn 에서 새 메시지 보고 자율 판단 (일시정지 / 마무리 후 정리 / 등)
+            // 다른 provider 에선 active stream 없으니 그냥 toast.
+            if (this._activeSteering) {
+              this._activeSteering.push(String(msg.text ?? ''))
+              this._post({ type: 'toast', message: '📤 steering 전달됨 — AI 가 판단해서 처리' })
+              // 사용자 메시지로 채팅에도 표시
+              const steerMsg: ChatMessage = {
+                id: `steer-${Date.now()}`, role: 'user',
+                content: msg.text ?? '', timestamp: Date.now(),
+              }
+              this._messages.push(steerMsg)
+              this._post({ type: 'userMessage', message: steerMsg })
+              await this._persistMessages()
+            } else {
+              // Claude streaming 활성 안 됨 → 일반 큐로 fallback
+              this._post({ type: 'toast', message: '⏳ Claude 외 모드 — 큐로 들어감 (현재 작업 끝나면 처리)' })
+            }
             break
           case 'setPermissionMode':
             if (['ask', 'auto-edit', 'plan', 'smart-auto'].includes(msg.mode)) {
@@ -4206,7 +4227,27 @@ PATH RULES: paths are relative to workspace root. Don't prefix with "${gWsBase}/
             })
             extraMcp = { 'orchestrai-team': teamServer }
           }
-          result = await callClaude(history, effectiveDecision.effort, claudeToken, onChunk, systemPrompt, this._permissionMode, extraMcp, this._currentAbort?.signal)
+          // mid-stream steering 지원 — Claude streaming input stream 생성, 활성 참조 등록.
+          // 호출 중 사용자가 새 메시지 보내면 extension._activeSteering.push(text) 로 LLM 한테 전달.
+          // LLM 이 그 메시지 보고 판단해서 일시정지 / 마무리 후 정리 등 자율 결정.
+          const { ControllableUserStream } = await import('./providers/claudeProvider')
+          // history 전체를 prompt 안에 넣고 마지막만 stream initial 로 — Claude SDK 는 prompt arg 만 받음.
+          // 그래서 history 합쳐서 initial text 생성.
+          const promptForStream = history.length === 1
+            ? history[0].content
+            : history.map(m => `${m.role === 'user' ? 'User' : 'Assistant'}: ${m.content}`).join('\n\n')
+          const steeringStream = new ControllableUserStream(promptForStream)
+          this._activeSteering = steeringStream
+          try {
+            result = await callClaude(
+              history, effectiveDecision.effort, claudeToken, onChunk,
+              systemPrompt, this._permissionMode, extraMcp,
+              this._currentAbort?.signal, undefined, steeringStream,
+            )
+          } finally {
+            try { steeringStream.close() } catch {}
+            this._activeSteering = undefined
+          }
           // 안전망 OFF — '✅ 완료' 로 강제 교체하니 Claude 가 진짜 답한 내용까지 다 사라지는 부작용.
           // ventriloquize 자체는 거슬리지만 빈 답보단 차라리 raw 가 낫다 (사용자: '하네스 풀어').
         } else if (currentModel === 'codex') {
