@@ -1773,8 +1773,19 @@
     transition: all 0.15s;
   }
   .queued-msg-btn:hover { color: var(--text); border-color: var(--border-bright); }
-  .queued-msg-btn.interrupt:hover { color: #fbbf24; border-color: #fbbf24; }
+  .queued-msg-btn.interrupt {
+    color: #fbbf24;
+    border-color: #fbbf2455;
+    background: #fbbf2410;
+  }
+  .queued-msg-btn.interrupt:hover { background: #fbbf2425; }
   .queued-msg-btn.remove:hover { color: #ef4444; border-color: #ef4444; }
+  .queued-msg-status {
+    font-size: 9px;
+    color: var(--text-muted);
+    font-style: italic;
+    padding: 3px 8px;
+  }
 
   /* 진행 표시 바 — 입력창 위 sticky */
   .progress-bar {
@@ -5229,19 +5240,31 @@
     if (!vscode) simulateDemo(text);
   }
 
+  // 기본 동작 (Claude Code 패턴): 새 메시지는 큐 → 현재 작업 끝나면 자동 처리. 절대 abort X.
+  // 명시적 중단 옵션 (선택): 첫 큐 메시지에만 ⚡ 버튼 — 클릭 시 현재 중단 + 즉시 처리.
+  // 키워드 분류 X — 항상 사용자 선택. 라벨로 동작 명확히.
   function renderMessageQueue() {
     const container = document.getElementById('msg-queue')
     if (!container) return
-    container.innerHTML = messageQueue.map((q, i) => `
-      <div class="queued-msg" data-id="${q.id}">
-        <span class="queued-msg-icon">⏳</span>
+    container.innerHTML = messageQueue.map((q, i) => {
+      const isFirst = i === 0
+      const status = isFirst
+        ? '<span class="queued-msg-status">⏳ 작업 끝나면 자동 처리</span>'
+        : '<span class="queued-msg-status">⏳ 대기</span>'
+      // 첫 큐 메시지에만 "지금 중단 후 처리" 옵션 — 사용자가 선택 (default 는 큐 대기)
+      const abortBtn = isFirst
+        ? `<button class="queued-msg-btn interrupt" onclick="interruptQueueMsg('${q.id}')" title="현재 작업 즉시 abort + 이 메시지 바로 처리. 안 누르면 작업 끝까지 기다림.">⚡ 지금 중단</button>`
+        : ''
+      return `<div class="queued-msg" data-id="${q.id}">
+        <span class="queued-msg-icon">✏️</span>
         <span class="queued-msg-text" title="${escapeHtml(q.text)}">${escapeHtml(q.text || '(image only)')}</span>
         <div class="queued-msg-actions">
-          ${i === 0 ? `<button class="queued-msg-btn interrupt" onclick="interruptQueueMsg('${q.id}')" title="현재 작업 중단하고 즉시 시작">⏩ 끼어들기</button>` : ''}
+          ${status}
+          ${abortBtn}
           <button class="queued-msg-btn remove" onclick="removeQueueMsg('${q.id}')" title="큐에서 제거">✕</button>
         </div>
-      </div>
-    `).join('')
+      </div>`
+    }).join('')
   }
 
   function removeQueueMsg(id) {

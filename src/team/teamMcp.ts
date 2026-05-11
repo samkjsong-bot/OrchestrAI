@@ -21,6 +21,13 @@ export interface TeamMcpContext {
   // 이게 있으면 consult_codex/consult_gemini가 진짜 툴 호출(파일 수정 등)까지 함
   runCodexAgent?: (task: string) => Promise<{ content: string; inputTokens: number; outputTokens: number }>
   runGeminiAgent?: (task: string) => Promise<{ content: string; inputTokens: number; outputTokens: number }>
+  // ★ active custom providers — 각각 consult_<name> 툴로 등록됨
+  customProviders?: Array<{
+    name: string  // a-z0-9_- (mention id 와 동일)
+    label?: string  // 표시용 (예: "qwen2.5-coder")
+  }>
+  // custom provider 호출 콜백 — provider 가 주입
+  runCustomAgent?: (name: string, task: string) => Promise<{ content: string; inputTokens: number; outputTokens: number }>
 }
 
 export function buildTeamMcpServer(ctx: TeamMcpContext) {
@@ -29,10 +36,38 @@ export function buildTeamMcpServer(ctx: TeamMcpContext) {
     ctx.onActivity?.(text)
   }
 
+  // custom providers (Ollama / LM Studio / OpenRouter 등) 마다 consult_<name> tool 동적 등록.
+  // Claude orchestrator 가 "consult_qwen(task)" 식으로 호출 가능.
+  const customTools = (ctx.customProviders ?? []).map(cp =>
+    tool(
+      `consult_${cp.name}`,
+      `Delegate a task to ${cp.name}${cp.label ? ` (${cp.label})` : ''} — a custom local/external LLM (Ollama / LM Studio / OpenRouter). Use for any task suitable to this model. Pass a CONCRETE task. Returns the model's response.`,
+      {
+        task: z.string().describe('Specific task for this provider'),
+      },
+      async ({ task }) => {
+        if (!ctx.runCustomAgent) {
+          return { content: [{ type: 'text' as const, text: `ERROR: custom agent runner not wired for ${cp.name}.` }] }
+        }
+        activity(`📤 → ${cp.name}: ${task.slice(0, 120)}${task.length > 120 ? '…' : ''}`)
+        try {
+          const result = await ctx.runCustomAgent(cp.name, task)
+          activity(`📥 ← ${cp.name} (${result.outputTokens} tok)`)
+          return { content: [{ type: 'text' as const, text: result.content }] }
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err)
+          activity(`❌ ${cp.name} 실패: ${msg}`)
+          return { content: [{ type: 'text' as const, text: `${cp.name} error: ${msg}` }] }
+        }
+      },
+    ),
+  )
+
   return createSdkMcpServer({
     name: 'orchestrai-team',
     version: '1.0.0',
     tools: [
+      ...customTools,
       tool(
         'consult_codex',
         'Delegate a coding task to Codex (OpenAI GPT-5). Codex runs a FULL agent loop with workspace tools (read_file/write_file/replace_in_file/list_files/mcp) and ACTUALLY modifies files. Use for: writing code, implementing features, fixing bugs, generating boilerplate. Pass a CONCRETE task with file paths + requirements + acceptance criteria. Returns Codex\'s summary after files are written.',

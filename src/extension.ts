@@ -710,11 +710,13 @@ Your team:
 - **You (Claude)**: plan, delegate, integrate, FINAL REVIEW. Do NOT write code or do file analysis yourself when a teammate fits.
 - **Codex (GPT-5)**: implementer. Call via \`consult_codex(task)\` tool. Codex edits files itself. Use for ALL of: writing code, implementing features, fixing bugs, scaffolding, refactors, test writing, generating boilerplate.
 - **Gemini**: specialist. Call via \`consult_gemini(question)\` for ALL of: long-context analysis (whole codebase scan), summarization, multi-file reading, web/doc lookups, "explain this large thing". Call \`generate_image(prompt, save_to)\` for any image creation.
+- **Custom providers (Ollama / LM Studio / OpenRouter)**: each registered custom provider has its own \`consult_<name>(task)\` tool. Use for: local fast models (privacy/quota), specialized models (코드 전문 / 다국어 / 등), opinion diversity. Check tool list to see which customs are wired this session.
 
 MANDATORY DELEGATION (do this every team-mode turn):
-- If user asks for code changes / new files / fixes / features: you MUST call consult_codex. Do NOT write the code yourself.
+- If user asks for code changes / new files / fixes / features: you MUST call consult_codex (or a code-specialist custom).
 - If user asks to analyze/summarize/read large content: you MUST call consult_gemini.
 - If user asks for image/visual: you MUST call generate_image.
+- If a custom consult tool fits the user's intent (e.g. "ask Qwen" / "use ollama"), prefer that custom over built-in.
 - You may chain multiple consults in one turn (e.g. consult_gemini for context → consult_codex for impl).
 - Brief plan FIRST (2-4 lines max), then call the tool(s), then short final summary. Don't write the implementation in your own message.
 
@@ -4145,6 +4147,62 @@ PATH RULES: paths are relative to workspace root. Don't prefix with "${gWsBase}/
                   throw err
                 }
               } : undefined,
+              // 활성 custom provider 들 — Claude 가 consult_<name>(task) 로 호출 가능
+              customProviders: (() => {
+                const active = getActiveProviders()
+                const customs = (this._cfg<any[]>('customProviders') ?? [])
+                return customs
+                  .filter(cp => cp?.name && active.includes('custom:' + cp.name))
+                  .map(cp => ({ name: cp.name, label: cp.model }))
+              })(),
+              runCustomAgent: async (name: string, task: string) => {
+                const consultId = `consult-${Date.now()}-${name}`
+                const consultDecision: RoutingDecision = {
+                  model: ('custom:' + name) as any, effort: 'medium', confidence: 1.0, reason: 'team-consult',
+                  actualModel: name,
+                }
+                this._postRoutingDecision(consultDecision)
+                this._post({ type: 'streamStart', id: consultId, decision: consultDecision })
+                try {
+                  const customs = this._cfg<any[]>('customProviders') ?? []
+                  const cp = customs.find((c: any) => c?.name === name)
+                  if (!cp) throw new Error(`custom provider '${name}' not found`)
+                  // 단일 호출 — OpenAI compatible (streaming X, 단순 응답)
+                  const res = await fetch(`${cp.baseUrl}/chat/completions`, {
+                    method: 'POST',
+                    headers: {
+                      'Content-Type': 'application/json',
+                      ...(cp.apiKey ? { Authorization: `Bearer ${cp.apiKey}` } : {}),
+                      ...(cp.headers ?? {}),
+                    },
+                    body: JSON.stringify({
+                      model: cp.model,
+                      messages: [
+                        { role: 'system', content: `You are ${name} delegated by Claude orchestrator. Focus on the task. Be concise.` },
+                        { role: 'user', content: task },
+                      ],
+                      stream: false,
+                    }),
+                  })
+                  if (!res.ok) throw new Error(`HTTP ${res.status}: ${(await res.text()).slice(0, 200)}`)
+                  const data: any = await res.json()
+                  const content: string = data?.choices?.[0]?.message?.content ?? ''
+                  const inputTokens = data?.usage?.prompt_tokens ?? 0
+                  const outputTokens = data?.usage?.completion_tokens ?? 0
+                  this._post({ type: 'streamChunk', id: consultId, text: content })
+                  this._post({ type: 'streamEnd', id: consultId, tokens: outputTokens, actualModel: name })
+                  this._messages.push({
+                    id: consultId, role: 'assistant', content,
+                    model: ('custom:' + name) as any, effort: 'medium', actualModel: name,
+                    routing: consultDecision, tokens: outputTokens, timestamp: Date.now(),
+                  })
+                  await this._persistMessages()
+                  return { content, inputTokens, outputTokens }
+                } catch (err) {
+                  this._post({ type: 'streamError', id: consultId, error: err instanceof Error ? err.message : String(err) })
+                  throw err
+                }
+              },
             })
             extraMcp = { 'orchestrai-team': teamServer }
           }
