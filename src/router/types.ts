@@ -48,4 +48,5 @@ export interface ChatMessage {
   commitHash?: string         // 자동 git commit 후 hash (이 턴 → 그 commit 으로 revert 가능)
   commitShort?: string        // 사용자 표시용 7자
   commitMessage?: string      // Haiku 가 생성한 의미 있는 commit subject (UX chip 노출용)
+  verdict?: { score: number; reason: string }  // argue 모드에서 Haiku 가 매긴 점수 (rehydrate 보존용)
 }

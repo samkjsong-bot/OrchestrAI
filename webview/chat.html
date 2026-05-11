@@ -2973,6 +2973,9 @@
       case 'argueEnd':
         document.getElementById('argue-stop').classList.remove('visible')
         finalizeArgueBoard(msg.scoreboard)
+        // argue 끝나도 board 는 명시적으로 visible 유지 — auto 회귀 후에도 점수 계속 보임.
+        // 다음 argue 시작 시 initArgueBoard() 가 재초기화.
+        document.getElementById('argue-board').classList.add('visible')
         break
       case 'rehydrate':
         rehydrateMessages(msg.messages)
@@ -3558,6 +3561,9 @@
           el.className = `msg msg-ai ${model}`
           el.dataset.model = model
           el.id = `msg-${m.id}`
+          const verdictHtml = m.verdict
+            ? `<div class="judge-verdict"><b>판정:</b> ${m.verdict.score}/10 · ${escapeHtml(m.verdict.reason || '')}</div>`
+            : ''
           el.innerHTML = `<div class="bubble">
             <div class="msg-header">
               <span class="model-tag">${modelLabel}</span>
@@ -3569,7 +3575,7 @@
               <button class="float-btn" onclick="copyMessage('${m.id}', this)">copy</button>
             </div>
             <div class="msg-content md" id="content-${m.id}">${renderMarkdown(m.content)}</div>
-          </div>`
+          </div>${verdictHtml}`
           container.appendChild(el)
           drawnCount++
         }

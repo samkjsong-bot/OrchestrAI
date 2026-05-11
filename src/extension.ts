@@ -3298,6 +3298,9 @@ Be concise. Use conventional commit style if commits do.`
           if (verdict) {
             scoresByModel[model].total += verdict.score
             scoresByModel[model].turns += 1
+            // verdict 을 메시지에 attach — rehydrate / 다음 turn 으로 시점 이동해도 보존
+            lastMsg.verdict = { score: verdict.score, reason: verdict.reason }
+            await this._persistMessages()
             this._post({
               type: 'argueScore',
               msgId: lastMsg.id,

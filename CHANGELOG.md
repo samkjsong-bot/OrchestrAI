@@ -1,5 +1,18 @@
 # Changelog
 
+## v0.1.23 — 2026-05-11 (argue 점수 보존 + 회귀 후에도 표시)
+
+### 발견된 버그
+argue 모드 끝나면 1회성 모드 → auto 자동 회귀 (v0.1.18). 그 과정에서:
+1. 메시지 아래 verdict ("판정: 8/10 · ...") 가 DOM 에만 있고 ChatMessage 에 없음 → rehydrate 발생 시 사라짐
+2. argueBoard (상단 스코어보드) 가 명시적으로 visible 유지 안 됨
+
+### Fix
+- `ChatMessage.verdict?: { score, reason }` 필드 추가
+- argue 모드의 judgeTurn 후 `lastMsg.verdict = {...}` 저장 + `_persistMessages()` 즉시 flush
+- webview rehydrate 시 `m.verdict` 있으면 `.judge-verdict` 블록 같이 렌더
+- argueEnd 핸들러에서 argueBoard 명시적으로 `.classList.add('visible')` — auto 회귀해도 점수 계속 표시
+
 ## v0.1.22 — 2026-05-11 (사용자 말풍선 시각 개선)
 
 - **색**: 회색 (`--surface2`) → 보라 그라데이션 (`#6d4cb822 → #6d4cb811`, 보더 `#a78bfa55`). Codex 의 회백색 카드와 분리감 확실.
