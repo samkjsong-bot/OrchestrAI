@@ -15,6 +15,7 @@ import { callCustomProvider, type CustomProviderConfig } from './providers/custo
 import { fetchPageWithBrowser } from './providers/browserTool'
 import { localeBlock } from './util/locale'
 import { startAiWatcher, type AiMagicHit } from './util/aiWatch'
+import { getCaptain, getActiveProviders, captainAvailable } from './util/captain'
 import { ChatMessage, RouterMode, RoutingDecision, Model, Effort, ChangeSummary } from './router/types'
 import { AuthStorage } from './auth/storage'
 import { ClaudeAuth } from './auth/claudeAuth'
@@ -1771,6 +1772,7 @@ ${hit.kind === 'cmd' ? 'When done, the AI! comment line itself can stay — user
           case 'getPrefs': {
             const cfg = vscode.workspace.getConfiguration('orchestrai')
             const PREF_KEYS = [
+              'captain', 'activeProviders',
               'claudeModel', 'codexModel', 'geminiModel', 'thinkingMode',
               'autoGitCommit', 'autoPreview', 'autoOpenDiff', 'aiMagicComments', 'inlineCompletion',
               'codebaseRag.enabled', 'codebaseRag.autoIndex',
@@ -1785,8 +1787,21 @@ ${hit.kind === 'cmd' ? 'When done, the AI! comment line itself can stay — user
             try {
               const cfg = vscode.workspace.getConfiguration('orchestrai')
               await cfg.update(msg.key, msg.value, vscode.ConfigurationTarget.Global)
-              // contextWindow 는 실시간 적용
               if (msg.key === 'contextWindow') this._applyContextWindow()
+              // captain / activeProviders 변경되면 webview UI 도 즉시 갱신 — team/boomerang disable 등
+              if (msg.key === 'captain' || msg.key === 'activeProviders') {
+                const PREF_KEYS = [
+                  'captain', 'activeProviders',
+                  'claudeModel', 'codexModel', 'geminiModel', 'thinkingMode',
+                  'autoGitCommit', 'autoPreview', 'autoOpenDiff', 'aiMagicComments', 'inlineCompletion',
+                  'codebaseRag.enabled', 'codebaseRag.autoIndex',
+                  'contextWindow', 'codexEngine', 'confidenceThreshold',
+                ]
+                const cfg2 = vscode.workspace.getConfiguration('orchestrai')
+                const prefs: Record<string, any> = {}
+                for (const k of PREF_KEYS) prefs[k] = cfg2.get(k)
+                this._post({ type: 'prefsData', prefs })
+              }
               log.info('prefs', `${msg.key} = ${JSON.stringify(msg.value)}`)
             } catch (err) {
               log.warn('prefs', `setPref ${msg.key} failed:`, err)
@@ -3242,13 +3257,16 @@ Be concise. Use conventional commit style if commits do.`
     // 매 턴마다 Claude Haiku 판정이 0~10점 채점 → UI 스코어보드로 실시간 노출
     if (runtimeOverride === 'argue') {
       const status = await this._authStorage.getStatus()
+      // 활성 + 로그인된 provider 만 토론 참여 (사용자가 active 에서 뺀 건 제외)
+      const active = getActiveProviders()
       const order: Model[] = []
-      if (status.claude) order.push('claude')
-      if (status.codex)  order.push('codex')
-      if (status.gemini) order.push('gemini')
+      if (active.includes('claude') && status.claude) order.push('claude')
+      if (active.includes('codex')  && status.codex)  order.push('codex')
+      if (active.includes('gemini') && status.gemini) order.push('gemini')
 
       if (order.length < 2) {
-        this._post({ type: 'streamError', id: 'argue', error: 'argue 모드는 최소 2개 모델 로그인 필요' })
+        this._post({ type: 'streamError', id: 'argue', error: 'argue 모드는 최소 2개 활성 모델 필요 (환경설정에서 active providers 확인)' })
+        this._revertOverrideAfterOneShot()
         return
       }
 
@@ -3291,10 +3309,11 @@ Be concise. Use conventional commit style if commits do.`
         if (lastMsg?.role === 'assistant') {
           argueTurns.push({ model: lastMsg.model ?? model, text: lastMsg.content, msgIndex: prevLen })
 
-        // 판정 호출 (비동기로 돌려도 되지만 UX는 라인별로 점수 다는 게 직관적)
+        // 판정 호출 — captain 모델이 점수 매김. captain='none' 이면 점수 X (verdict=null)
           const priorForJudge = argueTurns.slice(0, -1).map(t => ({ model: t.model, text: t.text }))
           this._post({ type: 'argueJudging', model })
-          const verdict = await judgeTurn(userText, model, lastMsg.content, priorForJudge)
+          const captain = getCaptain(await this._authStorage.getStatus())
+          const verdict = await judgeTurn(userText, model, lastMsg.content, priorForJudge, captain)
           if (verdict) {
             scoresByModel[model].total += verdict.score
             scoresByModel[model].turns += 1
@@ -3412,7 +3431,8 @@ ${result.failureSummary || result.output.slice(-3000)}
         .filter(m => m.role === 'user' || m.role === 'assistant')
         .slice(-6)
         .map(m => ({ role: m.role as 'user' | 'assistant', content: m.content, model: m.model }))
-      const plan = await planBoomerang(userText, priorHistory)
+      const captain = getCaptain(await this._authStorage.getStatus())
+      const plan = await planBoomerang(userText, priorHistory, captain)
       if (!plan || plan.subTasks.length === 0) {
         // planner 가 follow-up 으로 판단 (subTasks 비어있음) → 일반 대화로 fallback
         log.info('boomerang', 'planner returned empty subtasks (follow-up?). Falling back to auto routing.')
@@ -3541,12 +3561,26 @@ ${result.failureSummary || result.output.slice(-3000)}
       }  // end of else (plan 있을 때)
     }
 
-    // ── team 모드: Claude가 orchestrator. Codex(구현) / Gemini(텍스트·이미지) 동료를 툴로 호출 ──
-    // 토큰 효율 ↑: Claude는 계획·검수만, 실제 코드는 Codex 구독으로, 이미지는 Gemini API로
+    // ── team 모드: 대장 모델이 orchestrator. 동료 모델 (활성 + 비-대장) 를 툴로 호출 ──
     if (this._override === 'team') {
       const status = await this._authStorage.getStatus()
+      const captain = getCaptain(status)
+      if (captain === 'none') {
+        this._post({
+          type: 'streamError', id: 'team',
+          error: 'team 모드는 대장 모델 필요. 환경설정 → 🎯 대장 모델에서 지정 (auto 권장).',
+        })
+        this._revertOverrideAfterOneShot()
+        return
+      }
+      // 현재 team mode 는 Claude orchestrator 가 SDK MCP tool 로 동료 호출하는 구조 → Claude 필수.
+      // (captain=codex/gemini 인 경우 team mode 동작은 향후 확장. 일단 Claude 가 active + auth 면 진행, 아니면 명확히 안내)
       if (!status.claude) {
-        this._post({ type: 'streamError', id: 'team', error: 'team 모드는 Claude 연결 필수 (orchestrator 역할)' })
+        this._post({
+          type: 'streamError', id: 'team',
+          error: 'team 모드 현재 버전은 Claude orchestrator 필요. Claude 로그인 후 재시도.',
+        })
+        this._revertOverrideAfterOneShot()
         return
       }
       this._post({ type: 'teamStart', pipeline: ['claude'] })
@@ -3839,7 +3873,9 @@ ${result.failureSummary || result.output.slice(-3000)}
       return [primary]
     }
     const status = await this._authStorage.getStatus()
-    const order: Model[] = ['claude', 'codex', 'gemini']
+    // active provider 안에서만 fallback — 사용자가 비활성 처리한 모델은 fallback 대상에서도 제외
+    const active = getActiveProviders()
+    const order: Model[] = (['claude', 'codex', 'gemini'] as Model[]).filter(m => active.includes(m as any))
     const loggedIn = order.filter(m => status[m])
     const chain: Model[] = []
     if (loggedIn.includes(primary)) chain.push(primary)
@@ -4536,7 +4572,8 @@ Be concise. Korean if reviews are Korean.`
       const firstLine = aiContent.split('\n').find(l => l.trim()) ?? 'OrchestrAI changes'
       const fallbackSubject = firstLine.replace(/[#*`]/g, '').slice(0, 70)
       const { generateCommitMessage } = await import('./util/commitMessage')
-      const aiSubject = await generateCommitMessage(root, fallbackSubject)
+      const captain = getCaptain(await this._authStorage.getStatus())
+      const aiSubject = await generateCommitMessage(root, fallbackSubject, captain)
       const subject = aiSubject || fallbackSubject
       const fileCount = changedFiles.length
       const commitMsg = `[OrchestrAI] ${subject}\n\nFiles: ${fileCount}\nChanged: ${changedFiles.map(f => f.path).slice(0, 10).join(', ')}${changedFiles.length > 10 ? '...' : ''}`

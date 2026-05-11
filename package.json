@@ -2,7 +2,7 @@
   "name": "orchestrai",
   "displayName": "OrchestrAI",
   "description": "Multi-model AI in one VSCode sidebar — Claude + Codex + Gemini. Auto-routing, model debate, team delegation, until-it-works loop, codebase RAG, multi-model code review, Telegram phone bridge. Zero API billing (uses your existing subscriptions).",
-  "version": "0.1.23",
+  "version": "0.1.24",
   "publisher": "samkj",
   "license": "MIT",
   "icon": "resources/icon.png",
@@ -221,6 +221,27 @@
           "type": "boolean",
           "default": true,
           "description": "Aider 풍 매직 코멘트. 파일에 `// AI! refactor this` 또는 `# AI? what does this do` 작성 후 저장하면 자동으로 채팅에 prompt 주입. AI! = 명령(수정), AI? = 질문(답만)."
+        },
+        "orchestrai.captain": {
+          "type": "string",
+          "default": "auto",
+          "enum": ["auto", "claude", "codex", "gemini", "none"],
+          "enumDescriptions": [
+            "Auto: 활성 + 로그인된 것 중 Claude > Codex > Gemini 우선 (현재 동작). 권장.",
+            "Claude 강제 — 모든 메타 작업 (plan/judge/synth/commit) Claude.",
+            "Codex 강제 — 모든 메타 작업 Codex (단, ChatGPT 구독 쿼터 소모).",
+            "Gemini 강제 — 메타 작업 Gemini (무료 tier RPM 주의).",
+            "없음 — team/boomerang 모드 비활성, smart commit fallback, argue 점수 X. 단순 라우터로만 사용."
+          ],
+          "description": "대장 모델 — boomerang planner / argue judge / smart commit / synthesis 담당. custom provider 도 mention 으로 등록되면 자동 후보 포함."
+        },
+        "orchestrai.activeProviders": {
+          "type": "array",
+          "default": ["claude", "codex", "gemini"],
+          "items": {
+            "type": "string"
+          },
+          "description": "OrchestrAI 라우터·argue·boomerang 에 참여할 provider 목록. 기본 ['claude', 'codex', 'gemini']. customProviders 에 등록한 이름도 'custom:<name>' 형식으로 추가 가능. 비어 있으면 default 3개로 fallback."
         },
         "orchestrai.claudeModel": {
           "type": "string",

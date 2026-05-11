@@ -2176,6 +2176,34 @@
     </div>
     <div class="prefs-body">
       <div class="prefs-section">
+        <div class="prefs-section-title">🎯 대장 모델 + 활성 풀</div>
+        <div class="prefs-row">
+          <label class="prefs-label">대장 모델</label>
+          <select class="prefs-select" id="pref-captain" onchange="savePref('captain', this.value)">
+            <option value="auto">auto (활성 중 우선순위)</option>
+            <option value="claude">Claude 강제</option>
+            <option value="codex">Codex 강제</option>
+            <option value="gemini">Gemini 강제</option>
+            <option value="none">없음 (단순 라우터)</option>
+          </select>
+        </div>
+        <div class="prefs-hint">↓ boomerang plan / argue judge / smart commit / synthesis 담당</div>
+        <div class="prefs-toggle-row">
+          <label>Claude 활성</label>
+          <input type="checkbox" id="pref-active-claude" onchange="saveActiveProvider('claude', this.checked)">
+        </div>
+        <div class="prefs-toggle-row">
+          <label>Codex 활성</label>
+          <input type="checkbox" id="pref-active-codex" onchange="saveActiveProvider('codex', this.checked)">
+        </div>
+        <div class="prefs-toggle-row">
+          <label>Gemini 활성</label>
+          <input type="checkbox" id="pref-active-gemini" onchange="saveActiveProvider('gemini', this.checked)">
+        </div>
+        <div class="prefs-hint">비활성 시 라우팅·argue·boomerang 에서 제외됨</div>
+      </div>
+
+      <div class="prefs-section">
         <div class="prefs-section-title">🧬 모델 변종 강제</div>
         <div class="prefs-row">
           <label class="prefs-label">Claude</label>
@@ -3108,6 +3136,20 @@
   }
   function applyPrefsToUI(prefs) {
     _currentPrefs = prefs
+    // captain=none 이면 team/boomerang 버튼 disable + tooltip 안내
+    const captainNone = prefs.captain === 'none'
+    document.querySelectorAll('.override-btn').forEach(btn => {
+      const onclick = btn.getAttribute('onclick') || ''
+      const isTeamOrBoom = onclick.includes("'team'") || onclick.includes("'boomerang'")
+      if (isTeamOrBoom) {
+        btn.disabled = captainNone
+        btn.style.opacity = captainNone ? '0.4' : ''
+        btn.style.cursor = captainNone ? 'not-allowed' : 'pointer'
+        if (captainNone) {
+          btn.title = '대장 모델 필요 — 환경설정에서 지정 (auto 권장)'
+        }
+      }
+    })
     const sel = (id, val) => { const el = document.getElementById(id); if (el) el.value = val }
     const chk = (id, val) => { const el = document.getElementById(id); if (el) el.checked = !!val }
     const seg = (groupId, val) => {
@@ -3117,6 +3159,13 @@
         b.classList.toggle('active', b.getAttribute('data-val') === String(val))
       })
     }
+    sel('pref-captain', prefs.captain ?? 'auto')
+    const activeArr = Array.isArray(prefs.activeProviders) && prefs.activeProviders.length > 0
+      ? prefs.activeProviders
+      : ['claude', 'codex', 'gemini']
+    chk('pref-active-claude', activeArr.includes('claude'))
+    chk('pref-active-codex',  activeArr.includes('codex'))
+    chk('pref-active-gemini', activeArr.includes('gemini'))
     sel('pref-claudeModel', prefs.claudeModel ?? 'auto')
     sel('pref-codexModel', prefs.codexModel ?? 'auto')
     sel('pref-geminiModel', prefs.geminiModel ?? 'auto')
@@ -3138,6 +3187,23 @@
   }
   function savePref(key, value) {
     postToExtension({ type: 'setPref', key, value })
+  }
+  function saveActiveProvider(name, enabled) {
+    // 현재 list 가져와서 toggle 후 setPref
+    const list = []
+    if (document.getElementById('pref-active-claude').checked) list.push('claude')
+    if (document.getElementById('pref-active-codex').checked) list.push('codex')
+    if (document.getElementById('pref-active-gemini').checked) list.push('gemini')
+    if (list.length === 0) {
+      // 전부 끄면 default 로 복귀 (서비스 다 죽이는 사고 방지)
+      showToast('최소 1개는 활성 상태여야 합니다 — 기본값으로 복귀')
+      document.getElementById('pref-active-claude').checked = true
+      document.getElementById('pref-active-codex').checked = true
+      document.getElementById('pref-active-gemini').checked = true
+      savePref('activeProviders', ['claude', 'codex', 'gemini'])
+      return
+    }
+    savePref('activeProviders', list)
   }
   function savePrefSeg(key, btn) {
     const val = btn.getAttribute('data-val')
@@ -3265,6 +3331,8 @@
     if (vscode) {
       console.log('[orchestrai] webviewReady sent')
       postToExtension({ type: 'webviewReady', instanceId: WEBVIEW_INSTANCE_ID })
+      // prefs 도 같이 요청 — captain=none 일 때 team/boomerang 버튼 즉시 disable 반영
+      postToExtension({ type: 'getPrefs' })
     }
   }
   if (document.readyState === 'loading') {

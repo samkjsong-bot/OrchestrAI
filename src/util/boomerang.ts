@@ -1,10 +1,10 @@
 // src/util/boomerang.ts
-// 큰 작업 → Claude(Haiku 또는 Sonnet)가 sub-task 분할 plan → 각 sub-task 적합한 모델에 병렬 위임 → 결과 통합
+// 큰 작업 → 대장 모델이 sub-task 분할 plan → 각 sub-task 적합한 모델에 병렬 위임 → 결과 통합
 // 단순 team mode와 차이: sub-task가 명시적으로 분할·병렬·통합. Roo Code의 boomerang task 패턴.
 
 import * as vscode from 'vscode'
-import { query } from '@anthropic-ai/claude-agent-sdk'
 import { log } from './log'
+import { type CaptainChoice, callCaptain } from './captain'
 
 export interface SubTask {
   id: string
@@ -44,23 +44,18 @@ Output ONLY valid JSON, no markdown:
   ]
 }`
 
-function subscriptionEnv(): Record<string, string | undefined> {
-  const env: Record<string, string | undefined> = { ...process.env }
-  delete env.ANTHROPIC_API_KEY
-  return env
-}
-
 // 사용자 input → 분할 plan.
 // 이전 대화 history 가 있으면 같이 전달 — plan 단계에서 컨텍스트 인지해야
 // "완성했어?" 같은 follow-up 을 "Clarify user intent" 로 분해하는 사고 방지.
 export async function planBoomerang(
   userInput: string,
   priorHistory?: Array<{ role: 'user' | 'assistant'; content: string; model?: string }>,
+  captain: CaptainChoice = 'claude',
 ): Promise<BoomerangPlan | null> {
+  if (captain === 'none') return null
   try {
     let priorBlock = ''
     if (priorHistory && priorHistory.length > 0) {
-      // 최근 6턴 정도만 — 너무 길면 plan token 낭비
       const recent = priorHistory.slice(-6)
       priorBlock = '\n\n## Prior conversation (for context — do NOT re-do these tasks):\n' +
         recent.map(m => {
@@ -69,26 +64,10 @@ export async function planBoomerang(
         }).join('\n\n')
     }
 
-    const q = query({
-      prompt: `User task: ${userInput}\n${priorBlock}\n\nDecompose into sub-tasks for the LATEST user task only. If the latest user input is a short follow-up question about prior work (e.g. "완성했어?", "잘 됐어?"), output {"goal":"answer follow-up","subTasks":[]} so caller skips boomerang. Output JSON only.`,
-      options: {
-        model: 'claude-haiku-4-5',
-        systemPrompt: PLANNER_SYSTEM,
-        tools: [],
-        maxTurns: 1,
-        persistSession: false,
-        cwd: vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? process.cwd(),
-        env: subscriptionEnv(),
-      },
-    })
-    let text = ''
-    for await (const m of q) {
-      if (m.type === 'assistant') {
-        for (const b of m.message.content) {
-          if (b.type === 'text') text += b.text
-        }
-      }
-    }
+    const userPrompt = `User task: ${userInput}\n${priorBlock}\n\nDecompose into sub-tasks for the LATEST user task only. If the latest user input is a short follow-up question about prior work (e.g. "완성했어?", "잘 됐어?"), output {"goal":"answer follow-up","subTasks":[]} so caller skips boomerang. Output JSON only.`
+
+    const text = await callCaptain(captain, PLANNER_SYSTEM, userPrompt)
+    if (!text) return null
     // JSON 추출 (모델이 fenced block에 넣을 수도)
     const jsonMatch = text.match(/\{[\s\S]*\}/)
     if (!jsonMatch) return null

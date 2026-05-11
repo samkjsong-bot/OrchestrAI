@@ -1,5 +1,38 @@
 # Changelog
 
+## v0.1.24 — 2026-05-11 (대장 모델 + 활성 풀 사용자 커스터마이즈)
+
+기존엔 Claude 가 하드코딩된 "대장 모델"로 boomerang plan / argue judge / smart commit / synthesis 다 담당. ChatGPT/Claude 없는 사용자는 collab 모드 제대로 못 씀.
+
+### 새 settings 2개
+- **`orchestrai.captain`** — 대장 모델 선택. `auto` (기본, 활성 중 Claude > Codex > Gemini 우선) / `claude` / `codex` / `gemini` / `none` (collab 비활성)
+- **`orchestrai.activeProviders`** — 라우터·argue·boomerang 참여 provider 배열. 기본 `["claude", "codex", "gemini"]`. 사용자가 toggle 해서 빼면 제외
+
+### 새 헬퍼 `src/util/captain.ts`
+- `getCaptain(authStatus)` — 사용자 선택 + auth 상태 검증 → 실제 사용할 대장 반환
+- `getActiveProviders()` — 활성 provider 목록
+- `callCaptain(captain, systemPrompt, userPrompt)` — 대장 모델한테 메타 작업 위임 (Claude/Codex/Gemini/custom OpenAI compatible)
+- `captainAvailable()` — collab 모드 사용 가능 여부
+
+### 적용 위치
+- `boomerang.ts planBoomerang(input, history, captain)` — captain 인자 추가
+- `judge.ts judgeTurn(...args, captain)` — argue judge 도 captain 사용
+- `commitMessage.ts generateCommitMessage(cwd, fallback, captain)` — smart commit 도 captain
+- argue 모드: active providers 안에서만 토론 참여 (이전엔 로그인된 거 다)
+- fallback chain: active providers 안에서만 fallback
+- team 모드: captain=none 이면 명확히 안내 + 1회성 모드 revert
+
+### Preferences 패널 (사이드바 ⚙)
+- 🎯 **대장 모델** dropdown (auto / claude / codex / gemini / 없음)
+- 🔘 **Claude / Codex / Gemini 활성** 체크박스
+- 전부 비활성 시 자동 default 복귀 (서비스 다 죽이는 사고 방지)
+- captain=none 선택 시 team/boomerang 버튼 자동 disable + tooltip "대장 모델 필요"
+- 변경 즉시 webview UI 반영 (setPref → prefsData 재push)
+
+### Default 동작 유지
+- 기존 사용자: captain=`auto`, activeProviders=`[claude,codex,gemini]` → 동작 변경 없음
+- 신규 사용자: 동일 default 로 시작
+
 ## v0.1.23 — 2026-05-11 (argue 점수 보존 + 회귀 후에도 표시)
 
 ### 발견된 버그
