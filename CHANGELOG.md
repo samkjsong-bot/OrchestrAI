@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.1.25 — 2026-05-11 (v0.1.24 publish workflow 실패 hotfix)
+
+v0.1.24 에서 captain.ts 에 미구현 코덱스 분기 placeholder 로 `import { AuthStorage } from '../auth/authStorage'` 적었는데 실제 파일명은 `storage.ts`. type check 통과 못해서 publish workflow 실패.
+
+미사용 placeholder import 제거 — codex captain 분기는 토큰 주입 패턴 필요해서 일단 `return null` (미지원). 추후 확장.
+
+로컬 type check 통과 확인 후 푸시.
+
 ## v0.1.24 — 2026-05-11 (대장 모델 + 활성 풀 사용자 커스터마이즈)
 
 기존엔 Claude 가 하드코딩된 "대장 모델"로 boomerang plan / argue judge / smart commit / synthesis 다 담당. ChatGPT/Claude 없는 사용자는 collab 모드 제대로 못 씀.

@@ -105,13 +105,9 @@ export async function callCaptain(
     }
 
     if (captain === 'codex') {
-      // Codex 는 weekly quota 부담 → mini 사용 (5.4-mini 한도 큼).
-      const { callCodex } = await import('../providers/codexProvider')
-      const { CodexAuth } = await import('../auth/codexAuth')
-      const { AuthStorage } = await import('../auth/authStorage')
-      // captain 호출 시점엔 SecretStorage 직접 접근 어려움 → 호출자가 토큰 주는 게 정공법.
-      // 단순화: 환경 변수 / 캐싱된 토큰 활용 — 여기선 일단 fail-soft 처리.
-      // TODO: 호출자가 토큰 주입하는 패턴으로 추후 개선.
+      // Codex 를 captain 으로 쓰려면 access token 이 필요한데, callCaptain 은 stateless 헬퍼라
+      // SecretStorage 직접 접근 불가. 현재는 미지원 — 호출자가 토큰 주입하는 패턴으로 추후 확장.
+      // 사용자가 captain=codex 명시했으면 메타 작업은 skip (Gemini 로 fallback 도 안 함 — 명시 의도 존중).
       return null
     }
 
