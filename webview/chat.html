@@ -290,25 +290,29 @@
   }
 
   /* user 메시지는 sticky — 스크롤 내려도 viewport 상단에 고정.
-     여러 user message 가 있으면 각자 자기 차례에 stick → 다음 user message 가 오면 밀려남.
-     Claude Code 패턴 그대로. */
+     여러 user message 가 있으면 각자 자기 차례에 stick → 다음 user message 가 오면 밀려남. */
   .msg-user {
     position: sticky;
     top: 0;
     z-index: 5;
-    background: var(--bg);
-    padding-top: 4px;
+    /* viewport 상단에 sticky 됐을 때 뒷 내용 비치지 않도록 단단한 배경 + 미세한 blur */
+    background: linear-gradient(180deg, var(--bg) 88%, transparent);
+    padding: 6px 0 8px;
+    backdrop-filter: blur(4px);
   }
   .msg-user .bubble {
-    background: linear-gradient(135deg, #6d4cb822 0%, #6d4cb811 100%);
-    border: 1px solid #a78bfa55;
-    border-radius: 10px 10px 2px 10px;
-    padding: 10px 14px;
-    margin-left: 32px;
+    /* 더 가벼운 강조 — 짙은 보라 → subtle accent line + neutral bg */
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-left: 3px solid #a78bfa;
+    border-radius: 6px;
+    padding: 8px 12px;
+    margin: 0 12px 0 32px;
     color: var(--text);
-    line-height: 1.6;
-    box-shadow: 0 1px 0 rgba(167,139,250,0.08);
+    line-height: 1.55;
+    font-size: 13px;
   }
+  /* sticky 일 때 (= scrollY > offsetTop) 별도 styling 은 :stuck 가 표준이 아니라서 일단 위 스타일로 통일 */
 
   .attachments {
     display: flex;
