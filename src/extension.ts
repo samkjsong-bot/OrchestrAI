@@ -4282,12 +4282,13 @@ PATH RULES: paths are relative to workspace root. Don't prefix with "${gWsBase}/
             customCfg, history, effectiveDecision.effort, onChunk,
             systemPrompt, this._currentAbort?.signal,
           )
+          log.info('custom', `dispatch done: model=${customCfg.name}, contentLen=${result?.content?.length ?? 0}`)
         }
         // 성공 시 루프 탈출
         break
       } catch (err) {
         const errMsg = err instanceof Error ? err.message : '알 수 없는 오류'
-        log.error(currentModel, errMsg)
+        log.error(currentModel, `dispatch catch: ${errMsg}`)
         finalError = err
 
         const nextModel = fallbackChain[attempt + 1]
@@ -4369,6 +4370,7 @@ PATH RULES: paths are relative to workspace root. Don't prefix with "${gWsBase}/
       routing: effectiveDecision,
       timestamp: Date.now(),
     }
+    log.info('save', `pushing assistant msg: model=${effectiveDecision.model}, actualModel=${actualModel}, contentLen=${finalContent.length}, id=${assistantMsgId}`)
     // 일반 모드는 strip OFF — 본인 의견까지 지우는 부작용 더 컸음.
     // team 은 위에서 좁은 패턴만 strip 함.
     this._messages.push(assistantMsg)
