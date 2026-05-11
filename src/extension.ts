@@ -1748,9 +1748,15 @@ ${hit.kind === 'cmd' ? 'When done, the AI! comment line itself can stay — user
             this._webviewReady = true
             this._lastWebviewReadyInstance = msg.instanceId
             await this._pushWebviewState(`ready${msg.instanceId ? `:${msg.instanceId}` : ''}`)
+            // custom providers (mention popup 용) 재push — 첫 push 가 constructor 에서 일어났지만
+            // 그땐 webview 가 아직 message listener 등록 안 됐을 수 있음.
+            this._postCustomProviders()
             // Reload Window 직후 webview 의 message 핸들러가 100ms 안에 등록 안 돼 첫 push 가
             // 손실되는 케이스 방지 — 500ms / 1.5s 후 한 번씩 더 보낸다 (idempotent).
-            setTimeout(() => void this._pushWebviewState('ready-retry-500ms'), 500)
+            setTimeout(() => {
+              void this._pushWebviewState('ready-retry-500ms')
+              this._postCustomProviders()
+            }, 500)
             setTimeout(() => void this._pushWebviewState('ready-retry-1500ms'), 1500)
             break
           case 'requestRehydrate':
