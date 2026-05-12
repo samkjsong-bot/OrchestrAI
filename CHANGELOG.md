@@ -1,5 +1,17 @@
 # Changelog
 
+## v0.1.28 — 2026-05-11 (v0.1.27 team mode hang hotfix)
+
+v0.1.27 의 steering 변경 (`ControllableUserStream` 항상 사용) 가 team mode 에서 hang 유발:
+- streaming input mode 에서 Claude SDK iterator 는 input stream 이 끝날 때까지 yield 계속함
+- `ControllableUserStream` 은 push 또는 close 가 와야 닫힘
+- callClaude 의 `finally` 에서 close 호출하지만, for-await 가 안 끝나니 finally 도 안 옴 → deadlock
+- 사용자 화면: team mode 가 consult_gemini 완료 후 멈춤
+
+### Fix
+- claudeProvider for-await 안에서 `msg.type === 'result'` 감지 시 즉시 `steeringStream.close()` 호출
+- 이러면 iterator 가 끝나면서 for-await 정상 종료 → finally 도 정상 실행
+
 ## v0.1.27 — 2026-05-11 (Custom provider 1급 시민화 + Steering)
 
 ### Custom Provider (Ollama / LM Studio / OpenRouter) 본격 통합

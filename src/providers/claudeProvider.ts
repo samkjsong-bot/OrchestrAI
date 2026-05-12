@@ -342,6 +342,12 @@ export async function callClaude(
         inputTokens = msg.usage.input_tokens ?? 0
         outputTokens = msg.usage.output_tokens ?? 0
       }
+      // ★ 핵심 — streaming input mode 에서 SDK iterator 는 input stream 이 끝날 때까지 yield 계속함.
+      // result 메시지 도착 == 이 turn 완료. steering stream 을 명시적으로 close 해서 iterator 끝냄.
+      // (안 그러면 team mode 같은 multi-tool turn 후 SDK 가 다음 user message 기다리며 hang)
+      if (steeringStream) {
+        try { steeringStream.close() } catch {}
+      }
       // SDK가 가끔 is_error: true 인데 subtype: 'success' 같은 모순된 result 보냄
       // (예: 정상 응답이지만 stream 일부 abort, retry 등). subtype이 명확한 에러일 때만 throw.
       if (msg.is_error && msg.subtype !== 'success') {
