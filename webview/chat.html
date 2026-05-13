@@ -178,6 +178,7 @@
   .model-filter-btn.claude.active { color: var(--claude); border-color: var(--claude-glow); background: var(--claude-dim); }
   .model-filter-btn.codex.active { color: var(--codex); border-color: var(--codex-glow); background: var(--codex-dim); }
   .model-filter-btn.gemini.active { color: var(--gemini); border-color: var(--gemini-glow); background: var(--gemini-dim); }
+  .model-filter-btn.custom.active { color: #e7c5ff; border-color: rgba(231,197,255,0.55); background: rgba(231,197,255,0.10); }
 
   /* ?? ROUTING BADGE ?? */
   .routing-event {
@@ -870,6 +871,7 @@
   .override-btn.active-codex { color: var(--codex); border-color: var(--codex-glow); background: var(--codex-dim); }
   .override-btn.active-gemini { color: var(--gemini); border-color: var(--gemini-glow); background: var(--gemini-dim); }
   .override-btn.active-auto { color: var(--router); border-color: #fb923c33; background: #fb923c11; }
+  .override-btn.active-custom { color: #e7c5ff; border-color: rgba(231,197,255,0.55); background: rgba(231,197,255,0.10); }
   .override-btn.active-argue { color: #f9a8d4; border-color: #f9a8d433; background: #f9a8d411; }
   .override-btn.active-team { color: #fbbf24; border-color: #fbbf2433; background: #fbbf2411; }
   .override-btn.active-loop { color: #34d399; border-color: #34d39933; background: #34d39911; }
@@ -1181,6 +1183,16 @@
   .argue-row .label.claude { color: var(--claude); }
   .argue-row .label.codex { color: var(--codex); }
   .argue-row .label.gemini { color: var(--gemini); }
+  .argue-total-row {
+    display: grid;
+    grid-template-columns: 80px 1fr 1fr 60px;
+    gap: 8px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    padding: 2px 0;
+  }
+  .argue-total-row .argue-total-model { font-weight: 600; }
+  .argue-total-row .argue-total-cell { color: var(--text-dim); }
   .argue-bar-wrap {
     height: 6px;
     background: var(--surface2);
@@ -3075,14 +3087,24 @@
         break
       }
       case 'customProviders': {
-        // 사용자 정의 OpenAI-compatible providers — mention popup 에 동적 추가
-        CUSTOM_MENTIONS = (msg.providers || []).map(p => ({
+        // 사용자 정의 OpenAI-compatible providers — mention popup + 상단 filter-bar + override dropdown 에 동적 추가
+        const providers = msg.providers || []
+        CUSTOM_MENTIONS = providers.map(p => ({
           id: p.name,
           label: p.name,
           icon: '🔧',
           hint: `${p.model} @ ${p.baseUrl}`,
           kind: 'custom',
         }))
+        renderCustomProviderControls(providers)
+        break
+      }
+      case 'steerRequeue': {
+        // Claude 외 모드에서 📤 steer 누른 메시지 — webview 큐 맨 앞에 다시 넣기.
+        // generationEnd 때 _drainQueue 가 자동 dispatch → 메시지 분실 X.
+        const id = `q-${Date.now()}-${Math.random().toString(36).slice(2,7)}`
+        messageQueue.unshift({ id, text: msg.text || '', attachments: msg.attachments || [] })
+        renderMessageQueue()
         break
       }
       case 'appendInput': {
@@ -3184,6 +3206,16 @@
         // argue 끝나도 board 는 명시적으로 visible 유지 — auto 회귀 후에도 점수 계속 보임.
         // 다음 argue 시작 시 initArgueBoard() 가 재초기화.
         document.getElementById('argue-board').classList.add('visible')
+        // argue 토큰 totals 카드 — input/output/총합 + 가장 길게 답한 모델 식별.
+        if (msg.totals) showArgueTotalsCard(msg.totals, msg.mode, msg.outputCapKR)
+        break
+      case 'argueTurnTokens':
+        // 라운드별 input/output 토큰 — 라이브 표시 (옵션, 디버깅용으로 routing-badge 한 줄).
+        showArgueTurnTokens(msg.round, msg.model, msg.input, msg.output)
+        break
+      case 'argueSummarizing':
+        // Haiku 가 라운드 응답 압축 중 — 짧은 thinking 표시.
+        showArgueSummarizingHint(msg.round, msg.model)
         break
       case 'rehydrate':
         rehydrateMessages(msg.messages)
@@ -3234,6 +3266,18 @@
         break
       case 'contextSent':
         showContextSentEvent(msg)
+        break
+      case 'contextBundle':
+        // directive Phase 1 — token-budgeted context 진단 정보 (intent / level / mode).
+        showContextBundleBadge(msg)
+        break
+      case 'tokenReceipt':
+        // directive 10.8 / 17절 — 한 모델에 얼마나 보냈는지 영수증.
+        showTokenReceipt(msg.short, msg.receipt, msg.detail)
+        break
+      case 'geminiCacheStatus':
+        // directive Phase 3 — Gemini API Context Cache hit/miss 안내.
+        showGeminiCacheBadge(msg)
         break
       case 'rollbackResult':
         showToast(msg.message)
@@ -3950,6 +3994,81 @@
     updateArgueBoard(scoreboard)
   }
 
+  // 라운드별 토큰 라이브 표시 — routing-event 한 줄, 작은 디버그 라벨.
+  function showArgueTurnTokens(round, model, input, output) {
+    const messages = document.getElementById('messages')
+    const el = document.createElement('div')
+    el.className = 'routing-event'
+    el.innerHTML = `
+      <div class="routing-line"></div>
+      <div class="routing-badge" style="color:var(--text-muted);border-color:var(--border);background:transparent;font-size:9px;font-family:'JetBrains Mono',monospace">
+      R${round} ${model}: in ${input.toLocaleString()} / out ${output.toLocaleString()} tok
+      </div>
+      <div class="routing-line"></div>`
+    messages.appendChild(el)
+    scrollIfNearBottom(messages)
+  }
+
+  function showArgueSummarizingHint(round, model) {
+    const messages = document.getElementById('messages')
+    const el = document.createElement('div')
+    el.className = 'routing-event'
+    el.dataset.argueSummarize = String(round)
+    el.innerHTML = `
+      <div class="routing-line"></div>
+      <div class="routing-badge" style="color:#a78bfa;border-color:rgba(167,139,250,0.4);background:rgba(167,139,250,0.08);font-size:9px">
+      ⊟ R${round} ${model} 요약 중... (다음 라운드 input 절약)
+      </div>
+      <div class="routing-line"></div>`
+    messages.appendChild(el)
+    scrollIfNearBottom(messages)
+    // 2초 후 자동 fade-out (다음 라운드 시작 시 이미 사라져야 깔끔).
+    setTimeout(() => { try { el.remove() } catch {} }, 2500)
+  }
+
+  // Argue 종료 카드 — 전체 input/output/총합, 가장 길게 답한 모델, 라운드 수.
+  function showArgueTotalsCard(totals, mode, outputCapKR) {
+    if (!totals) return
+    const messages = document.getElementById('messages')
+    const el = document.createElement('div')
+    el.className = 'msg'
+    const byModelRows = Object.entries(totals.byModel || {})
+      .map(([m, t]) => {
+        const tot = (t && typeof t === 'object') ? t : { input: 0, output: 0, rounds: 0 }
+        const hot = m === totals.maxOutputModel ? ' style="color:#fb923c"' : ''
+        return `<div class="argue-total-row"${hot}>
+          <span class="argue-total-model">${escapeHtml(m)}</span>
+          <span class="argue-total-cell">↓ ${tot.input.toLocaleString()}</span>
+          <span class="argue-total-cell">↑ ${tot.output.toLocaleString()}</span>
+          <span class="argue-total-cell">×${tot.rounds}</span>
+        </div>`
+      }).join('')
+    const maxNote = totals.maxOutputModel
+      ? `<span style="color:#fb923c">가장 길게 답함: <b>${escapeHtml(totals.maxOutputModel)}</b> (${totals.maxOutputTokens.toLocaleString()} tok)</span>`
+      : ''
+    el.innerHTML = `<div class="bubble" style="background:rgba(167,139,250,0.06);border:1px solid rgba(167,139,250,0.25)">
+      <div class="msg-header">
+        <span class="model-tag" style="color:#a78bfa">⚖ Argue 토큰 요약</span>
+        <span class="effort-tag">${escapeHtml(mode || '?')} · cap ${outputCapKR ?? '?'}자</span>
+      </div>
+      <div class="msg-content" style="font-family:'JetBrains Mono',monospace;font-size:11px;line-height:1.7">
+        <div>총 ${totals.rounds} 라운드 · input <b>${totals.inputTokens.toLocaleString()}</b> · output <b>${totals.outputTokens.toLocaleString()}</b> · total <b>${totals.totalTokens.toLocaleString()}</b> tok</div>
+        ${maxNote ? `<div style="margin-top:4px">${maxNote}</div>` : ''}
+        <div style="margin-top:8px;border-top:1px solid var(--border);padding-top:6px">
+          <div class="argue-total-row" style="color:var(--text-muted)">
+            <span class="argue-total-model">model</span>
+            <span class="argue-total-cell">↓ input</span>
+            <span class="argue-total-cell">↑ output</span>
+            <span class="argue-total-cell">rounds</span>
+          </div>
+          ${byModelRows}
+        </div>
+      </div>
+    </div>`
+    messages.appendChild(el)
+    scrollIfNearBottom(messages)
+  }
+
   function appendVerdictUnderMessage(msgId, verdict) {
     const msgEl = document.getElementById(`msg-${msgId}`)
     if (!msgEl) return
@@ -3975,6 +4094,49 @@
       const model = el.dataset.model || ['claude', 'codex', 'gemini'].find(m => el.classList.contains(m)) || ''
       el.style.display = activeModelFilter === 'all' || model === activeModelFilter ? '' : 'none'
     })
+  }
+
+  // customProviders 메시지 받으면 호출 — 상단 filter-bar 와 override-bar dropdown 에 동적 버튼 추가.
+  // 이전 동적 버튼은 data-custom="1" 마커로 식별해서 매 호출마다 제거 후 다시 추가 (provider 추가/삭제 즉시 반영).
+  function renderCustomProviderControls(providers) {
+    // ── model-filter-bar ──
+    const filterBar = document.getElementById('model-filter-bar')
+    if (filterBar) {
+      filterBar.querySelectorAll('[data-custom="1"]').forEach(n => n.remove())
+      for (const p of providers) {
+        const btn = document.createElement('button')
+        btn.className = 'model-filter-btn custom'
+        btn.dataset.filter = `custom:${p.name}`
+        btn.dataset.custom = '1'
+        btn.textContent = p.name
+        btn.title = `${p.model} @ ${p.baseUrl}`
+        btn.onclick = () => setModelFilter(`custom:${p.name}`, btn)
+        filterBar.appendChild(btn)
+      }
+    }
+    // ── route-popup (override-bar dropdown) ──
+    const popup = document.getElementById('route-popup')
+    if (popup) {
+      popup.querySelectorAll('[data-custom="1"]').forEach(n => n.remove())
+      for (const p of providers) {
+        const item = document.createElement('button')
+        item.className = 'route-item'
+        item.dataset.custom = '1'
+        const label = `🔧 ${p.name}`
+        item.textContent = label
+        item.title = `${p.model} @ ${p.baseUrl} — 이 custom provider 로 강제 라우팅`
+        item.onclick = () => {
+          setOverride(null, `custom:${p.name}`)
+          pickRouteLabel(label, false)
+        }
+        popup.appendChild(item)
+      }
+    }
+    // 현재 활성 필터가 삭제된 custom 모델이면 'all' 로 fallback
+    if (activeModelFilter.startsWith('custom:')) {
+      const stillExists = providers.some(p => `custom:${p.name}` === activeModelFilter)
+      if (!stillExists) setModelFilter('all', document.querySelector('.model-filter-btn[data-filter="all"]'))
+    }
   }
 
   // ── 대화 복원 ──
@@ -4650,6 +4812,70 @@
     scrollIfNearBottom(messages)
   }
 
+  // directive Phase 1 — 토큰 예산 시작 시 한 줄 안내 (intent / mode / level).
+  function showContextBundleBadge(msg) {
+    const messages = document.getElementById('messages')
+    const el = document.createElement('div')
+    el.className = 'routing-event'
+    const levelNames = ['Selection', 'ActiveSymbol', 'ActiveFile', 'RelatedFiles', 'ProjectSummary+Diff', 'FullContext']
+    const levelLabel = levelNames[msg.contextLevel] ?? `L${msg.contextLevel}`
+    const warn = (msg.warnings && msg.warnings.length > 0) ? ` ⚠ ${msg.warnings.length}` : ''
+    el.innerHTML = `
+      <div class="routing-line"></div>
+      <div class="routing-badge" style="color:#a78bfa;border-color:rgba(167,139,250,0.4);background:rgba(167,139,250,0.08);font-size:9px"
+           title="${msg.warnings ? msg.warnings.join('\n') : ''}">
+      ⊟ ${msg.mode} · ${msg.intent} · ${levelLabel}${warn}
+      </div>
+      <div class="routing-line"></div>`
+    messages.appendChild(el)
+    scrollIfNearBottom(messages)
+  }
+
+  // Gemini API Context Cache 상태 — 호출 직전에 한 줄, hit / new / cached 토큰 표시.
+  function showGeminiCacheBadge(msg) {
+    const messages = document.getElementById('messages')
+    const el = document.createElement('div')
+    el.className = 'routing-event'
+    const icon = msg.hit ? '✓ HIT' : '↑ NEW'
+    const color = msg.hit ? '#4ade80' : '#a78bfa'
+    const detail = `cached ${(msg.cachedTokens || 0).toLocaleString()} tok (재전송 X) + dynamic ${(msg.dynamicInput || 0).toLocaleString()} tok 만 전송`
+    el.innerHTML = `
+      <div class="routing-line"></div>
+      <div class="routing-badge" style="color:${color};border-color:${color}44;background:${color}11;font-size:9px;font-family:'JetBrains Mono',monospace"
+           title="${detail}">
+      ⚡ Gemini cache ${icon} · ${msg.model || ''}
+      </div>
+      <div class="routing-line"></div>`
+    messages.appendChild(el)
+    scrollIfNearBottom(messages)
+  }
+
+  // 모델 응답 직후 한 줄 영수증 — "Balanced: 84% saved (18,400 → 3,200 tok)".
+  // 클릭하면 toast 로 전체 detail (어떤 파일 / 어떤 섹션 보냈는지) 표시.
+  function showTokenReceipt(short, receipt, detail) {
+    if (!short || !receipt) return
+    const messages = document.getElementById('messages')
+    const el = document.createElement('div')
+    el.className = 'routing-event'
+    // 토큰 절약 컬러 — 50%+ 면 초록, 그 외 muted.
+    const saved = receipt.rawCandidateTokens > 0
+      ? Math.round((1 - receipt.finalSentTokens / receipt.rawCandidateTokens) * 100)
+      : 0
+    const color = saved >= 50 ? '#4ade80' : 'var(--text-muted)'
+    const detailEsc = (detail || '').replace(/'/g, '&#39;').replace(/"/g, '&quot;').slice(0, 1200)
+    el.innerHTML = `
+      <div class="routing-line"></div>
+      <button class="routing-badge token-receipt" style="color:${color};border-color:rgba(74,222,128,0.3);background:transparent;font-size:9px;font-family:'JetBrains Mono',monospace;cursor:pointer"
+              data-detail="${detailEsc}"
+              onclick="(function(b){ try { navigator.clipboard.writeText(b.dataset.detail); } catch(e){} showToast('Receipt 복사됨'); })(this)"
+              title="${detailEsc}">
+      ${escapeHtml(short)}
+      </button>
+      <div class="routing-line"></div>`
+    messages.appendChild(el)
+    scrollIfNearBottom(messages)
+  }
+
   let thinkingEl = null
   function showThinking() {
     const messages = document.getElementById('messages')
@@ -4935,10 +5161,13 @@
     document.querySelectorAll('.override-btn').forEach(b => {
       b.className = 'override-btn';
     });
-    // dropdown 으로 단일 모델 선택한 경우 btn 이 null — auto/claude/codex/gemini 는 route-pick-btn 이 받음
+    // dropdown 으로 단일 모델 선택한 경우 btn 이 null — auto/claude/codex/gemini/custom: 는 route-pick-btn 이 받음
     if (mode === 'auto' || mode === 'claude' || mode === 'codex' || mode === 'gemini') {
       const pickBtn = document.getElementById('route-pick-btn')
       if (pickBtn) pickBtn.classList.add('active-' + mode)
+    } else if (typeof mode === 'string' && mode.startsWith('custom:')) {
+      const pickBtn = document.getElementById('route-pick-btn')
+      if (pickBtn) pickBtn.classList.add('active-custom')
     } else if (btn) {
       btn.classList.add('active-' + mode);
     }
@@ -4955,6 +5184,11 @@
       const labels = { auto: '✦ auto', claude: '● claude', codex: '○ codex', gemini: '◆ gemini' }
       const lbl = document.getElementById('route-pick-label')
       if (lbl) lbl.textContent = labels[mode] || '✦ auto'
+    } else if (typeof mode === 'string' && mode.startsWith('custom:')) {
+      const pickBtn = document.getElementById('route-pick-btn')
+      if (pickBtn) pickBtn.classList.add('active-custom')
+      const lbl = document.getElementById('route-pick-label')
+      if (lbl) lbl.textContent = `🔧 ${mode.slice(7)}`
     } else {
       document.querySelectorAll('.override-btn').forEach(b => {
         const onclick = b.getAttribute('onclick') || ''
@@ -5287,7 +5521,7 @@
       //   📤 steer — 현재 LLM 한테 push (abort X, LLM 이 판단)
       //   ⚡ 중단 — 현재 작업 abort 후 이 메시지 처리
       const steerBtn = isFirst
-        ? `<button class="queued-msg-btn steer" onclick="steerActiveMsg('${q.id}')" title="현재 진행 중인 LLM 에게 이 메시지를 push — LLM 이 판단해서 일시정지하거나 마무리 후 정리. Claude 모드 한정.">📤 steer</button>`
+        ? `<button class="queued-msg-btn steer" onclick="steerActiveMsg('${q.id}')" title="📤 우선 처리. Claude 면 진행 중인 LLM 에 즉시 push (LLM 이 판단). 그 외(Codex/Gemini/argue/team/custom)는 현재 턴 끝나자마자 우선 dispatch.">📤 steer</button>`
         : ''
       const abortBtn = isFirst
         ? `<button class="queued-msg-btn interrupt" onclick="interruptQueueMsg('${q.id}')" title="현재 작업 즉시 abort + 이 메시지 바로 처리.">⚡ 중단</button>`

@@ -63,57 +63,55 @@ export function buildTeamMcpServer(ctx: TeamMcpContext) {
     ),
   )
 
+  // runner 없으면 tool 자체를 등록 안 함 — 그래야 Claude 가 비활성 모델 호출 시도 자체 안 함.
+  // (예: 사용자가 환경설정에서 Codex 비활성 → runCodexAgent undefined → consult_codex 미등록.)
+  const codexTool = ctx.runCodexAgent ? [tool(
+    'consult_codex',
+    'Delegate a coding task to Codex (OpenAI GPT-5). Codex runs a FULL agent loop with workspace tools (read_file/write_file/replace_in_file/list_files/mcp) and ACTUALLY modifies files. Use for: writing code, implementing features, fixing bugs, generating boilerplate. Pass a CONCRETE task with file paths + requirements + acceptance criteria. Returns Codex\'s summary after files are written.',
+    {
+      task: z.string().describe('Specific coding task with file paths, requirements, and acceptance criteria'),
+    },
+    async ({ task }: { task: string }) => {
+      activity(`📤 → Codex: ${task.slice(0, 120)}${task.length > 120 ? '…' : ''}`)
+      try {
+        const result = await ctx.runCodexAgent!(task)
+        activity(`📥 ← Codex (${result.outputTokens} tok)`)
+        return { content: [{ type: 'text' as const, text: result.content }] }
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err)
+        activity(`❌ Codex 실패: ${msg}`)
+        return { content: [{ type: 'text' as const, text: `Codex error: ${msg}` }] }
+      }
+    },
+  )] : []
+
+  const geminiTool = ctx.runGeminiAgent ? [tool(
+    'consult_gemini',
+    'Delegate to Gemini for: long-context analysis (whole codebase scan), summarization, quick lookups. Runs FULL agent loop — can read/write files too. Uses Google free tier. NOT for image generation (use generate_image).',
+    {
+      question: z.string().describe('Focused question or task'),
+    },
+    async ({ question }: { question: string }) => {
+      activity(`📤 → Gemini: ${question.slice(0, 120)}${question.length > 120 ? '…' : ''}`)
+      try {
+        const result = await ctx.runGeminiAgent!(question)
+        activity(`📥 ← Gemini (${result.outputTokens} tok)`)
+        return { content: [{ type: 'text' as const, text: result.content }] }
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err)
+        activity(`❌ Gemini 실패: ${msg}`)
+        return { content: [{ type: 'text' as const, text: `Gemini error: ${msg}` }] }
+      }
+    },
+  )] : []
+
   return createSdkMcpServer({
     name: 'orchestrai-team',
     version: '1.0.0',
     tools: [
       ...customTools,
-      tool(
-        'consult_codex',
-        'Delegate a coding task to Codex (OpenAI GPT-5). Codex runs a FULL agent loop with workspace tools (read_file/write_file/replace_in_file/list_files/mcp) and ACTUALLY modifies files. Use for: writing code, implementing features, fixing bugs, generating boilerplate. Pass a CONCRETE task with file paths + requirements + acceptance criteria. Returns Codex\'s summary after files are written.',
-        {
-          task: z.string().describe('Specific coding task with file paths, requirements, and acceptance criteria'),
-        },
-        async ({ task }) => {
-          if (!ctx.runCodexAgent) {
-            return { content: [{ type: 'text' as const, text: 'ERROR: Codex agent runner not wired. Single-shot fallback would not write files.' }] }
-          }
-          activity(`📤 → Codex: ${task.slice(0, 120)}${task.length > 120 ? '…' : ''}`)
-          try {
-            const result = await ctx.runCodexAgent(task)
-            activity(`📥 ← Codex (${result.outputTokens} tok)`)
-            return { content: [{ type: 'text' as const, text: result.content }] }
-          } catch (err) {
-            const msg = err instanceof Error ? err.message : String(err)
-            activity(`❌ Codex 실패: ${msg}`)
-            return { content: [{ type: 'text' as const, text: `Codex error: ${msg}` }] }
-          }
-        },
-      ),
-
-      tool(
-        'consult_gemini',
-        'Delegate to Gemini for: long-context analysis (whole codebase scan), summarization, quick lookups. Runs FULL agent loop — can read/write files too. Uses Google free tier. NOT for image generation (use generate_image).',
-        {
-          question: z.string().describe('Focused question or task'),
-        },
-        async ({ question }) => {
-          if (!ctx.runGeminiAgent) {
-            return { content: [{ type: 'text' as const, text: 'ERROR: Gemini agent runner not wired.' }] }
-          }
-          activity(`📤 → Gemini: ${question.slice(0, 120)}${question.length > 120 ? '…' : ''}`)
-          try {
-            const result = await ctx.runGeminiAgent(question)
-            activity(`📥 ← Gemini (${result.outputTokens} tok)`)
-            return { content: [{ type: 'text' as const, text: result.content }] }
-          } catch (err) {
-            const msg = err instanceof Error ? err.message : String(err)
-            activity(`❌ Gemini 실패: ${msg}`)
-            return { content: [{ type: 'text' as const, text: `Gemini error: ${msg}` }] }
-          }
-        },
-      ),
-
+      ...codexTool,
+      ...geminiTool,
       tool(
         'generate_image',
         'Generate an image with Gemini and save it inside the workspace. Use for: cover images, mockups, icons, illustrations. Returns the saved file path. Requires Gemini API key (separate from OAuth).',

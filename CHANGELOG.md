@@ -1,5 +1,50 @@
 # Changelog
 
+## v0.1.29 — 2026-05-13 (Token-aware context + Argue 폭주 fix + Gemini Context Cache + 누적 hotfix)
+
+큰 묶음. v0.1.28 publish 이후 누적된 hotfix 4건 + directive 기반 Phase 1 (token budgeting) + Argue 토큰 폭주 패치 + Phase 3 (Gemini Context Cache) 까지.
+
+### Token-Aware Multi-Model Orchestration (directive Phase 1)
+멀티모델 = 토큰 N배 곱셈 → 모델별 최소 컨텍스트 라우팅으로 전환.
+
+- **TokenMode**: `orchestrai.contextWindow` 가 이제 토큰 예산 모드 = narrow→Eco / default→Balanced / wide→Deep / **full→Full Context (매 요청 명시 확인)**
+- **ContextLevel ladder**: SelectionOnly → ActiveSymbol → ActiveFileFocused → RelatedFiles → ProjectSummaryPlusDiff → FullContextExplicit. intent 와 mode 가 함께 결정
+- **Intent classifier** (heuristic): explain / bug_fix / implement / refactor / write_tests / review_diff / architecture / debug_runtime_error / dependency_issue / security_review / performance_review / documentation / general_chat 14종
+- **ContextBundle**: 활성 파일 통째 X — selection / focused snippet (정규식 enclosing function 추출) / file head summary / git diff 만 선별
+- **Model-specific projection**: Claude/Codex (expensive expert) 는 좁게 (fileSummary 제외), Gemini 는 넓게 (long-context)
+- **Secret scanner**: `.env`, `*.pem`, `id_rsa`, API key prefix 자동 차단 + 경고
+- **TokenReceipt** 영수증: 매 요청 후 한 줄 — `OrchestrAI Balanced: 84% saved (18,400 → 3,200 tok)`. 클릭 시 detail (어떤 섹션 / 어떤 파일) 클립보드 복사
+- **baseline 계산 정확성**: userQuestion 은 baseline 에서 제외 (message 로 가지 context block 아님). 활성 파일 없으면 영수증 자체 skip — false savings 0
+- **새 setting**: `orchestrai.tokenBudget.enabled` (default true). false 면 v0.1.28 이전 동작
+
+### Argue Mode 토큰 폭주 fix
+Gemini 가 라운드당 3,000-4,000 tok 출력 + raw history 누적 → argue 6라운드 input 20k+ 사고.
+
+- **Output cap (system prompt 명시)**: Eco 400 / Balanced 700 / Deep 1,200 / Full 2,000 한국어 char. Gemini 면 추가 압박 (`[Gemini-specific] You tend to be verbose. ONE focused paragraph only.`)
+- **Compact summary chain**: 각 라운드 응답을 Haiku captain 으로 ~150자 압축 → 다음 라운드 history 는 `[userMsg, ...summaries]` (raw 응답 누적 0)
+- **Judge 도 summary 만**: judge 한테도 raw 응답 X, summary 만 보냄 → judge token 도 차단
+- **Per-round token tracking**: `R3 gemini: in 1,200 / out 850 tok` 한 줄 라이브
+- **Argue 종료 카드**: 총 라운드/input/output/total + 가장 길게 답한 모델 (주황 강조) + 모델별 row
+- **TokenReceipt / judge text 는 절대 다음 라운드 context 로 forward X** — projection / receipt 는 webview 전용, 모델에 안 전달
+
+### Gemini API Context Cache (directive Phase 3)
+큰 static (system prompt) 을 Gemini API 에 한 번 올리고 매 요청은 dynamic 만 전송. 캐시된 input ~25% 단가.
+
+- `geminiCacheManager.ts`: `ensureGeminiCache` (sha1 hash key, TTL 10분, LRU 8 entries) + `callGeminiCached` (REST `:streamGenerateContent?alt=sse`, `cachedContent` 참조)
+- Min token gate: Flash 1024, Pro 4096 (Gemini API 거절 방지)
+- `_runGeminiAgent` 시작 부분에서 cache path 시도 → 실패 시 OAuth + ai-sdk 로 자연 fallback
+- 새 setting: `orchestrai.geminiContextCache.enabled` (default **false** — opt-in. apiKey 등록 필요)
+- UI badge: `⚡ Gemini cache ✓ HIT · gemini-2.5-flash` + tooltip 에 `cached 8,243 tok 재전송 X + dynamic 350 tok 만 전송`
+
+### 누적 Hotfix
+- **@gemma4 응답 저장 안 됨 fix**: `UsageTracker.record('custom:gemma4')` 가 `session['custom:gemma4']` undefined → `.requests++` throw → `_persistMessages()` 도달 못 함 → 메모리만에만 남고 디스크 저장 X 였음. Built-in 외 silent skip + 회귀 test
+- **Steering 다중 모드 fix**: Codex/Gemini/argue/team/custom 에서 📤 누르면 메시지 분실됐음 (toast 만 띄움). 이제 `steerRequeue` 로 webview 가 messageQueue 맨 앞 unshift → 현재 턴 끝나면 우선 dispatch
+- **Custom provider UI 노출 fix**: 상단 model-filter-bar 와 override-bar dropdown 에 정적 4개만 박혀 있어서 custom 안 보였음. `renderCustomProviderControls()` 동적 추가/갱신 (data-custom 마커)
+- **활성 LLM 필터 누락 fix**: team mode 의 `runCodexAgent`/`runGeminiAgent` runner 가 active 무시했음. team consult tool 자체를 active 아니면 등록 안 함 → Claude 호출 시도조차 못 함. loop mode mainModel + boomerang sub-task 도 active 필터 추가
+
+### Tests
+152 → 202 (총 +50). usage(custom: regression) / context(intent / secret / budget / projection / receipt 32) / argueDebate(history + totals + cap 6) / geminiCache(hash + size gate 11).
+
 ## v0.1.28 — 2026-05-11 (v0.1.27 team mode hang hotfix)
 
 v0.1.27 의 steering 변경 (`ControllableUserStream` 항상 사용) 가 team mode 에서 hang 유발:

@@ -68,6 +68,10 @@ export class UsageTracker {
   public sessionStartedAt = Date.now()
 
   record(model: Model, input: number, output: number, isArgue: boolean) {
+    // session/argue 는 built-in 3종만 키로 가짐. custom:<name> 들어오면 undefined.requests++ 로 throw →
+    // 호출자(_runTurn)의 _persistMessages 가 never reach → @custom 메시지가 메모리만에만 남고 저장 안 됨.
+    // 현재 UI 가 custom usage 노출 안 하므로 silent skip.
+    if (model !== 'claude' && model !== 'codex' && model !== 'gemini') return
     const s = this.session[model]
     s.requests++
     s.inputTokens += input

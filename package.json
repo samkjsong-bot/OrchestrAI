@@ -2,7 +2,7 @@
   "name": "orchestrai",
   "displayName": "OrchestrAI",
   "description": "Multi-model AI in one VSCode sidebar — Claude + Codex + Gemini. Auto-routing, model debate, team delegation, until-it-works loop, codebase RAG, multi-model code review, Telegram phone bridge. Zero API billing (uses your existing subscriptions).",
-  "version": "0.1.28",
+  "version": "0.1.29",
   "publisher": "samkj",
   "license": "MIT",
   "icon": "resources/icon.png",
@@ -290,14 +290,26 @@
           "enum": [
             "narrow",
             "default",
-            "wide"
+            "wide",
+            "full"
           ],
           "enumDescriptions": [
-            "Narrow: 최근 메시지 매우 적게 (Claude 20, Codex 10, Gemini 40). 토큰 절약 최대치.",
-            "Default: 적당히 보존 (Claude 60, Codex 40, Gemini 100). 권장.",
-            "Wide: 디테일 최대 보존 (Claude 120, Codex 80, Gemini 200). 긴 작업·복잡한 컨텍스트용. 토큰 사용 ↑."
+            "Narrow / Eco: 최소 토큰. selection 또는 활성 심볼만. 자동 멀티모델 fanout X. 토큰 절약 최대치.",
+            "Default / Balanced: selection·활성 심볼·관련 snippets·관련시 git diff. 권장.",
+            "Wide / Deep: 활성 파일+관련 파일+심볼 그래프+RAG+diff+프로젝트 요약. 복잡한 작업용. 토큰 ↑.",
+            "Full Context: 전 워크스페이스 broad analysis. ⚠ 매 요청 명시 확인. OAuth/API 쿼터 폭주 위험."
           ],
-          "description": "각 모델에 보낼 최근 verbatim 메시지 수. 더 오래된 메시지는 자동 압축됨."
+          "description": "토큰 예산 모드 (directive 6절). narrow=Eco, default=Balanced, wide=Deep, full=Full Context (명시 확인 필요)."
+        },
+        "orchestrai.tokenBudget.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Token-aware context projection 활성화. true 면 활성 파일 통째로 보내는 대신 selection/활성 심볼/요약으로 prompt 구성 → 토큰 영수증 표시. false 면 v0.1.28 이전 동작 (활성 파일 통째로)."
+        },
+        "orchestrai.geminiContextCache.enabled": {
+          "type": "boolean",
+          "default": false,
+          "description": "Gemini API Context Cache 활성화 (directive Phase 3). true + geminiApiKey 등록 시 큰 static system prompt 를 한 번만 Gemini API 에 올려두고 매 요청은 dynamic 부분만 전송. 캐시된 input 은 약 25% 단가, 같은 토큰 재전송 X. 무료 OAuth tier 와 별개 — API 키 사용 (이미지 키 동일). 캐시 못 만들거나 호출 실패 시 OAuth 경로로 자동 fallback."
         },
         "orchestrai.codexEngine": {
           "type": "string",

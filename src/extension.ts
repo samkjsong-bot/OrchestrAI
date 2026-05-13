@@ -11,6 +11,7 @@ import { callCodex, setCodexFallbackNotifier } from './providers/codexProvider'
 import { getCodexMcpClient, disposeCodexMcpClient } from './providers/codexMcpClient'
 import { OrchestrAICompletionProvider } from './providers/inlineCompletion'
 import { callGemini, setGeminiFallbackNotifier, setGeminiApiKey } from './providers/geminiProvider'
+import { ensureGeminiCache, callGeminiCached, geminiCacheStats } from './providers/geminiCacheManager'
 import { callCustomProvider, type CustomProviderConfig } from './providers/customProvider'
 import { fetchPageWithBrowser } from './providers/browserTool'
 import { localeBlock } from './util/locale'
@@ -28,6 +29,16 @@ import { buildTaggedHistory, setContextWindowPreset } from './util/history'
 import { buildIndex, loadIndex, reindexFile, type CodebaseIndex } from './util/codebaseIndex'
 import { retrieve } from './util/retriever'
 import { planBoomerang } from './util/boomerang'
+import { buildContextBundle } from './context/contextBundle'
+import { projectForModel, providerFromModel } from './context/contextProjection'
+import { tokenModeFromSetting } from './context/contextBudget'
+import type { ContextBundle, ModelContextProjection } from './context/types'
+import { createTokenReceipt, formatReceiptShort, formatReceiptDetail, type TokenReceipt } from './util/tokenReceipt'
+import {
+  summarizeDebateTurn, buildArgueHistoryOverride,
+  emptyArgueTotals, addToArgueTotals, argueOutputCapKR,
+  type DebateTurnSummary,
+} from './util/argueDebate'
 import { fetchAgentFromUrl, loadAgentStore, addAgent, removeAgent, setActiveAgent, getActiveAgent } from './util/agentMarketplace'
 import { isQuotaError, summarizeQuotaError } from './util/quota'
 import { TelegramBridge } from './telegram/bridge'
@@ -697,6 +708,8 @@ function buildSystemPrompt(
   mcpTools?: McpToolInfo[],
   permissionMode: PermissionMode = 'auto-edit',
   teamRole?: 'architect' | 'implementer' | 'reviewer',
+  projectedContext?: string,  // ★ Token-budgeted projection — directive Phase 1. 있으면 buildContextBlock(ctx) 대신 사용.
+  argueOutputCapKR?: number,  // ★ Argue 모드 응답 길이 cap (한국어 char). 지정 시 system prompt 에 안내 박힘.
 ): string {
   const selfName = modelLabel(model)
   const peers: Model[] = (['claude', 'codex', 'gemini'] as Model[]).filter(m => m !== model)
@@ -746,11 +759,19 @@ Output style — STRICT:
       : ''
 
   // argue 모드 힌트 (team은 아닐 때만)
+  // 응답 길이 cap (argueOutputCapKR) 가 지정되면 명시 — directive Phase 1, Gemini 가 한 라운드에서 3-4k tok 폭주하던 문제 차단.
+  const argueCapText = argueOutputCapKR
+    ? `\n\n⚠ OUTPUT BUDGET: this is Argue mode. Keep your response under ${argueOutputCapKR} Korean characters (~${Math.round(argueOutputCapKR / 1.5)} English words). One tight paragraph, max two. No headers, no bullet lists, no examples. If you can't cover everything, pick the strongest one point.`
+    : ''
+  // Gemini 특화 — 일반적으로 가장 길게 답함. 추가 압박.
+  const geminiTightening = (argueOutputCapKR && model === 'gemini')
+    ? `\n\n[Gemini-specific] You tend to be verbose. For this Argue turn: ONE focused paragraph only. Skip the "정리:" / "결론:" headers. State your stance, give one reason, stop.`
+    : ''
   const argueBlock = !teamRole && (
     collabHint === 'reply'
-      ? `\n\nARGUE MODE — a peer just answered above. Add your own angle naturally: agree, disagree, build on it, whatever feels right. Keep it conversational and tight.`
+      ? `\n\nARGUE MODE — a peer just answered above. Add your own angle naturally: agree, disagree, build on it, whatever feels right. Keep it conversational and tight.${argueCapText}${geminiTightening}`
       : collabHint === 'first'
-      ? `\n\nARGUE MODE — your peers (${peerNames}) will reply after you. Give your take, they'll respond.`
+      ? `\n\nARGUE MODE — your peers (${peerNames}) will reply after you. Give your take, they'll respond.${argueCapText}${geminiTightening}`
       : ''
   )
 
@@ -941,6 +962,19 @@ Choose per action:
 
   const prompt = `${base}${localeHint}${rulesBlock}${localTools}${mcpBlock}${modeBlock}`
 
+  // Token-budgeted projection (directive Phase 1) — buildContextBlock 대신 박힘.
+  // 모델에 따라 selectedText / focused snippet / fileSummary 만 선별 전달.
+  if (projectedContext) {
+    return `${prompt}
+
+# Editor context (token-budgeted)
+${projectedContext}
+${ctx?.cursorLine ? `Cursor at line ${ctx.cursorLine}.` : ''}
+${ctx?.selectedText ? 'User has selected code — prioritize that selection.' : ''}
+
+You are receiving a token-minimized context bundle. Do not assume unseen files. If the context is insufficient, say exactly what additional file, symbol, or log is needed. Prefer actionable, patch-ready output.`
+  }
+
   if (!ctx) return prompt
 
   return `${prompt}
@@ -960,6 +994,10 @@ class OrchestrAIViewProvider implements vscode.WebviewViewProvider, vscode.Dispo
   private _chatKey = chatStateKey()
   private _override: RouterMode = 'auto'
   private _useFileContext = true
+  // Token-aware context — directive Phase 1.
+  // _doSend 시작 시 한 번 build, _runTurn 에서 projection 만들 때 사용.
+  private _currentBundle?: ContextBundle
+  private _bundleEnabled = false
   private _authStorage: AuthStorage
   private _claudeAuth: ClaudeAuth
   private _codexAuth: CodexAuth
@@ -1639,6 +1677,17 @@ ${hit.kind === 'cmd' ? 'When done, the AI! comment line itself can stay — user
     this._post({ type: 'overrideChanged', mode })
   }
 
+  // directive 6.4 — Full Context Mode 는 매 요청 명시 확인. OAuth/API 쿼터 폭주 방지.
+  private async _confirmFullContextMode(): Promise<boolean> {
+    const result = await vscode.window.showWarningMessage(
+      'Full Context Mode: 활성 파일 전체 + 관련 파일 + 프로젝트 요약을 모든 모델에 보냅니다.\n\nClaude/GPT/Gemini 쿼터 사용량이 크게 늘 수 있습니다. 진행하시겠어요?',
+      { modal: true },
+      '진행',
+      'Balanced 로 진행',
+    )
+    return result === '진행'
+  }
+
   // 1회성 모드 (argue/team/loop/boomerang) 종료 시 auto 로 자동 회귀.
   // 사용자가 부메랑 작업 끝낸 후 follow-up "완성했어?" 같은 거 말하면 그 자체가 또 부메랑으로
   // 처리되는 사고 방지. claude/codex/gemini force 는 사용자 의도이므로 그대로 유지.
@@ -1929,7 +1978,8 @@ ${hit.kind === 'cmd' ? 'When done, the AI! comment line itself can stay — user
           case 'steerActive':
             // 사용자 mid-stream steering — Claude 활성 stream 에 push.
             // Claude 가 다음 tool turn 에서 새 메시지 보고 자율 판단 (일시정지 / 마무리 후 정리 / 등)
-            // 다른 provider 에선 active stream 없으니 그냥 toast.
+            // 다른 provider (Codex/Gemini/argue/team/custom) 는 streaming input 없으므로 webview 큐 front 로 re-insert →
+            // 현재 턴 끝나면 webview 의 _drainQueue 가 자동 dispatch. 메시지 분실 X.
             if (this._activeSteering) {
               this._activeSteering.push(String(msg.text ?? ''))
               this._post({ type: 'toast', message: '📤 steering 전달됨 — AI 가 판단해서 처리' })
@@ -1942,8 +1992,13 @@ ${hit.kind === 'cmd' ? 'When done, the AI! comment line itself can stay — user
               this._post({ type: 'userMessage', message: steerMsg })
               await this._persistMessages()
             } else {
-              // Claude streaming 활성 안 됨 → 일반 큐로 fallback
-              this._post({ type: 'toast', message: '⏳ Claude 외 모드 — 큐로 들어감 (현재 작업 끝나면 처리)' })
+              // active stream 없음 → webview 큐 맨 앞에 다시 넣기. 현재 턴 끝나면 우선 dispatch.
+              this._post({
+                type: 'steerRequeue',
+                text: msg.text ?? '',
+                attachments: msg.attachments ?? [],
+              })
+              this._post({ type: 'toast', message: '📤 다음 턴 시작 시 우선 전달됨' })
             }
             break
           case 'setPermissionMode':
@@ -3318,6 +3373,55 @@ Be concise. Use conventional commit style if commits do.`
     await this._persistMessages()
     this._post({ type: 'userMessage', message: userMsg })
 
+    // ── Token-aware context bundle (directive Phase 1) ──
+    // 토큰 예산 모드에 따라 활성 파일을 selection/focused snippet/요약으로 좁힘.
+    // Full mode 면 명시 확인 받음. tokenBudget.enabled=false 면 v0.1.28 이전 동작 (활성 파일 통째).
+    this._currentBundle = undefined
+    this._bundleEnabled = this._cfg<boolean>('tokenBudget.enabled') !== false
+    if (this._bundleEnabled) {
+      const tokenMode = tokenModeFromSetting(this._cfg<string>('contextWindow') ?? 'default')
+      if (tokenMode === 'full') {
+        const proceed = await this._confirmFullContextMode()
+        if (!proceed) {
+          this._post({ type: 'toast', message: 'Full Context 취소됨 — Balanced 로 진행' })
+          // 사용자가 취소했으니 balanced 로 한 번 보내준다 (이 턴만).
+        }
+        if (proceed) {
+          this._currentBundle = buildContextBundle({
+            userQuestion: userText, mode: 'full',
+            includeActiveFile: !!fileCtx,
+            workspaceRoot: getWorkspaceRoot() ?? undefined,
+            requestId: userMsg.id,
+          })
+        } else {
+          this._currentBundle = buildContextBundle({
+            userQuestion: userText, mode: 'balanced',
+            includeActiveFile: !!fileCtx,
+            workspaceRoot: getWorkspaceRoot() ?? undefined,
+            requestId: userMsg.id,
+          })
+        }
+      } else {
+        this._currentBundle = buildContextBundle({
+          userQuestion: userText, mode: tokenMode,
+          includeActiveFile: !!fileCtx,
+          workspaceRoot: getWorkspaceRoot() ?? undefined,
+          requestId: userMsg.id,
+        })
+      }
+      if (this._currentBundle.safety.warnings.length > 0) {
+        for (const w of this._currentBundle.safety.warnings) log.warn('context', w)
+      }
+      this._post({
+        type: 'contextBundle',
+        requestId: this._currentBundle.requestId,
+        mode: this._currentBundle.mode,
+        intent: this._currentBundle.intent,
+        contextLevel: this._currentBundle.contextLevel,
+        warnings: this._currentBundle.safety.warnings,
+      })
+    }
+
     // auto-argue escalate 는 비활성화 — 사용자 짜증 유발. 멀티모델 원하면 argue 버튼 직접 누르기.
     const runtimeOverride = this._override
 
@@ -3356,6 +3460,12 @@ Be concise. Use conventional commit style if commits do.`
         codex:  { total: 0, turns: 0 },
         gemini: { total: 0, turns: 0 },
       }
+      // Argue token 절약 (directive 후속 patch) — summaries 만 다음 라운드에 전달 + per-round token totals + output cap.
+      const debateSummaries: DebateTurnSummary[] = []
+      const argueTotals = emptyArgueTotals()
+      const argueMode = this._currentBundle?.mode ?? 'balanced'
+      const outputCapKR = argueOutputCapKR(argueMode)
+      const captainForSummarize = getCaptain(await this._authStorage.getStatus())
 
       const skippedModels = new Set<Model>()
       for (let i = 0; i < MAX_TURNS; i++) {
@@ -3369,8 +3479,14 @@ Be concise. Use conventional commit style if commits do.`
         }
         this._postRoutingDecision(decision)
         const prevLen = this._messages.length
+        // 다음 라운드 history = userMsg + 이전 라운드들의 summary (raw 응답 X).
+        // round 1 (i=0) 는 빈 summary 배열 → history = [userMsg] 만.
+        const historyOverride = buildArgueHistoryOverride({
+          userQuestion: userText, summaries: debateSummaries,
+        })
+        const argueRunCtx = { historyOverride, outputCapKR }
         // argue 는 모델 분담이 의미 — fallback 으로 다른 모델이 답하면 hallucination 유발 → noFallback
-        const ok = await this._runTurn(decision, fileCtx, i === 0 ? 'first' : 'reply', userMsg.id, undefined, true)
+        const ok = await this._runTurn(decision, fileCtx, i === 0 ? 'first' : 'reply', userMsg.id, undefined, true, argueRunCtx)
         if (!ok) {
           // 다른 모델은 계속 돌려야 하니 여기 break 안 하고 그 모델만 스킵
           skippedModels.add(model)
@@ -3384,11 +3500,28 @@ Be concise. Use conventional commit style if commits do.`
         if (lastMsg?.role === 'assistant') {
           argueTurns.push({ model: lastMsg.model ?? model, text: lastMsg.content, msgIndex: prevLen })
 
-        // 판정 호출 — captain 모델이 점수 매김. captain='none' 이면 점수 X (verdict=null)
-          const priorForJudge = argueTurns.slice(0, -1).map(t => ({ model: t.model, text: t.text }))
+          // ── token totals — assistantMsg.tokens 는 input+output 합. _usage 가 별도 input/output 알고 있음.
+          // _usage.record 가 직전 turn 토큰을 argue 카운터에 누적. 거기서 빼서 totals.
+          const argueUsageNow = this._usage.getArgue()[model as keyof ReturnType<UsageTracker['getArgue']>] ?? { inputTokens: 0, outputTokens: 0, requests: 0 }
+          // 누적치 - 직전 round 종료 시 누적치 = 이번 라운드 input/output
+          const priorForModel = argueTotals.byModel[model as Model]
+          const inputThisRound = argueUsageNow.inputTokens - (priorForModel?.input ?? 0)
+          const outputThisRound = argueUsageNow.outputTokens - (priorForModel?.output ?? 0)
+          addToArgueTotals(argueTotals, model as Model, inputThisRound, outputThisRound)
+          this._post({ type: 'argueTurnTokens', round: i + 1, model, input: inputThisRound, output: outputThisRound, totals: { ...argueTotals } })
+
+          // ── compact summary 생성 (다음 라운드 input 토큰 절약). Haiku 1회 호출 — 빠르고 저렴.
+          this._post({ type: 'argueSummarizing', round: i + 1, model })
+          const summary = await summarizeDebateTurn({
+            round: i + 1, model: model as Model, text: lastMsg.content, captain: captainForSummarize,
+          })
+          debateSummaries.push(summary)
+
+          // ── 판정 호출 — captain 모델이 점수 매김. captain='none' 이면 점수 X (verdict=null).
+          // judge 한테 보내는 prior 도 summary 만 (raw 응답 X). judge 자체도 token 폭주 차단.
+          const priorForJudge = debateSummaries.slice(0, -1).map(s => ({ model: s.model, text: s.text }))
           this._post({ type: 'argueJudging', model })
-          const captain = getCaptain(await this._authStorage.getStatus())
-          const verdict = await judgeTurn(userText, model, lastMsg.content, priorForJudge, captain)
+          const verdict = await judgeTurn(userText, model, summary.text, priorForJudge, captainForSummarize)
           if (verdict) {
             scoresByModel[model].total += verdict.score
             scoresByModel[model].turns += 1
@@ -3406,7 +3539,13 @@ Be concise. Use conventional commit style if commits do.`
       }
 
       this._inArgue = false
-      this._post({ type: 'argueEnd', scoreboard: scoresByModel })
+      this._post({
+        type: 'argueEnd',
+        scoreboard: scoresByModel,
+        totals: argueTotals,
+        outputCapKR,
+        mode: argueMode,
+      })
       this._revertOverrideAfterOneShot()
       return
     }
@@ -3416,7 +3555,16 @@ Be concise. Use conventional commit style if commits do.`
     if (this._override === 'loop') {
       const MAX_ITERATIONS = 5
       const status = await this._authStorage.getStatus()
-      const mainModel: Model = status.claude ? 'claude' : status.codex ? 'codex' : status.gemini ? 'gemini' : 'claude'
+      // 사용자가 환경설정에서 비활성한 모델은 loop main 으로도 안 씀.
+      const activeForLoop = getActiveProviders()
+      const loopCandidates: Model[] = (['claude', 'codex', 'gemini'] as Model[])
+        .filter(m => activeForLoop.includes(m) && status[m])
+      const mainModel: Model = loopCandidates[0] ?? 'claude'
+      if (loopCandidates.length === 0) {
+        this._post({ type: 'streamError', id: `loop-${Date.now()}`, error: 'loop 모드: 활성+로그인된 모델이 없음 (환경설정 확인)' })
+        this._revertOverrideAfterOneShot()
+        return
+      }
       const root = getWorkspaceRoot()
       const { detectTestCommand, runTests } = await import('./util/testRunner')
       const testCmd = root ? detectTestCommand(root) : null
@@ -3506,8 +3654,25 @@ ${result.failureSummary || result.output.slice(-3000)}
         .filter(m => m.role === 'user' || m.role === 'assistant')
         .slice(-6)
         .map(m => ({ role: m.role as 'user' | 'assistant', content: m.content, model: m.model }))
-      const captain = getCaptain(await this._authStorage.getStatus())
+      const boomStatus = await this._authStorage.getStatus()
+      const captain = getCaptain(boomStatus)
       const plan = await planBoomerang(userText, priorHistory, captain)
+      // 비활성/미로그인 모델에 할당된 sub-task 는 활성 대체 모델로 swap.
+      // 환경설정에서 뺀 모델이 작업하는 사고 방지.
+      if (plan && plan.subTasks.length > 0) {
+        const activeForBoom = getActiveProviders()
+        const boomAvailable: Model[] = (['claude', 'codex', 'gemini'] as Model[])
+          .filter(m => activeForBoom.includes(m) && boomStatus[m])
+        if (boomAvailable.length > 0) {
+          for (const t of plan.subTasks) {
+            if (!boomAvailable.includes(t.model)) {
+              const swapped = boomAvailable[0]
+              log.info('boomerang', `sub-task ${t.id}: model ${t.model} not active/loggedIn → swap to ${swapped}`)
+              t.model = swapped
+            }
+          }
+        }
+      }
       if (!plan || plan.subTasks.length === 0) {
         // planner 가 follow-up 으로 판단 (subTasks 비어있음) → 일반 대화로 fallback
         log.info('boomerang', 'planner returned empty subtasks (follow-up?). Falling back to auto routing.')
@@ -3913,6 +4078,58 @@ ${result.failureSummary || result.output.slice(-3000)}
           throw new Error(`Codex 도구 호출이 ${MAX_CODEX_TOOL_TURNS}턴을 넘었습니다.`)
   }
 
+  // Gemini API Context Cache 경로 — _runGeminiAgent 가 호출. 성공 시 결과 반환, null 이면 caller 가 OAuth fallback.
+  // 큰 static (system prompt) 만 캐시 → 매 요청은 dynamic (history) + cache 참조만.
+  private async _tryGeminiCachedCall(args: {
+    history: Array<{ role: 'user' | 'assistant'; content: string }>
+    effort: Effort
+    systemPrompt: string
+    apiKey: string
+    onChunk: (text: string) => void
+    streamId: string
+  }): Promise<{ content: string; inputTokens: number; outputTokens: number; usedModel: string; cacheHit: boolean; cachedInputTokens: number } | null> {
+    const { history, effort, systemPrompt, apiKey, onChunk, streamId } = args
+    // 사용자 override 우선, 없으면 effort → model.
+    const override = this._cfg<string>('geminiModel')
+    const model = override && override !== 'auto'
+      ? override
+      : (effort === 'high' || effort === 'extra-high') ? 'gemini-2.5-pro' : 'gemini-2.5-flash'
+    // 캐시 보장 — minimum token 미달이면 null 반환.
+    const cached = await ensureGeminiCache({ apiKey, model, systemInstruction: systemPrompt })
+    if (!cached) return null
+    // 호출 — dynamic 만 보냄.
+    const r = await callGeminiCached({
+      apiKey, model, cachedContent: cached.name,
+      dynamicMessages: history, onChunk,
+      abortSignal: this._currentAbort?.signal,
+      generationConfig: { maxOutputTokens: this._geminiMaxOutputFor(effort) },
+    })
+    // UI 알림 — 캐시 hit 여부 + 절약된 토큰.
+    this._post({
+      type: 'geminiCacheStatus',
+      streamId, hit: cached.hit, cacheName: cached.name,
+      cachedTokens: r.cachedInputTokens, dynamicInput: r.inputTokens - r.cachedInputTokens,
+      model,
+    })
+    log.info('gemini-cache', `call ${cached.hit ? 'HIT' : 'NEW'} — cached=${r.cachedInputTokens} dynamic=${r.inputTokens - r.cachedInputTokens} out=${r.outputTokens} tok`)
+    return {
+      content: r.content,
+      inputTokens: r.inputTokens,
+      outputTokens: r.outputTokens,
+      usedModel: model,
+      cacheHit: cached.hit,
+      cachedInputTokens: r.cachedInputTokens,
+    }
+  }
+
+  private _geminiMaxOutputFor(effort: Effort): number {
+    // 모델 자체 max 와 별개로 OrchestrAI 가 한 응답에 안 넘게 하는 conservative cap.
+    if (effort === 'extra-high') return 32_000
+    if (effort === 'high') return 16_000
+    if (effort === 'low') return 4_000
+    return 8_000
+  }
+
   private async _runGeminiAgent(
     history: Array<{ role: 'user' | 'assistant'; content: string }>,
     effort: Effort,
@@ -3920,7 +4137,21 @@ ${result.failureSummary || result.output.slice(-3000)}
     onChunk: (text: string) => void,
     streamId: string,
     turnId?: string,
-  ): Promise<{ content: string; inputTokens: number; outputTokens: number; usedModel?: string }> {
+  ): Promise<{ content: string; inputTokens: number; outputTokens: number; usedModel?: string; cacheHit?: boolean; cachedInputTokens?: number }> {
+    // ── Gemini API Context Cache 경로 (directive Phase 3) ──
+    // 설정 on + apiKey + 캐시 가능한 minimum 토큰 + 툴 미사용 turn 이면 캐시 호출. 실패 시 OAuth 로 fallback.
+    const cacheEnabled = this._cfg<boolean>('geminiContextCache.enabled') === true
+    const apiKey = await this._authStorage.getGeminiApiKey()
+    if (cacheEnabled && apiKey) {
+      try {
+        const cached = await this._tryGeminiCachedCall({
+          history, effort, systemPrompt, apiKey, onChunk, streamId,
+        })
+        if (cached) return cached
+      } catch (err) {
+        log.warn('gemini-cache', `cached call failed, falling back to OAuth: ${err instanceof Error ? err.message : String(err)}`)
+      }
+    }
     const agentHistory = [...history]
     let inputTokens = 0
     let outputTokens = 0
@@ -4005,6 +4236,11 @@ ${result.failureSummary || result.output.slice(-3000)}
     turnId?: string,
     teamRole?: 'architect' | 'implementer' | 'reviewer',
     noFallback = false,  // argue 모드 같이 모델 분담이 의미 있는 흐름에선 fallback 끄고 그 모델만 시도
+    argueCtx?: {
+      // Argue 모드 전용 — directive 15.1, raw history 누적 차단.
+      historyOverride: Array<{ role: 'user' | 'assistant'; content: string }>
+      outputCapKR: number   // system prompt 에 응답 길이 cap 명시
+    },
   ): Promise<boolean> {
     // 쿼터 파산 시 폴백할 모델 순서 (primary가 맨 앞). noFallback 이면 자기 자신만.
     const fallbackChain = noFallback ? [decision.model] : await this._buildFallbackChain(decision.model)
@@ -4020,9 +4256,13 @@ ${result.failureSummary || result.output.slice(-3000)}
     let assistantMsgId = ''
     let finalError: unknown = null
     let retriedThisAttempt = false  // 같은 모델로 1회 retry — quota 에러에서 즉시 폴백 안 하고 잠시 대기 후 같은 모델 한 번 더
+    // 루프 밖에서도 receipt 출력 시 참조 — 마지막 시도의 모델과 projection.
+    let lastModelTried: Model = fallbackChain[0]
+    let lastProjection: ModelContextProjection | undefined
 
     for (let attempt = 0; attempt < fallbackChain.length; attempt++) {
       const currentModel = fallbackChain[attempt]
+      lastModelTried = currentModel
       effectiveDecision = attempt === 0
         ? decision
         : {
@@ -4037,8 +4277,20 @@ ${result.failureSummary || result.output.slice(-3000)}
       const mcpTools = (currentModel === 'codex' || currentModel === 'gemini')
         ? await this._mcp.listTools().catch(() => [])
         : undefined
+      // Token-aware projection — 모델별로 다른 컨텍스트 (directive 12절).
+      // bundle 비활성이거나 없으면 undefined → buildSystemPrompt 가 기존 buildContextBlock 사용.
+      let projection: ModelContextProjection | undefined
+      if (this._bundleEnabled && this._currentBundle) {
+        projection = projectForModel({
+          bundle: this._currentBundle,
+          modelProvider: providerFromModel(String(currentModel)),
+        })
+        lastProjection = projection
+      }
       let systemPrompt = buildSystemPrompt(
         fileCtx, currentModel, collabHint, mcpTools, this._permissionMode, teamRole,
+        projection?.prompt,
+        argueCtx?.outputCapKR,
       )
       // RAG: 관련 파일 컨텍스트 prepend
       const ragCtx = (this as any)._ragContextForCurrentTurn
@@ -4048,7 +4300,10 @@ ${result.failureSummary || result.output.slice(-3000)}
       if (activeAgent) {
         systemPrompt = `# ACTIVE AGENT: ${activeAgent.name}\n${activeAgent.description}\n\n${activeAgent.systemPrompt}\n\n---\n\n${systemPrompt}`
       }
-      const trimmed = buildTaggedHistory(this._messages, currentModel, this._compaction)
+      // Argue 모드면 buildTaggedHistory 건너뛰고 compact summaries 만. directive 15.1.
+      const trimmed = argueCtx
+        ? { messages: argueCtx.historyOverride, totalMessages: argueCtx.historyOverride.length, includedMessages: argueCtx.historyOverride.length, estimatedTokens: 0, trimmed: false }
+        : buildTaggedHistory(this._messages, currentModel, this._compaction)
       const history = trimmed.messages
 
       this._post({
@@ -4085,9 +4340,13 @@ ${result.failureSummary || result.output.slice(-3000)}
           // team 모드면 Claude(architect)에만 동료 호출 툴 주입
           let extraMcp: Record<string, any> | undefined
           if (teamRole === 'architect') {
-            const codexToken = await this._codexAuth.getAccessToken()
-            const codexAccountId = await this._codexAuth.getAccountId()
-            const geminiAvailable = await this._geminiAuth.isLoggedIn()
+            // 사용자가 환경설정에서 비활성한 모델은 team consult tool 에서도 제외 (active=의도).
+            const activeForTeam = getActiveProviders()
+            const codexActive = activeForTeam.includes('codex')
+            const geminiActive = activeForTeam.includes('gemini')
+            const codexToken = codexActive ? await this._codexAuth.getAccessToken() : null
+            const codexAccountId = codexActive ? await this._codexAuth.getAccountId() : null
+            const geminiAvailable = geminiActive ? await this._geminiAuth.isLoggedIn() : false
             const geminiApiKey = await this._authStorage.getGeminiApiKey()
             const teamServer = buildTeamMcpServer({
               codexToken: codexToken ?? undefined,
@@ -4403,6 +4662,26 @@ PATH RULES: paths are relative to workspace root. Don't prefix with "${gWsBase}/
     }
 
     await this._persistMessages()
+    // Token receipt — 이 모델에 얼마나 보냈는지 영수증.
+    // baseline 도 0 이고 final 도 0 이면 비교할 게 없음 (활성 파일 없거나 ctx-btn 끔) — 영수증 skip.
+    if (this._bundleEnabled && this._currentBundle && lastProjection) {
+      const baseline = this._currentBundle.tokenEstimate.rawCandidateTokens
+      const final = lastProjection.tokenEstimate
+      if (baseline > 0 || final > 0) {
+        const receipt = createTokenReceipt({
+          bundle: this._currentBundle,
+          models: [String(lastModelTried)],
+          finalSentTokens: final,
+          perModel: [{
+            model: String(lastModelTried),
+            tokens: final,
+            includedSections: lastProjection.includedSections,
+          }],
+        })
+        log.info('context', formatReceiptShort(receipt))
+        this._post({ type: 'tokenReceipt', receipt, short: formatReceiptShort(receipt), detail: formatReceiptDetail(receipt) })
+      }
+    }
     // Plan 모드면 "Act 로 실행" prompt 를 webview 에 띄움 (Cline 식 Plan→Act 분리 흐름)
     const isPlanComplete = this._permissionMode === 'plan' && !!result.content
     this._post({

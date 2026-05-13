@@ -51,6 +51,18 @@ describe('UsageTracker', () => {
     const u = new UsageTracker()
     expect(u.getFormattedSessionUsage()).toBe('')
   })
+
+  it('custom: 모델은 throw X (built-in 만 트래킹)', () => {
+    // 회귀: session 이 built-in 3종만 키로 가져서 'custom:gemma4' 인덱싱 → undefined.requests++ throw
+    // → _runTurn 의 _persistMessages 가 절대 호출 안 됨 → @custom 응답이 디스크에 저장 안 되는 버그.
+    const u = new UsageTracker()
+    expect(() => u.record('custom:gemma4' as any, 100, 200, false)).not.toThrow()
+    expect(() => u.record('custom:gemma4' as any, 100, 200, true)).not.toThrow()
+    // built-in 카운터엔 안 들어가야 함
+    expect(u.getSession().claude.requests).toBe(0)
+    expect(u.getSession().codex.requests).toBe(0)
+    expect(u.getSession().gemini.requests).toBe(0)
+  })
 })
 
 describe('estimateCost', () => {
