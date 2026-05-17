@@ -1838,6 +1838,7 @@ ${hit.kind === 'cmd' ? 'When done, the AI! comment line itself can stay — user
               'autoGitCommit', 'autoPreview', 'autoOpenDiff', 'aiMagicComments', 'inlineCompletion',
               'codebaseRag.enabled', 'codebaseRag.autoIndex',
               'contextWindow', 'codexEngine', 'confidenceThreshold',
+              'tokenBudget.enabled', 'geminiContextCache.enabled',
             ]
             const prefs: Record<string, any> = {}
             for (const k of PREF_KEYS) prefs[k] = cfg.get(k)
@@ -3500,15 +3501,34 @@ Be concise. Use conventional commit style if commits do.`
         if (lastMsg?.role === 'assistant') {
           argueTurns.push({ model: lastMsg.model ?? model, text: lastMsg.content, msgIndex: prevLen })
 
-          // ── token totals — assistantMsg.tokens 는 input+output 합. _usage 가 별도 input/output 알고 있음.
-          // _usage.record 가 직전 turn 토큰을 argue 카운터에 누적. 거기서 빼서 totals.
-          const argueUsageNow = this._usage.getArgue()[model as keyof ReturnType<UsageTracker['getArgue']>] ?? { inputTokens: 0, outputTokens: 0, requests: 0 }
-          // 누적치 - 직전 round 종료 시 누적치 = 이번 라운드 input/output
+          // ── token totals — _usage 누적치에서 이번 라운드 delta 추출 (input/output + cache 토큰 모두).
+          const argueUsageNow = this._usage.getArgue()[model as keyof ReturnType<UsageTracker['getArgue']>] ?? { inputTokens: 0, outputTokens: 0, requests: 0, cacheReadTokens: 0, cacheCreationTokens: 0, cachedInputTokens: 0 }
           const priorForModel = argueTotals.byModel[model as Model]
           const inputThisRound = argueUsageNow.inputTokens - (priorForModel?.input ?? 0)
           const outputThisRound = argueUsageNow.outputTokens - (priorForModel?.output ?? 0)
-          addToArgueTotals(argueTotals, model as Model, inputThisRound, outputThisRound)
-          this._post({ type: 'argueTurnTokens', round: i + 1, model, input: inputThisRound, output: outputThisRound, totals: { ...argueTotals } })
+          const cacheReadThisRound = (argueUsageNow.cacheReadTokens ?? 0) - (priorForModel?.cacheRead ?? 0)
+          const cacheCreationThisRound = (argueUsageNow.cacheCreationTokens ?? 0) - (priorForModel?.cacheCreation ?? 0)
+          const cachedInputThisRound = (argueUsageNow.cachedInputTokens ?? 0) - (priorForModel?.cachedInput ?? 0)
+          addToArgueTotals(argueTotals, model as Model, inputThisRound, outputThisRound, {
+            cacheRead: cacheReadThisRound,
+            cacheCreation: cacheCreationThisRound,
+            cachedInput: cachedInputThisRound,
+          })
+          // Claude SDK 자동 cache 가 동작했으면 안내 — 새 input 만 작게 보이는 이유 설명.
+          const tokenNote: string | undefined = cacheReadThisRound > 0
+            ? `Claude prompt cache — new ${inputThisRound} + cached_read ${cacheReadThisRound} = processed ${inputThisRound + cacheReadThisRound} tok`
+            : cachedInputThisRound > 0
+            ? `Gemini Context Cache — cached ${cachedInputThisRound} (~25% 단가) + new ${inputThisRound - cachedInputThisRound}`
+            : undefined
+          this._post({
+            type: 'argueTurnTokens',
+            round: i + 1, model,
+            input: inputThisRound, output: outputThisRound,
+            cacheRead: cacheReadThisRound, cacheCreation: cacheCreationThisRound,
+            cachedInput: cachedInputThisRound,
+            note: tokenNote,
+            totals: { ...argueTotals },
+          })
 
           // ── compact summary 생성 (다음 라운드 input 토큰 절약). Haiku 1회 호출 — 빠르고 저렴.
           this._post({ type: 'argueSummarizing', round: i + 1, model })
@@ -4252,7 +4272,16 @@ ${result.failureSummary || result.output.slice(-3000)}
     }
 
     let effectiveDecision: RoutingDecision = decision
-    let result: { content: string; inputTokens: number; outputTokens: number } | null = null
+    let result: {
+      content: string; inputTokens: number; outputTokens: number;
+      usedModel?: string
+      // Claude SDK 자동 prompt cache — 실제 처리량 ≠ 새 청구량 분리 추적.
+      cacheReadInputTokens?: number
+      cacheCreationInputTokens?: number
+      // Gemini API Context Cache (Phase 3) — 우리가 명시 캐시.
+      cacheHit?: boolean
+      cachedInputTokens?: number
+    } | null = null
     let assistantMsgId = ''
     let finalError: unknown = null
     let retriedThisAttempt = false  // 같은 모델로 1회 retry — quota 에러에서 즉시 폴백 안 하고 잠시 대기 후 같은 모델 한 번 더
@@ -4648,7 +4677,11 @@ PATH RULES: paths are relative to workspace root. Don't prefix with "${gWsBase}/
     if (finalContent !== result.content) {
       this._post({ type: 'finalizeContent', id: assistantMsgId, content: finalContent })
     }
-    this._usage.record(effectiveDecision.model, result.inputTokens, result.outputTokens, this._inArgue)
+    this._usage.record(effectiveDecision.model, result.inputTokens, result.outputTokens, this._inArgue, {
+      cacheReadTokens: result.cacheReadInputTokens,
+      cacheCreationTokens: result.cacheCreationInputTokens,
+      cachedInputTokens: result.cachedInputTokens,
+    })
     this._updateUsageStatusBar()
 
     // 자동 git commit (체크포인트) — 변경 파일 있으면 commit + hash 메시지에 첨부

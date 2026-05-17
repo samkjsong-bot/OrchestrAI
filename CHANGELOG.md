@@ -1,5 +1,33 @@
 # Changelog
 
+## v0.1.30 — 2026-05-13 (Cache token 정직성 + Codex MCP 실토큰 시도 + Prefs 패널 토글)
+
+v0.1.29 의 영수증이 "구라" 아니냐는 사용자 지적에 대응. 산수는 맞았지만 provider 마다 보고 방식이 다른 게 라벨링에서 안 드러남.
+
+### Claude SDK 자동 prompt cache 토큰 표시
+- claudeProvider 가 `cache_read_input_tokens` / `cache_creation_input_tokens` 도 반환. UsageTracker.record 가 extras 인자로 같이 누적
+- argue 라운드 줄에 `(+cache_read 4,150)` 표시 — Claude 의 `in=3` 이 misleading 이었던 이유 명시
+- argue 종료 카드: `⚡ Claude prompt cache: 4,150 tok 재사용 (청구 X 처리됨)` 한 줄 추가
+- 로그: `done: in=3 (new) + 4150 (cache_read) + 0 (cache_create) = 4153 processed, out=46`
+
+### Gemini Context Cache 토큰도 같은 경로 통합
+- `_tryGeminiCachedCall` 결과의 `cachedInputTokens` 가 UsageTracker → ArgueTotals → UI 까지 흐름
+- argue 줄: `(cached 2,170 ~25%)` 표시
+
+### Codex MCP 실토큰 시도
+- codexMcpClient 가 result 의 `_meta` / `meta` / `structuredContent.usage` / `usage` 등 표준 후보 위치 모두 탐색
+- 발견하면 실측 사용, 못 찾으면 **한국어 인지 휴리스틱** fallback (한글 1tok/char, 그 외 4char/tok) — 영어 일변도였던 v0.1.29 의 4-char-per-token 보다 한국어에서 정확
+- 로그: `usage from MCP: in=X, out=Y` 또는 `usage estimated (no MCP meta): in=X, out=Y`
+
+### 환경설정 패널에 토글 추가 (settings.json 직접 안 만져도 됨)
+- 새 섹션 **🔢 토큰 절약**:
+  - `Token-aware context projection` 체크박스 (default on)
+  - `Gemini Context Cache (API key 필요)` 체크박스 (default off)
+- 컨텍스트 윈도우 segmented 에 `full` 추가 — `⚠ Full: 전 워크스페이스. 매 요청 확인 모달. OAuth/API 쿼터 폭주 위험.` tooltip
+
+### Tests
+202 → 204 (+2). usage(cache 누적 read/creation/cachedInput).
+
 ## v0.1.29 — 2026-05-13 (Token-aware context + Argue 폭주 fix + Gemini Context Cache + 누적 hotfix)
 
 큰 묶음. v0.1.28 publish 이후 누적된 hotfix 4건 + directive 기반 Phase 1 (token budgeting) + Argue 토큰 폭주 패치 + Phase 3 (Gemini Context Cache) 까지.

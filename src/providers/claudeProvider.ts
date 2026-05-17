@@ -232,7 +232,7 @@ export async function callClaude(
   abortSignal?: AbortSignal,
   modelOverride?: string,  // 내부 폴백용 — extra-high opus 쿼터 파산 시 sonnet으로 재시도
   steeringStream?: ControllableUserStream,  // 외부 push 가능한 streaming input (mid-stream steering)
-): Promise<{ content: string; inputTokens: number; outputTokens: number; usedModel: string }> {
+): Promise<{ content: string; inputTokens: number; outputTokens: number; usedModel: string; cacheReadInputTokens: number; cacheCreationInputTokens: number }> {
   // 마지막 user 메시지에서 attachments 추출 — multimodal 처리용
   let lastAttachments: ExtractedAttachment[] = []
   const processedMessages = messages.map((m, i) => {
@@ -303,6 +303,8 @@ export async function callClaude(
 
   let fullContent = ''
   let inputTokens = 0
+  let cacheReadInputTokens = 0      // SDK 자동 prompt cache 가 재사용한 토큰 — 실제 처리됐지만 청구 안 된 분
+  let cacheCreationInputTokens = 0  // 새로 cache 에 올린 토큰 — 1회성 추가 비용
   let outputTokens = 0
   let apiKeySource: string | undefined
 
@@ -341,6 +343,10 @@ export async function callClaude(
       if (msg.usage) {
         inputTokens = msg.usage.input_tokens ?? 0
         outputTokens = msg.usage.output_tokens ?? 0
+        // SDK 자동 prompt cache — 안 잡으면 input_tokens 만 너무 작게 보임 (실제 처리량 != 청구량).
+        const u = msg.usage as any
+        cacheReadInputTokens = u.cache_read_input_tokens ?? 0
+        cacheCreationInputTokens = u.cache_creation_input_tokens ?? 0
       }
       // ★ 핵심 — streaming input mode 에서 SDK iterator 는 input stream 이 끝날 때까지 yield 계속함.
       // result 메시지 도착 == 이 turn 완료. steering stream 을 명시적으로 close 해서 iterator 끝냄.
@@ -379,6 +385,7 @@ export async function callClaude(
     throw new Error(`rate_limit reached: ${fullContent.slice(0, 200)}`)
   }
 
-  log.info('claude', `done: usedModel=${activeModel}, contentChars=${fullContent.length}, in=${inputTokens}, out=${outputTokens}`)
-  return { content: fullContent, inputTokens, outputTokens, usedModel: activeModel }
+  const totalProcessedInput = inputTokens + cacheReadInputTokens + cacheCreationInputTokens
+  log.info('claude', `done: usedModel=${activeModel}, contentChars=${fullContent.length}, in=${inputTokens} (new) + ${cacheReadInputTokens} (cache_read) + ${cacheCreationInputTokens} (cache_create) = ${totalProcessedInput} processed, out=${outputTokens}`)
+  return { content: fullContent, inputTokens, outputTokens, usedModel: activeModel, cacheReadInputTokens, cacheCreationInputTokens }
 }

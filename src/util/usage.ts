@@ -5,8 +5,11 @@ import { Model } from '../router/types'
 
 export interface ModelUsage {
   requests: number
-  inputTokens: number
+  inputTokens: number          // 새로 청구되는 입력 (cache miss 분)
   outputTokens: number
+  cacheReadTokens?: number     // Claude SDK 자동 prompt cache hit (이미 처리됐지만 청구 X)
+  cacheCreationTokens?: number // 새 cache 생성 시 1회성 추가 비용
+  cachedInputTokens?: number   // Gemini Context Cache 명시 캐시 (~25% 단가)
 }
 
 export interface PlanInfo {
@@ -56,7 +59,16 @@ export function estimateCost(model: Model, actualModel: string | undefined, inTo
   return (inTok * pricing.inputPer1M + outTok * pricing.outputPer1M) / 1_000_000
 }
 
-const empty = (): ModelUsage => ({ requests: 0, inputTokens: 0, outputTokens: 0 })
+const empty = (): ModelUsage => ({
+  requests: 0, inputTokens: 0, outputTokens: 0,
+  cacheReadTokens: 0, cacheCreationTokens: 0, cachedInputTokens: 0,
+})
+
+export interface RecordExtras {
+  cacheReadTokens?: number
+  cacheCreationTokens?: number
+  cachedInputTokens?: number
+}
 
 export class UsageTracker {
   private session: Record<Model, ModelUsage> = {
@@ -67,7 +79,7 @@ export class UsageTracker {
   }
   public sessionStartedAt = Date.now()
 
-  record(model: Model, input: number, output: number, isArgue: boolean) {
+  record(model: Model, input: number, output: number, isArgue: boolean, extras?: RecordExtras) {
     // session/argue 는 built-in 3종만 키로 가짐. custom:<name> 들어오면 undefined.requests++ 로 throw →
     // 호출자(_runTurn)의 _persistMessages 가 never reach → @custom 메시지가 메모리만에만 남고 저장 안 됨.
     // 현재 UI 가 custom usage 노출 안 하므로 silent skip.
@@ -76,12 +88,18 @@ export class UsageTracker {
     s.requests++
     s.inputTokens += input
     s.outputTokens += output
+    s.cacheReadTokens = (s.cacheReadTokens ?? 0) + (extras?.cacheReadTokens ?? 0)
+    s.cacheCreationTokens = (s.cacheCreationTokens ?? 0) + (extras?.cacheCreationTokens ?? 0)
+    s.cachedInputTokens = (s.cachedInputTokens ?? 0) + (extras?.cachedInputTokens ?? 0)
 
     if (isArgue) {
       const a = this.argue[model]
       a.requests++
       a.inputTokens += input
       a.outputTokens += output
+      a.cacheReadTokens = (a.cacheReadTokens ?? 0) + (extras?.cacheReadTokens ?? 0)
+      a.cacheCreationTokens = (a.cacheCreationTokens ?? 0) + (extras?.cacheCreationTokens ?? 0)
+      a.cachedInputTokens = (a.cachedInputTokens ?? 0) + (extras?.cachedInputTokens ?? 0)
     }
   }
 

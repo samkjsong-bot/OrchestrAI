@@ -86,16 +86,32 @@ export function buildArgueHistoryOverride(args: {
 /** Argue 라운드 전체 totals — UI 카드 표시용. */
 export interface ArgueTotals {
   rounds: number
-  inputTokens: number
+  inputTokens: number          // 새로 청구되는 input (cache miss 분)
   outputTokens: number
   totalTokens: number
-  maxOutputModel?: Model     // 가장 길게 답한 모델 (사용자가 "얘가 폭주했다" 식별)
+  maxOutputModel?: Model       // 가장 길게 답한 모델 (사용자가 "얘가 폭주했다" 식별)
   maxOutputTokens: number
-  byModel: Partial<Record<Model, { input: number; output: number; rounds: number }>>
+  cacheReadTokens: number      // Claude SDK 자동 prompt cache hit
+  cacheCreationTokens: number  // Claude SDK cache 생성 비용
+  cachedInputTokens: number    // Gemini Context Cache (~25% 단가)
+  byModel: Partial<Record<Model, {
+    input: number; output: number; rounds: number;
+    cacheRead: number; cacheCreation: number; cachedInput: number;
+  }>>
 }
 
 export function emptyArgueTotals(): ArgueTotals {
-  return { rounds: 0, inputTokens: 0, outputTokens: 0, totalTokens: 0, maxOutputTokens: 0, byModel: {} }
+  return {
+    rounds: 0, inputTokens: 0, outputTokens: 0, totalTokens: 0, maxOutputTokens: 0,
+    cacheReadTokens: 0, cacheCreationTokens: 0, cachedInputTokens: 0,
+    byModel: {},
+  }
+}
+
+export interface RoundCacheExtras {
+  cacheRead?: number
+  cacheCreation?: number
+  cachedInput?: number
 }
 
 export function addToArgueTotals(
@@ -103,20 +119,27 @@ export function addToArgueTotals(
   model: Model,
   inputTokens: number,
   outputTokens: number,
+  cache?: RoundCacheExtras,
 ): ArgueTotals {
   totals.rounds += 1
   totals.inputTokens += inputTokens
   totals.outputTokens += outputTokens
+  totals.cacheReadTokens += cache?.cacheRead ?? 0
+  totals.cacheCreationTokens += cache?.cacheCreation ?? 0
+  totals.cachedInputTokens += cache?.cachedInput ?? 0
   totals.totalTokens = totals.inputTokens + totals.outputTokens
   if (outputTokens > totals.maxOutputTokens) {
     totals.maxOutputTokens = outputTokens
     totals.maxOutputModel = model
   }
   const key = String(model) as Model
-  if (!totals.byModel[key]) totals.byModel[key] = { input: 0, output: 0, rounds: 0 }
+  if (!totals.byModel[key]) totals.byModel[key] = { input: 0, output: 0, rounds: 0, cacheRead: 0, cacheCreation: 0, cachedInput: 0 }
   totals.byModel[key]!.input += inputTokens
   totals.byModel[key]!.output += outputTokens
   totals.byModel[key]!.rounds += 1
+  totals.byModel[key]!.cacheRead += cache?.cacheRead ?? 0
+  totals.byModel[key]!.cacheCreation += cache?.cacheCreation ?? 0
+  totals.byModel[key]!.cachedInput += cache?.cachedInput ?? 0
   return totals
 }
 

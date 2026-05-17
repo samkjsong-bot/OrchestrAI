@@ -7,7 +7,10 @@ describe('UsageTracker', () => {
   it('초기 상태 — 0 토큰', () => {
     const u = new UsageTracker()
     const session = u.getSession()
-    expect(session.claude).toEqual({ requests: 0, inputTokens: 0, outputTokens: 0 })
+    expect(session.claude.requests).toBe(0)
+    expect(session.claude.inputTokens).toBe(0)
+    expect(session.claude.outputTokens).toBe(0)
+    expect(session.claude.cacheReadTokens).toBe(0)
     expect(u.getTotalSessionTokens('claude')).toBe(0)
   })
 
@@ -50,6 +53,25 @@ describe('UsageTracker', () => {
   it('빈 세션 — empty string', () => {
     const u = new UsageTracker()
     expect(u.getFormattedSessionUsage()).toBe('')
+  })
+
+  it('cache 토큰 누적 — Claude SDK auto prompt cache (read/creation)', () => {
+    const u = new UsageTracker()
+    u.record('claude', 50, 200, false, { cacheReadTokens: 2000, cacheCreationTokens: 100 })
+    u.record('claude', 30, 150, false, { cacheReadTokens: 2150, cacheCreationTokens: 0 })
+    const s = u.getSession().claude
+    expect(s.inputTokens).toBe(80)
+    expect(s.cacheReadTokens).toBe(4150)
+    expect(s.cacheCreationTokens).toBe(100)
+  })
+
+  it('cache 토큰 — Gemini Context Cache (cachedInputTokens)', () => {
+    const u = new UsageTracker()
+    u.record('gemini', 300, 200, true, { cachedInputTokens: 2170 })
+    const s = u.getSession().gemini
+    const a = u.getArgue().gemini
+    expect(s.cachedInputTokens).toBe(2170)
+    expect(a.cachedInputTokens).toBe(2170)
   })
 
   it('custom: 모델은 throw X (built-in 만 트래킹)', () => {

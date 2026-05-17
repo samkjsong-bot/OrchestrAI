@@ -1191,6 +1191,9 @@
     font-size: 10px;
     padding: 2px 0;
   }
+  .argue-total-row.with-cache {
+    grid-template-columns: 80px 1fr 1fr 1fr 60px;
+  }
   .argue-total-row .argue-total-model { font-weight: 600; }
   .argue-total-row .argue-total-cell { color: var(--text-dim); }
   .argue-bar-wrap {
@@ -2463,13 +2466,27 @@
       </div>
 
       <div class="prefs-section">
+        <div class="prefs-section-title">🔢 토큰 절약 (v0.1.29+)</div>
+        <div class="prefs-toggle-row">
+          <label title="활성 파일 통째로 보내지 말고 selection / 활성 심볼 / 요약으로 좁힘. 모델별로 다른 컨텍스트 (Claude 좁게, Gemini 넓게).">Token-aware context projection</label>
+          <input type="checkbox" id="pref-tokenBudget-enabled" onchange="savePref('tokenBudget.enabled', this.checked)">
+        </div>
+        <div class="prefs-toggle-row">
+          <label title="큰 system prompt 를 Gemini API 캐시에 한 번 올리고 매 요청은 dynamic 만 전송. 캐시된 input ~25% 단가. Gemini API key 필요.">Gemini Context Cache (API key 필요)</label>
+          <input type="checkbox" id="pref-geminiContextCache-enabled" onchange="savePref('geminiContextCache.enabled', this.checked)">
+        </div>
+        <div class="prefs-hint">↓ 컨텍스트 모드 = narrow→Eco / default→Balanced / wide→Deep / full→Full(매 요청 확인)</div>
+      </div>
+
+      <div class="prefs-section">
         <div class="prefs-section-title">⚡ 라우터·엔진</div>
         <div class="prefs-row">
           <label class="prefs-label">컨텍스트 윈도우</label>
           <div class="prefs-segmented" id="pref-contextWindow">
-            <button data-val="narrow" onclick="savePrefSeg('contextWindow', this)" title="토큰 절약 (Claude 60, Codex 40, Gemini 60)">narrow</button>
-            <button data-val="default" onclick="savePrefSeg('contextWindow', this)" title="권장 (Claude 500, Codex 300, Gemini 200)">default</button>
-            <button data-val="wide" onclick="savePrefSeg('contextWindow', this)" title="긴 작업용 (Claude 2000, Codex 1500, Gemini 600)">wide</button>
+            <button data-val="narrow" onclick="savePrefSeg('contextWindow', this)" title="Eco: selection·활성 심볼만, 자동 멀티모델 X. 토큰 최저.">narrow</button>
+            <button data-val="default" onclick="savePrefSeg('contextWindow', this)" title="Balanced: selection·활성 심볼·관련 snippets·diff. 권장.">default</button>
+            <button data-val="wide" onclick="savePrefSeg('contextWindow', this)" title="Deep: 활성 파일+관련 파일+심볼 그래프+RAG+diff. 복잡한 작업.">wide</button>
+            <button data-val="full" onclick="savePrefSeg('contextWindow', this)" title="⚠ Full: 전 워크스페이스. 매 요청 확인 모달. OAuth/API 쿼터 폭주 위험.">full</button>
           </div>
         </div>
         <div class="prefs-row">
@@ -3210,8 +3227,8 @@
         if (msg.totals) showArgueTotalsCard(msg.totals, msg.mode, msg.outputCapKR)
         break
       case 'argueTurnTokens':
-        // 라운드별 input/output 토큰 — 라이브 표시 (옵션, 디버깅용으로 routing-badge 한 줄).
-        showArgueTurnTokens(msg.round, msg.model, msg.input, msg.output)
+        // 라운드별 input/output 토큰 + cache 토큰 — 라이브 표시.
+        showArgueTurnTokens(msg.round, msg.model, msg.input, msg.output, msg.cacheRead, msg.cacheCreation, msg.cachedInput, msg.note)
         break
       case 'argueSummarizing':
         // Haiku 가 라운드 응답 압축 중 — 짧은 thinking 표시.
@@ -3455,6 +3472,8 @@
     chk('pref-inlineCompletion', !!prefs.inlineCompletion)
     chk('pref-codebaseRag-enabled', prefs['codebaseRag.enabled'] !== false)
     chk('pref-codebaseRag-autoIndex', prefs['codebaseRag.autoIndex'] !== false)
+    chk('pref-tokenBudget-enabled', prefs['tokenBudget.enabled'] !== false)
+    chk('pref-geminiContextCache-enabled', !!prefs['geminiContextCache.enabled'])
     seg('pref-contextWindow', prefs.contextWindow ?? 'default')
     seg('pref-codexEngine', prefs.codexEngine ?? 'native')
     const cthr = prefs.confidenceThreshold ?? 0.92
@@ -3995,14 +4014,24 @@
   }
 
   // 라운드별 토큰 라이브 표시 — routing-event 한 줄, 작은 디버그 라벨.
-  function showArgueTurnTokens(round, model, input, output) {
+  // cache 토큰 (Claude SDK auto / Gemini API cache) 있으면 같이 표시 — 새 청구분만 보이는 misleading 방지.
+  function showArgueTurnTokens(round, model, input, output, cacheRead, cacheCreation, cachedInput, note) {
     const messages = document.getElementById('messages')
     const el = document.createElement('div')
     el.className = 'routing-event'
+    let cacheStr = ''
+    if (cacheRead && cacheRead > 0) {
+      cacheStr = ` (+cache_read ${cacheRead.toLocaleString()})`
+    } else if (cachedInput && cachedInput > 0) {
+      cacheStr = ` (cached ${cachedInput.toLocaleString()} ~25%)`
+    } else if (cacheCreation && cacheCreation > 0) {
+      cacheStr = ` (+cache_write ${cacheCreation.toLocaleString()})`
+    }
+    const titleAttr = note ? ` title="${note.replace(/"/g, '&quot;')}"` : ''
     el.innerHTML = `
       <div class="routing-line"></div>
-      <div class="routing-badge" style="color:var(--text-muted);border-color:var(--border);background:transparent;font-size:9px;font-family:'JetBrains Mono',monospace">
-      R${round} ${model}: in ${input.toLocaleString()} / out ${output.toLocaleString()} tok
+      <div class="routing-badge" style="color:var(--text-muted);border-color:var(--border);background:transparent;font-size:9px;font-family:'JetBrains Mono',monospace"${titleAttr}>
+      R${round} ${model}: in ${input.toLocaleString()} / out ${output.toLocaleString()} tok${cacheStr}
       </div>
       <div class="routing-line"></div>`
     messages.appendChild(el)
@@ -4026,26 +4055,46 @@
     setTimeout(() => { try { el.remove() } catch {} }, 2500)
   }
 
-  // Argue 종료 카드 — 전체 input/output/총합, 가장 길게 답한 모델, 라운드 수.
+  // Argue 종료 카드 — 전체 input/output/총합, 가장 길게 답한 모델, 라운드 수, cache 정보.
   function showArgueTotalsCard(totals, mode, outputCapKR) {
     if (!totals) return
     const messages = document.getElementById('messages')
     const el = document.createElement('div')
     el.className = 'msg'
+    const showCacheCols = (totals.cacheReadTokens || 0) > 0 || (totals.cachedInputTokens || 0) > 0
     const byModelRows = Object.entries(totals.byModel || {})
       .map(([m, t]) => {
-        const tot = (t && typeof t === 'object') ? t : { input: 0, output: 0, rounds: 0 }
+        const tot = (t && typeof t === 'object') ? t : { input: 0, output: 0, rounds: 0, cacheRead: 0, cachedInput: 0 }
         const hot = m === totals.maxOutputModel ? ' style="color:#fb923c"' : ''
-        return `<div class="argue-total-row"${hot}>
+        const cacheCol = showCacheCols
+          ? `<span class="argue-total-cell" title="Claude prompt cache hit + Gemini cached input">⚡ ${((tot.cacheRead || 0) + (tot.cachedInput || 0)).toLocaleString()}</span>`
+          : ''
+        return `<div class="argue-total-row${showCacheCols ? ' with-cache' : ''}"${hot}>
           <span class="argue-total-model">${escapeHtml(m)}</span>
           <span class="argue-total-cell">↓ ${tot.input.toLocaleString()}</span>
           <span class="argue-total-cell">↑ ${tot.output.toLocaleString()}</span>
+          ${cacheCol}
           <span class="argue-total-cell">×${tot.rounds}</span>
         </div>`
       }).join('')
     const maxNote = totals.maxOutputModel
       ? `<span style="color:#fb923c">가장 길게 답함: <b>${escapeHtml(totals.maxOutputModel)}</b> (${totals.maxOutputTokens.toLocaleString()} tok)</span>`
       : ''
+    // cache 요약 — 있으면 한 줄 추가. Claude SDK auto cache vs Gemini Context Cache 구분.
+    const cacheSummary = (() => {
+      const lines = []
+      if ((totals.cacheReadTokens || 0) > 0) {
+        lines.push(`Claude prompt cache: <b>${totals.cacheReadTokens.toLocaleString()}</b> tok 재사용 (청구 X 처리됨)`)
+      }
+      if ((totals.cacheCreationTokens || 0) > 0) {
+        lines.push(`Claude cache 생성: ${totals.cacheCreationTokens.toLocaleString()} tok (1회성)`)
+      }
+      if ((totals.cachedInputTokens || 0) > 0) {
+        lines.push(`Gemini Context Cache: <b>${totals.cachedInputTokens.toLocaleString()}</b> tok cached (~25% 단가)`)
+      }
+      return lines.length ? `<div style="margin-top:4px;color:#4ade80">⚡ ${lines.join(' · ')}</div>` : ''
+    })()
+    const cacheHeader = showCacheCols ? `<span class="argue-total-cell" title="cache_read + cached_input">⚡ cache</span>` : ''
     el.innerHTML = `<div class="bubble" style="background:rgba(167,139,250,0.06);border:1px solid rgba(167,139,250,0.25)">
       <div class="msg-header">
         <span class="model-tag" style="color:#a78bfa">⚖ Argue 토큰 요약</span>
@@ -4054,11 +4103,13 @@
       <div class="msg-content" style="font-family:'JetBrains Mono',monospace;font-size:11px;line-height:1.7">
         <div>총 ${totals.rounds} 라운드 · input <b>${totals.inputTokens.toLocaleString()}</b> · output <b>${totals.outputTokens.toLocaleString()}</b> · total <b>${totals.totalTokens.toLocaleString()}</b> tok</div>
         ${maxNote ? `<div style="margin-top:4px">${maxNote}</div>` : ''}
+        ${cacheSummary}
         <div style="margin-top:8px;border-top:1px solid var(--border);padding-top:6px">
-          <div class="argue-total-row" style="color:var(--text-muted)">
+          <div class="argue-total-row${showCacheCols ? ' with-cache' : ''}" style="color:var(--text-muted)">
             <span class="argue-total-model">model</span>
             <span class="argue-total-cell">↓ input</span>
             <span class="argue-total-cell">↑ output</span>
+            ${cacheHeader}
             <span class="argue-total-cell">rounds</span>
           </div>
           ${byModelRows}
