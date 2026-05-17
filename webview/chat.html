@@ -2381,7 +2381,7 @@
 <div class="settings-overlay" id="prefs-overlay" onclick="if(event.target===this)closePreferencesModal()" style="display:none;">
   <div class="settings-panel" style="max-width: 520px;">
     <div class="settings-header">
-      <div class="settings-title">⚙ 환경설정</div>
+      <div class="settings-title">⚙ 환경설정 <code id="pref-header-version" style="font-size:11px;color:var(--text-muted);font-weight:normal;padding-left:6px">v?.?.?</code></div>
       <button class="settings-close" onclick="closePreferencesModal()">×</button>
     </div>
     <div class="prefs-body">
@@ -3521,9 +3521,11 @@
         captainSel.appendChild(opt)
       }
     }
-    // 버전 표시 (풋터)
+    // 버전 표시 — 헤더 + 풋터 둘 다.
     const verEl = document.getElementById('pref-version')
+    const headerVerEl = document.getElementById('pref-header-version')
     if (verEl && prefs.version) verEl.textContent = 'v' + prefs.version
+    if (headerVerEl && prefs.version) headerVerEl.textContent = 'v' + prefs.version
     sel('pref-captain', prefs.captain ?? 'auto')
     const activeArr = Array.isArray(prefs.activeProviders) && prefs.activeProviders.length > 0
       ? prefs.activeProviders
