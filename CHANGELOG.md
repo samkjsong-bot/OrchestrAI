@@ -1,5 +1,37 @@
 # Changelog
 
+## v0.1.31 — 2026-05-13 (모든 설정을 환경설정 패널 안에서 — QuickPick 우회)
+
+사용자 지적: "다 빠른엑세스에서 설정하지않고 설정창같이 별도창에서 설정하고 넣고 하며 좋겠는데" / "MCP같은경우 누르면 빠른엑세스로 넘어감 ㅡㅡ"
+
+⚙ 톱니 클릭 → 중간 메뉴 (settings-overlay) → VSCode QuickPick 으로 빠져나가는 흐름이 vibe-coder 한테 거슬림. 한 곳에서 다 처리하게 통합.
+
+### ⚙ 톱니 = 환경설정 패널 바로 열기
+- 중간 settings-overlay 메뉴 우회 — 톱니 한 번 누르면 prefs-overlay 즉시 표시
+- prefs-overlay 안에 모든 기능 통합
+
+### 🔐 계정 섹션 (인라인)
+- Claude / Codex / Gemini login·logout 버튼이 패널 안에서 직접 동작 (QuickPick X)
+- 각 모델 옆에 connected/disconnected 상태 + 로그인/로그아웃 라벨 자동 토글
+- Gemini API key 입력 textfield + 저장 버튼 — VSCode InputBox 안 띄움. 이미지 생성 + Context Cache 용
+- authStatus 변경 즉시 라벨 갱신
+
+### 🔌 MCP 서버 섹션 (인라인)
+- 등록된 server 리스트 표시 (이름 + command/args 한 줄 미리보기)
+- 각 항목 × 버튼 — **2-click 확인 패턴** (VSCode webview confirm() 차단 우회)
+- "+ MCP 서버 추가" 클릭 → inline form 펴짐: 이름 / command / args (textarea 한 줄에 하나) / env (KEY=VAL 한 줄에 하나)
+- 저장 시 `orchestrai.mcpServers` 설정 직접 업데이트, 즉시 prefs 다시 push → 리스트 갱신
+
+### 🗄 기타 섹션
+- Telegram / 아카이브 복원 / 아카이브 폴더 열기 / 로그 표시 / 세션 카운터 리셋
+- 이 항목들은 OS 다이얼로그·OUTPUT 패널 같은 진짜 OS 액션이라 backend 호출 그대로 (QuickPick 아님)
+- 추후 Telegram 도 인라인 폼으로 통합 예정
+
+### Backend
+- 새 메시지 핸들러: `accountAction` (login/logout) / `setGeminiApiKey` / `mcpUpsert` / `mcpDelete`
+- `_pushPrefs()` 헬퍼 — prefs payload 한 곳에서 일관 push. mcpServers + geminiApiKey 존재 여부 포함
+- setPref 가 captain/active/custom 변경 시 _pushPrefs 경유 (중복 제거)
+
 ## v0.1.30 — 2026-05-13 (Cache token 정직성 + Codex MCP 실토큰 시도 + Prefs 패널 토글)
 
 v0.1.29 의 영수증이 "구라" 아니냐는 사용자 지적에 대응. 산수는 맞았지만 provider 마다 보고 방식이 다른 게 라벨링에서 안 드러남.

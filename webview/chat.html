@@ -1624,6 +1624,67 @@
     cursor: pointer;
   }
   .prefs-save-btn:hover { opacity: 0.85; }
+  .prefs-account-row {
+    display: grid;
+    grid-template-columns: 60px 1fr 80px;
+    gap: 8px;
+    align-items: center;
+    padding: 4px 0;
+  }
+  .prefs-account-label {
+    font-size: 11px;
+    color: var(--text);
+    font-weight: 600;
+  }
+  .prefs-account-status {
+    font-size: 10px;
+    color: var(--text-dim);
+    font-family: 'JetBrains Mono', monospace;
+  }
+  .prefs-account-status.on { color: #4ade80; }
+  .prefs-account-status.off { color: var(--text-dim); }
+  .prefs-account-btn {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    color: var(--text);
+    border-radius: 4px;
+    padding: 4px 8px;
+    font-size: 10px;
+    cursor: pointer;
+  }
+  .prefs-account-btn:hover { border-color: var(--accent); color: var(--accent); }
+  .prefs-account-btn.danger:hover { border-color: #f87171; color: #f87171; }
+  .prefs-wide-btn {
+    width: 100%;
+    text-align: left;
+    padding: 8px 12px;
+    margin-bottom: 4px;
+  }
+  .prefs-mcp-list:not(:empty) { margin-bottom: 6px; }
+  .prefs-mcp-item {
+    display: grid;
+    grid-template-columns: 1fr 24px;
+    gap: 6px;
+    align-items: center;
+    padding: 6px 8px;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    margin-bottom: 4px;
+  }
+  .prefs-mcp-item-body { overflow: hidden; }
+  .prefs-mcp-item-name { font-size: 11px; font-weight: 600; color: var(--text); }
+  .prefs-mcp-item-cmd { font-size: 9px; color: var(--text-dim); font-family: 'JetBrains Mono', monospace; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .prefs-mcp-delete {
+    background: transparent;
+    border: none;
+    color: var(--text-dim);
+    cursor: pointer;
+    font-size: 14px;
+    padding: 0;
+  }
+  .prefs-mcp-delete:hover { color: #f87171; }
+  .prefs-mcp-empty { font-size: 10px; color: var(--text-dim); padding: 6px; }
   .prefs-cancel-btn {
     flex: 0 0 80px;
     background: transparent;
@@ -2507,30 +2568,75 @@
       </div>
 
       <div class="prefs-section">
-        <div class="prefs-section-title">🔌 고급 (별창에서 편집)</div>
-        <button class="settings-item" style="padding:8px 12px;" onclick="onSettingsAction('mcp');closePreferencesModal()">
-          <span class="settings-item-icon">🔌</span>
-          <div class="settings-item-body">
-            <div class="settings-item-title">MCP 서버</div>
-            <div class="settings-item-desc">새 서버 추가·삭제</div>
+        <div class="prefs-section-title">🔐 계정</div>
+        <div class="prefs-account-row">
+          <span class="prefs-account-label">Claude</span>
+          <span class="prefs-account-status" id="acct-status-claude">···</span>
+          <button class="prefs-account-btn" id="acct-btn-claude" onclick="onAccountAction('claude')">로그인</button>
+        </div>
+        <div class="prefs-account-row">
+          <span class="prefs-account-label">Codex</span>
+          <span class="prefs-account-status" id="acct-status-codex">···</span>
+          <button class="prefs-account-btn" id="acct-btn-codex" onclick="onAccountAction('codex')">로그인</button>
+        </div>
+        <div class="prefs-account-row">
+          <span class="prefs-account-label">Gemini</span>
+          <span class="prefs-account-status" id="acct-status-gemini">···</span>
+          <button class="prefs-account-btn" id="acct-btn-gemini" onclick="onAccountAction('gemini')">로그인</button>
+        </div>
+        <div class="prefs-form-row">
+          <label class="prefs-label">Gemini API key</label>
+          <input type="password" class="prefs-input" id="pref-geminiApiKey" placeholder="(이미지 생성·Context Cache 용 — 비워두면 OAuth)">
+          <button class="prefs-account-btn" style="margin-left:4px" onclick="saveGeminiApiKey()">저장</button>
+        </div>
+        <div class="prefs-hint">로그인은 OAuth 브라우저 창이 열려요. 모든 텍스트 호출은 구독·무료 티어로 우회 (API 과금 0원).</div>
+      </div>
+
+      <div class="prefs-section">
+        <div class="prefs-section-title">🔌 MCP 서버</div>
+        <div id="pref-mcp-list" class="prefs-mcp-list"></div>
+        <button id="pref-mcp-add-btn" onclick="toggleMcpForm()" class="prefs-add-btn">+ MCP 서버 추가</button>
+        <div id="pref-mcp-form" style="display:none">
+          <div class="prefs-form-row">
+            <label class="prefs-label">이름</label>
+            <input type="text" class="prefs-input" id="pref-mcp-name" placeholder="filesystem / sqlite / 등">
           </div>
-          <span class="settings-item-arrow">›</span>
+          <div class="prefs-form-row">
+            <label class="prefs-label">command</label>
+            <input type="text" class="prefs-input" id="pref-mcp-command" placeholder="npx">
+          </div>
+          <div class="prefs-form-row">
+            <label class="prefs-label">args (한 줄에 하나)</label>
+            <textarea class="prefs-input" id="pref-mcp-args" rows="3" placeholder="-y&#10;@modelcontextprotocol/server-filesystem&#10;${workspaceFolder}"></textarea>
+          </div>
+          <div class="prefs-form-row">
+            <label class="prefs-label">env (KEY=VAL, 한 줄에 하나, 선택)</label>
+            <textarea class="prefs-input" id="pref-mcp-env" rows="2" placeholder="API_KEY=sk-..."></textarea>
+          </div>
+          <div class="prefs-form-actions">
+            <button onclick="saveMcpServer()" class="prefs-save-btn">저장</button>
+            <button onclick="cancelMcpForm()" class="prefs-cancel-btn">취소</button>
+          </div>
+          <div class="prefs-hint">서버는 사이드바 다시 열 때마다 자동 spawn 됨.</div>
+        </div>
+      </div>
+
+      <div class="prefs-section">
+        <div class="prefs-section-title">🗄 기타</div>
+        <button class="prefs-account-btn prefs-wide-btn" onclick="postToExtension({type:'settingsAction', action:'telegram'})">
+          ✈ Telegram (원격 채팅)
         </button>
-        <button class="settings-item" style="padding:8px 12px;" onclick="postToExtension({type:'openVscodeSettings', key:'orchestrai.customProviders'});closePreferencesModal()">
-          <span class="settings-item-icon">🧪</span>
-          <div class="settings-item-body">
-            <div class="settings-item-title">Custom Providers</div>
-            <div class="settings-item-desc">Ollama / LM Studio / OpenRouter — JSON 편집</div>
-          </div>
-          <span class="settings-item-arrow">›</span>
+        <button class="prefs-account-btn prefs-wide-btn" onclick="postToExtension({type:'settingsAction', action:'restoreArchive'})">
+          ↺ 아카이브에서 대화 복원
         </button>
-        <button class="settings-item" style="padding:8px 12px;" onclick="postToExtension({type:'openVscodeSettings', key:'orchestrai.syncDir'});closePreferencesModal()">
-          <span class="settings-item-icon">☁</span>
-          <div class="settings-item-body">
-            <div class="settings-item-title">Multi-IDE 동기화 폴더</div>
-            <div class="settings-item-desc">OneDrive / Dropbox / iCloud 경로</div>
-          </div>
-          <span class="settings-item-arrow">›</span>
+        <button class="prefs-account-btn prefs-wide-btn" onclick="postToExtension({type:'settingsAction', action:'openArchives'})">
+          📂 아카이브 폴더 열기
+        </button>
+        <button class="prefs-account-btn prefs-wide-btn" onclick="postToExtension({type:'settingsAction', action:'logs'})">
+          📜 로그 표시 (OUTPUT 채널)
+        </button>
+        <button class="prefs-account-btn prefs-wide-btn" onclick="postToExtension({type:'settingsAction', action:'resetUsage'})">
+          🔄 세션 토큰 카운터 리셋
         </button>
       </div>
 
@@ -2628,7 +2734,7 @@
 <!-- INPUT -->
 <div class="input-area">
   <div class="override-bar">
-    <button class="settings-btn" onclick="openSettingsModal()" title="Settings">
+    <button class="settings-btn" onclick="openPreferencesModal()" title="환경설정">
       <svg viewBox="0 0 16 16" fill="none" width="12" height="12">
         <rect x="3" y="3" width="10" height="10" rx="2" stroke="currentColor" stroke-width="1.35"/>
         <path d="M5 11L11 5" stroke="currentColor" stroke-width="1.35" stroke-linecap="round"/>
@@ -3481,6 +3587,17 @@
     const lbl = document.getElementById('pref-confidenceVal')
     if (slider) slider.value = String(cthr)
     if (lbl) lbl.textContent = Number(cthr).toFixed(2)
+    // 계정 + Gemini API key + MCP — 환경설정 패널 안에 인라인 노출.
+    refreshAccountUI()
+    if (typeof prefs.geminiApiKey === 'string') {
+      const el = document.getElementById('pref-geminiApiKey')
+      // 보안: 키 자체는 채우지 않고 "있음/없음" 만 placeholder 로 표시 (한 번 저장 후엔 다시 보여줄 이유 X).
+      if (el && prefs.geminiApiKey) el.placeholder = '(저장됨 — 새 값 입력 시 덮어쓰기)'
+    }
+    if (prefs.mcpServers && typeof prefs.mcpServers === 'object') {
+      _currentMcpServers = prefs.mcpServers
+      renderMcpList()
+    }
   }
   function savePref(key, value) {
     postToExtension({ type: 'setPref', key, value })
@@ -3513,6 +3630,107 @@
   function onConfidenceSlide(input) {
     document.getElementById('pref-confidenceVal').textContent = Number(input.value).toFixed(2)
   }
+
+  // ── 계정 (Claude / Codex / Gemini) 로그인·로그아웃 + Gemini API key ──
+  // status 는 onMessage 의 'authStatus' / 'loggedInModels' 등이 update 함. applyPrefsToUI 에서 한 번 더 sync.
+  function refreshAccountUI() {
+    const map = { claude: 'Claude', codex: 'Codex', gemini: 'Gemini' }
+    for (const k of Object.keys(map)) {
+      const on = !!loggedInModels[k]
+      const statusEl = document.getElementById(`acct-status-${k}`)
+      const btnEl = document.getElementById(`acct-btn-${k}`)
+      if (statusEl) {
+        statusEl.textContent = on ? 'connected' : 'disconnected'
+        statusEl.className = 'prefs-account-status ' + (on ? 'on' : 'off')
+      }
+      if (btnEl) {
+        btnEl.textContent = on ? '로그아웃' : '로그인'
+        btnEl.className = 'prefs-account-btn' + (on ? ' danger' : '')
+      }
+    }
+  }
+  function onAccountAction(model) {
+    const on = !!loggedInModels[model]
+    const action = on ? `logout${model.charAt(0).toUpperCase() + model.slice(1)}` : `login${model.charAt(0).toUpperCase() + model.slice(1)}`
+    postToExtension({ type: 'accountAction', action })
+  }
+  function saveGeminiApiKey() {
+    const key = (document.getElementById('pref-geminiApiKey')?.value || '').trim()
+    postToExtension({ type: 'setGeminiApiKey', value: key })
+    showToast(key ? '✓ Gemini API key 저장됨' : '✓ Gemini API key 제거됨')
+  }
+
+  // ── MCP 서버 inline 등록/삭제 ──
+  let _currentMcpServers = {}  // backend 가 push 한 현재 등록 목록
+  function renderMcpList() {
+    const list = document.getElementById('pref-mcp-list')
+    if (!list) return
+    const keys = Object.keys(_currentMcpServers)
+    if (keys.length === 0) {
+      list.innerHTML = '<div class="prefs-mcp-empty">등록된 MCP 서버 없음.</div>'
+      return
+    }
+    list.innerHTML = keys.map(name => {
+      const cfg = _currentMcpServers[name] || {}
+      const args = Array.isArray(cfg.args) ? cfg.args.join(' ') : ''
+      const cmd = `${escapeHtml(cfg.command || '')} ${escapeHtml(args)}`.trim()
+      return `<div class="prefs-mcp-item">
+        <div class="prefs-mcp-item-body">
+          <div class="prefs-mcp-item-name">${escapeHtml(name)}</div>
+          <div class="prefs-mcp-item-cmd" title="${cmd}">${cmd || '(command 없음)'}</div>
+        </div>
+        <button class="prefs-mcp-delete" onclick="deleteMcpServer('${escapeAttr(name)}')" title="삭제">×</button>
+      </div>`
+    }).join('')
+  }
+  function toggleMcpForm() {
+    const form = document.getElementById('pref-mcp-form')
+    if (!form) return
+    const visible = form.style.display !== 'none'
+    if (visible) {
+      cancelMcpForm()
+    } else {
+      document.getElementById('pref-mcp-name').value = ''
+      document.getElementById('pref-mcp-command').value = ''
+      document.getElementById('pref-mcp-args').value = ''
+      document.getElementById('pref-mcp-env').value = ''
+      form.style.display = 'block'
+    }
+  }
+  function cancelMcpForm() {
+    document.getElementById('pref-mcp-form').style.display = 'none'
+  }
+  function saveMcpServer() {
+    const name = (document.getElementById('pref-mcp-name').value || '').trim()
+    const command = (document.getElementById('pref-mcp-command').value || '').trim()
+    const argsRaw = document.getElementById('pref-mcp-args').value || ''
+    const envRaw = document.getElementById('pref-mcp-env').value || ''
+    if (!name || !command) return showToast('⚠ 이름 + command 둘 다 필수')
+    const args = argsRaw.split('\n').map(s => s.trim()).filter(Boolean)
+    const env = {}
+    for (const line of envRaw.split('\n')) {
+      const m = line.match(/^\s*([A-Z0-9_]+)\s*=\s*(.*)\s*$/)
+      if (m) env[m[1]] = m[2]
+    }
+    postToExtension({ type: 'mcpUpsert', name, command, args, env: Object.keys(env).length ? env : undefined })
+    cancelMcpForm()
+  }
+  function deleteMcpServer(name) {
+    // 2-click 확인 패턴 (VSCode webview 의 confirm() 차단 우회).
+    const btns = document.querySelectorAll('.prefs-mcp-delete')
+    const btn = Array.from(btns).find(b => b.getAttribute('onclick')?.includes(`'${name}'`))
+    if (!btn) return
+    if (btn.dataset.confirming === '1') {
+      postToExtension({ type: 'mcpDelete', name })
+      btn.dataset.confirming = ''
+    } else {
+      btn.dataset.confirming = '1'
+      btn.textContent = '✓'
+      btn.title = '한 번 더 클릭하면 삭제'
+      setTimeout(() => { btn.dataset.confirming = ''; btn.textContent = '×'; btn.title = '삭제' }, 3000)
+    }
+  }
+  function escapeAttr(s) { return String(s).replace(/'/g, '&#39;').replace(/"/g, '&quot;') }
 
   // ── Custom Provider 등록·편집·삭제 ──
   let _editingCpIdx = -1  // 편집 모드일 때 인덱스, 신규면 -1
@@ -4385,6 +4603,8 @@
 
   function updateAuthStatus(claude, codex, gemini) {
     loggedInModels = { claude: !!claude, codex: !!codex, gemini: !!gemini }
+    // prefs panel 의 계정 섹션도 즉시 동기화 (login/logout 직후 라벨 갱신).
+    refreshAccountUI()
     const messages = document.getElementById('messages')
 
     // 모두 로그인된 경우 로그인 카드 표시

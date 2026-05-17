@@ -1831,22 +1831,7 @@ ${hit.kind === 'cmd' ? 'When done, the AI! comment line itself can stay — user
             break
           }
           case 'getPrefs': {
-            const cfg = vscode.workspace.getConfiguration('orchestrai')
-            const PREF_KEYS = [
-              'captain', 'activeProviders',
-              'claudeModel', 'codexModel', 'geminiModel', 'thinkingMode',
-              'autoGitCommit', 'autoPreview', 'autoOpenDiff', 'aiMagicComments', 'inlineCompletion',
-              'codebaseRag.enabled', 'codebaseRag.autoIndex',
-              'contextWindow', 'codexEngine', 'confidenceThreshold',
-              'tokenBudget.enabled', 'geminiContextCache.enabled',
-            ]
-            const prefs: Record<string, any> = {}
-            for (const k of PREF_KEYS) prefs[k] = cfg.get(k)
-            // 커스텀 provider 목록도 같이 보내서 UI 가 동적으로 체크박스·dropdown 옵션 만들 수 있게
-            prefs.customProviders = cfg.get('customProviders') ?? []
-            // 익스텐션 버전 같이 push — prefs panel 풋터에 표시
-            prefs.version = vscode.extensions.getExtension('samkj.orchestrai')?.packageJSON?.version ?? 'dev'
-            this._post({ type: 'prefsData', prefs })
+            await this._pushPrefs()
             break
           }
           case 'setPref': {
@@ -1856,18 +1841,7 @@ ${hit.kind === 'cmd' ? 'When done, the AI! comment line itself can stay — user
               if (msg.key === 'contextWindow') this._applyContextWindow()
               // captain / activeProviders 변경되면 webview UI 도 즉시 갱신 — team/boomerang disable 등
               if (msg.key === 'captain' || msg.key === 'activeProviders' || msg.key === 'customProviders') {
-                const PREF_KEYS = [
-                  'captain', 'activeProviders',
-                  'claudeModel', 'codexModel', 'geminiModel', 'thinkingMode',
-                  'autoGitCommit', 'autoPreview', 'autoOpenDiff', 'aiMagicComments', 'inlineCompletion',
-                  'codebaseRag.enabled', 'codebaseRag.autoIndex',
-                  'contextWindow', 'codexEngine', 'confidenceThreshold',
-                ]
-                const cfg2 = vscode.workspace.getConfiguration('orchestrai')
-                const prefs: Record<string, any> = {}
-                for (const k of PREF_KEYS) prefs[k] = cfg2.get(k)
-                prefs.customProviders = cfg2.get('customProviders') ?? []
-                this._post({ type: 'prefsData', prefs })
+                await this._pushPrefs()
               }
               log.info('prefs', `${msg.key} = ${JSON.stringify(msg.value)}`)
             } catch (err) {
@@ -1964,6 +1938,62 @@ ${hit.kind === 'cmd' ? 'When done, the AI! comment line itself can stay — user
           case 'settingsAction':
             await this._handleSettingsAction(msg.action)
             break
+          // ── 인라인 prefs 패널 직접 동작 (QuickPick 우회) — v0.1.31+ ──
+          case 'accountAction': {
+            // login*/logout* — _showAccountSubmenu 의 분기를 직접 호출.
+            switch (msg.action) {
+              case 'loginClaude':  await this._claudeAuth.login();  break
+              case 'logoutClaude': await this._claudeAuth.logout(); break
+              case 'loginCodex':   await this._codexAuth.login();   break
+              case 'logoutCodex':  await this._codexAuth.logout();  break
+              case 'loginGemini':  await this._geminiAuth.login();  break
+              case 'logoutGemini': await this._geminiAuth.logout(); break
+            }
+            await this._sendAuthStatus()
+            await this._pushPrefs()
+            break
+          }
+          case 'setGeminiApiKey': {
+            const key = String(msg.value ?? '').trim()
+            if (key) {
+              await this._authStorage.setGeminiApiKey(key)
+              setGeminiApiKey(key)
+            } else {
+              await this._authStorage.deleteGeminiApiKey()
+              setGeminiApiKey(null)
+            }
+            this._post({ type: 'toast', message: key ? '✓ Gemini API key 저장' : '✓ Gemini API key 제거' })
+            await this._pushPrefs()
+            break
+          }
+          case 'mcpUpsert': {
+            // 인라인 form 에서 추가/덮어쓰기 — VSCode settings 의 orchestrai.mcpServers 객체 업데이트.
+            const name = String(msg.name ?? '').trim()
+            if (!name) break
+            const cfg = vscode.workspace.getConfiguration('orchestrai')
+            const current = (cfg.get<Record<string, any>>('mcpServers') ?? {}) as Record<string, any>
+            current[name] = {
+              command: String(msg.command ?? '').trim(),
+              args: Array.isArray(msg.args) ? msg.args.map(String) : undefined,
+              env: msg.env && typeof msg.env === 'object' ? msg.env : undefined,
+            }
+            await cfg.update('mcpServers', current, vscode.ConfigurationTarget.Global)
+            this._post({ type: 'toast', message: `✓ MCP "${name}" 저장. 다음 사이드바 열 때 자동 spawn.` })
+            // 즉시 prefs UI 다시 push
+            await this._pushPrefs()
+            break
+          }
+          case 'mcpDelete': {
+            const name = String(msg.name ?? '').trim()
+            if (!name) break
+            const cfg = vscode.workspace.getConfiguration('orchestrai')
+            const current = (cfg.get<Record<string, any>>('mcpServers') ?? {}) as Record<string, any>
+            delete current[name]
+            await cfg.update('mcpServers', current, vscode.ConfigurationTarget.Global)
+            this._post({ type: 'toast', message: `✓ MCP "${name}" 삭제됨.` })
+            await this._pushPrefs()
+            break
+          }
           case 'stopArgue':
             this._argueStop = true
             break
@@ -2136,6 +2166,29 @@ ${hit.kind === 'cmd' ? 'When done, the AI! comment line itself can stay — user
   private async _sendAuthStatus() {
     const status = await this._authStorage.getStatus()
     this._post({ type: 'authStatus', ...status })
+  }
+
+  // 환경설정 패널이 한 곳에서 다 보여주려면 prefs payload 가 일관돼야 함.
+  // 호출 위치: case 'getPrefs', case 'setPref' (captain/activeProviders/customProviders 변경 시), accountAction 후, mcpUpsert/Delete 후.
+  private async _pushPrefs() {
+    const cfg = vscode.workspace.getConfiguration('orchestrai')
+    const PREF_KEYS = [
+      'captain', 'activeProviders',
+      'claudeModel', 'codexModel', 'geminiModel', 'thinkingMode',
+      'autoGitCommit', 'autoPreview', 'autoOpenDiff', 'aiMagicComments', 'inlineCompletion',
+      'codebaseRag.enabled', 'codebaseRag.autoIndex',
+      'contextWindow', 'codexEngine', 'confidenceThreshold',
+      'tokenBudget.enabled', 'geminiContextCache.enabled',
+    ]
+    const prefs: Record<string, any> = {}
+    for (const k of PREF_KEYS) prefs[k] = cfg.get(k)
+    prefs.customProviders = cfg.get('customProviders') ?? []
+    prefs.mcpServers = cfg.get('mcpServers') ?? {}
+    // Gemini API key — 실제 값은 노출 X (보안). "있음/없음" 만 표시용 placeholder 트리거.
+    const geminiKey = await this._authStorage.getGeminiApiKey()
+    prefs.geminiApiKey = geminiKey ? 'SET' : ''
+    prefs.version = vscode.extensions.getExtension('samkj.orchestrai')?.packageJSON?.version ?? 'dev'
+    this._post({ type: 'prefsData', prefs })
   }
 
   private _recordSnapshot(turnId: string | undefined, relPath: string, before: string | null) {
