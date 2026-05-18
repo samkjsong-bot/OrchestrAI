@@ -1,5 +1,14 @@
 # Changelog
 
+## v0.1.38 — 2026-05-18 (docs only — Marketplace listing 시연 영상 섬네일)
+
+VSCode Marketplace 는 README 의 `<video>` 태그도 `https://github.com/user-attachments/...` 자동 임베드도 strip 함 (이미지만 허용). v0.1.37 publish 후 marketplace listing 의 demo 섹션이 빈 채로 보이는 문제를 해결.
+
+- `resources/demo-thumb.png` — 동영상 5초 지점 720p 프레임 추출 (264KB)
+- README 섬네일 클릭 → GitHub release asset (원본 mp4) 새 탭 재생
+- github.com 메인 페이지엔 user-attachments inline player 도 그대로 유지
+- 코드 변경 0, README/리소스만
+
 ## v0.1.37 — 2026-05-18 (Codex 도 Static/Dynamic 분리 → OpenAI 자동 prompt cache hit)
 
 ### Codex Static/Dynamic 분리 (v0.1.36 의 Gemini-only 분리를 Codex 까지 확장)
