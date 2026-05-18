@@ -2415,7 +2415,7 @@
 <!-- 채팅 탭 바 — 헤더 아래. 가로 스크롤, active highlight, + 버튼 -->
 <div class="chat-tabs" id="chat-tabs">
   <div class="chat-tabs-list" id="chat-tabs-list"></div>
-  <button class="chat-tab-new" onclick="postToExtension({type:'newChat'})" title="새 탭">+</button>
+  <button class="chat-tab-new" onclick="postToExtension({type:'newChat'})" data-i18n-title="tab_new_title" title="새 탭">+</button>
 </div>
 
 <!-- 컨텍스트 게이지 (메모리 사용량 + 리셋) -->
@@ -2484,44 +2484,56 @@
 <div class="settings-overlay" id="prefs-overlay" onclick="if(event.target===this)closePreferencesModal()" style="display:none;">
   <div class="settings-panel" style="max-width: 520px;">
     <div class="settings-header">
-      <div class="settings-title">⚙ 환경설정 <code id="pref-header-version" style="font-size:11px;color:var(--text-muted);font-weight:normal;padding-left:6px">v?.?.?</code></div>
+      <div class="settings-title">⚙ <span data-i18n="prefs_title">환경설정</span> <code id="pref-header-version" style="font-size:11px;color:var(--text-muted);font-weight:normal;padding-left:6px">v?.?.?</code></div>
       <button class="settings-close" onclick="closePreferencesModal()">×</button>
     </div>
     <div class="prefs-body">
       <div class="prefs-section">
-        <div class="prefs-section-title">🎯 대장 모델 + 활성 풀</div>
+        <div class="prefs-section-title" data-i18n="prefs_section_language">🌐 언어 / Language</div>
         <div class="prefs-row">
-          <label class="prefs-label">대장 모델</label>
+          <label class="prefs-label">Language</label>
+          <div class="prefs-segmented" id="pref-language">
+            <button data-val="auto" onclick="savePrefSeg('language', this)" data-i18n="prefs_language_auto">auto (VSCode 설정)</button>
+            <button data-val="ko" onclick="savePrefSeg('language', this)" data-i18n="prefs_language_ko">한국어</button>
+            <button data-val="en" onclick="savePrefSeg('language', this)" data-i18n="prefs_language_en">English</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="prefs-section">
+        <div class="prefs-section-title" data-i18n="prefs_section_captain">🎯 대장 모델 + 활성 풀</div>
+        <div class="prefs-row">
+          <label class="prefs-label" data-i18n="prefs_label_captain">대장 모델</label>
           <select class="prefs-select" id="pref-captain" onchange="savePref('captain', this.value)">
             <!-- 기본 옵션. custom 은 applyPrefsToUI 에서 동적 추가. -->
-            <option value="auto">auto (활성 중 우선순위)</option>
-            <option value="claude">Claude 강제</option>
-            <option value="codex">Codex 강제</option>
-            <option value="gemini">Gemini 강제</option>
-            <option value="none">없음 (단순 라우터)</option>
+            <option value="auto" data-i18n="prefs_captain_auto">auto (활성 중 우선순위)</option>
+            <option value="claude" data-i18n="prefs_captain_claude">Claude 강제</option>
+            <option value="codex" data-i18n="prefs_captain_codex">Codex 강제</option>
+            <option value="gemini" data-i18n="prefs_captain_gemini">Gemini 강제</option>
+            <option value="none" data-i18n="prefs_captain_none">없음 (단순 라우터)</option>
           </select>
         </div>
-        <div class="prefs-hint">↓ boomerang plan / argue judge / smart commit / synthesis 담당</div>
+        <div class="prefs-hint" data-i18n="prefs_captain_hint">↓ boomerang plan / argue judge / smart commit / synthesis 담당</div>
         <div class="prefs-toggle-row">
-          <label>Claude 활성</label>
+          <label data-i18n="prefs_active_claude">Claude 활성</label>
           <input type="checkbox" id="pref-active-claude" onchange="saveActiveProvider()">
         </div>
         <div class="prefs-toggle-row">
-          <label>Codex 활성</label>
+          <label data-i18n="prefs_active_codex">Codex 활성</label>
           <input type="checkbox" id="pref-active-codex" onchange="saveActiveProvider()">
         </div>
         <div class="prefs-toggle-row">
-          <label>Gemini 활성</label>
+          <label data-i18n="prefs_active_gemini">Gemini 활성</label>
           <input type="checkbox" id="pref-active-gemini" onchange="saveActiveProvider()">
         </div>
         <!-- custom providers (Ollama/LM Studio/OpenRouter 등) 활성 체크박스 동적 추가 -->
         <div id="pref-custom-active-list"></div>
-        <div class="prefs-hint">비활성 시 라우팅·argue·boomerang 에서 제외됨.</div>
+        <div class="prefs-hint" data-i18n="prefs_active_hint">비활성 시 라우팅·argue·boomerang 에서 제외됨.</div>
       </div>
 
       <!-- 🔧 Custom provider 등록·편집·삭제 UI -->
       <div class="prefs-section">
-        <div class="prefs-section-title">🔧 Custom Provider (Ollama / LM Studio / OpenRouter)</div>
+        <div class="prefs-section-title" data-i18n="prefs_section_custom">🔧 Custom Provider (Ollama / LM Studio / OpenRouter)</div>
         <div id="pref-custom-list"></div>
         <button onclick="probeLocalProviders()" class="prefs-add-btn" style="margin-bottom:4px">
           🔍 로컬 LLM 자동 감지 (Ollama / LM Studio)
@@ -2554,7 +2566,7 @@
       </div>
 
       <div class="prefs-section">
-        <div class="prefs-section-title">🧬 모델 변종 강제</div>
+        <div class="prefs-section-title" data-i18n="prefs_section_models">🧬 모델 변종 강제</div>
         <div class="prefs-row">
           <label class="prefs-label">Claude</label>
           <select class="prefs-select" id="pref-claudeModel" onchange="savePref('claudeModel', this.value)">
@@ -2594,58 +2606,58 @@
       </div>
 
       <div class="prefs-section">
-        <div class="prefs-section-title">🤖 자동화</div>
+        <div class="prefs-section-title" data-i18n="prefs_section_automation">🤖 자동화</div>
         <div class="prefs-toggle-row">
-          <label>자동 git commit (체크포인트)</label>
+          <label data-i18n="prefs_autoGitCommit">자동 git commit (체크포인트)</label>
           <input type="checkbox" id="pref-autoGitCommit" onchange="savePref('autoGitCommit', this.checked)">
         </div>
         <div class="prefs-toggle-row">
-          <label>자동 미리보기 (HTML→Browser, dev script ▶)</label>
+          <label data-i18n="prefs_autoPreview">자동 미리보기 (HTML→Browser, dev script ▶)</label>
           <input type="checkbox" id="pref-autoPreview" onchange="savePref('autoPreview', this.checked)">
         </div>
         <div class="prefs-toggle-row">
-          <label>자동 IDE diff 열기</label>
+          <label data-i18n="prefs_autoOpenDiff">자동 IDE diff 열기</label>
           <input type="checkbox" id="pref-autoOpenDiff" onchange="savePref('autoOpenDiff', this.checked)">
         </div>
         <div class="prefs-toggle-row">
-          <label>AI! / AI? 매직 코멘트 watch</label>
+          <label data-i18n="prefs_aiMagicComments">AI! / AI? 매직 코멘트 watch</label>
           <input type="checkbox" id="pref-aiMagicComments" onchange="savePref('aiMagicComments', this.checked)">
         </div>
         <div class="prefs-toggle-row">
-          <label>Inline ghost text (Cursor 풍 자동완성)</label>
+          <label data-i18n="prefs_inlineCompletion">Inline ghost text (Cursor 풍 자동완성)</label>
           <input type="checkbox" id="pref-inlineCompletion" onchange="savePref('inlineCompletion', this.checked)">
         </div>
       </div>
 
       <div class="prefs-section">
-        <div class="prefs-section-title">🧭 코드베이스 RAG</div>
+        <div class="prefs-section-title" data-i18n="prefs_section_rag">🧭 코드베이스 RAG</div>
         <div class="prefs-toggle-row">
-          <label>RAG 활성 (관련 chunk 자동 첨부)</label>
+          <label data-i18n="prefs_rag_enabled">RAG 활성 (관련 chunk 자동 첨부)</label>
           <input type="checkbox" id="pref-codebaseRag-enabled" onchange="savePref('codebaseRag.enabled', this.checked)">
         </div>
         <div class="prefs-toggle-row">
-          <label>파일 저장 시 자동 re-index</label>
+          <label data-i18n="prefs_rag_autoIndex">파일 저장 시 자동 re-index</label>
           <input type="checkbox" id="pref-codebaseRag-autoIndex" onchange="savePref('codebaseRag.autoIndex', this.checked)">
         </div>
       </div>
 
       <div class="prefs-section">
-        <div class="prefs-section-title">🔢 토큰 절약 (v0.1.29+)</div>
+        <div class="prefs-section-title" data-i18n="prefs_section_token_budget">🔢 토큰 절약 (v0.1.29+)</div>
         <div class="prefs-toggle-row">
-          <label title="활성 파일 통째로 보내지 말고 selection / 활성 심볼 / 요약으로 좁힘. 모델별로 다른 컨텍스트 (Claude 좁게, Gemini 넓게).">Token-aware context projection</label>
+          <label data-i18n="prefs_tokenBudget_enabled" data-i18n-title="prefs_tokenBudget_tooltip" title="활성 파일 통째로 보내지 말고 selection / 활성 심볼 / 요약으로 좁힘. 모델별로 다른 컨텍스트 (Claude 좁게, Gemini 넓게).">Token-aware context projection</label>
           <input type="checkbox" id="pref-tokenBudget-enabled" onchange="savePref('tokenBudget.enabled', this.checked)">
         </div>
         <div class="prefs-toggle-row">
-          <label title="큰 system prompt 를 Gemini API 캐시에 한 번 올리고 매 요청은 dynamic 만 전송. 캐시된 input ~25% 단가. Gemini API key 필요.">Gemini Context Cache (API key 필요)</label>
+          <label data-i18n="prefs_geminiCache_enabled" data-i18n-title="prefs_geminiCache_tooltip" title="큰 system prompt 를 Gemini API 캐시에 한 번 올리고 매 요청은 dynamic 만 전송. 캐시된 input ~25% 단가. Gemini API key 필요.">Gemini Context Cache (API key 필요)</label>
           <input type="checkbox" id="pref-geminiContextCache-enabled" onchange="savePref('geminiContextCache.enabled', this.checked)">
         </div>
-        <div class="prefs-hint">↓ 컨텍스트 모드 = narrow→Eco / default→Balanced / wide→Deep / full→Full(매 요청 확인)</div>
+        <div class="prefs-hint" data-i18n="prefs_contextWindow_hint">↓ 컨텍스트 모드 = narrow→Eco / default→Balanced / wide→Deep / full→Full(매 요청 확인)</div>
       </div>
 
       <div class="prefs-section">
-        <div class="prefs-section-title">⚡ 라우터·엔진</div>
+        <div class="prefs-section-title" data-i18n="prefs_section_router">⚡ 라우터·엔진</div>
         <div class="prefs-row">
-          <label class="prefs-label">컨텍스트 윈도우</label>
+          <label class="prefs-label" data-i18n="prefs_label_contextWindow">컨텍스트 윈도우</label>
           <div class="prefs-segmented" id="pref-contextWindow">
             <button data-val="narrow" onclick="savePrefSeg('contextWindow', this)" title="Eco: selection·활성 심볼만, 자동 멀티모델 X. 토큰 최저.">narrow</button>
             <button data-val="default" onclick="savePrefSeg('contextWindow', this)" title="Balanced: selection·활성 심볼·관련 snippets·diff. 권장.">default</button>
@@ -2654,24 +2666,24 @@
           </div>
         </div>
         <div class="prefs-row">
-          <label class="prefs-label">Codex 엔진</label>
+          <label class="prefs-label" data-i18n="prefs_label_codexEngine">Codex 엔진</label>
           <div class="prefs-segmented" id="pref-codexEngine">
             <button data-val="native" onclick="savePrefSeg('codexEngine', this)" title="OpenAI 공식 codex.exe MCP (권장)">native</button>
             <button data-val="legacy" onclick="savePrefSeg('codexEngine', this)" title="자체 fetch chatgpt.com 백엔드">legacy</button>
           </div>
         </div>
         <div class="prefs-row">
-          <label class="prefs-label">라우터 신뢰도</label>
+          <label class="prefs-label" data-i18n="prefs_label_confidence">라우터 신뢰도</label>
           <div style="display:flex; align-items:center; gap:8px; flex:1;">
             <input type="range" min="0.5" max="1" step="0.01" id="pref-confidenceThreshold" oninput="onConfidenceSlide(this)" onchange="savePref('confidenceThreshold', parseFloat(this.value))" style="flex:1">
             <span id="pref-confidenceVal" style="font-family:monospace; font-size:11px; color:var(--text-dim); min-width:32px;">0.92</span>
           </div>
         </div>
-        <div class="prefs-hint">↓ 낮을수록 LLM 라우터(Haiku) 더 자주 호출 → 정확도 ↑ 비용 ↑</div>
+        <div class="prefs-hint" data-i18n="prefs_confidence_hint">↓ 낮을수록 LLM 라우터(Haiku) 더 자주 호출 → 정확도 ↑ 비용 ↑</div>
       </div>
 
       <div class="prefs-section">
-        <div class="prefs-section-title">🔐 계정</div>
+        <div class="prefs-section-title" data-i18n="prefs_section_accounts">🔐 계정</div>
         <div class="prefs-account-row">
           <span class="prefs-account-label">Claude</span>
           <span class="prefs-account-status" id="acct-status-claude">···</span>
@@ -2688,57 +2700,57 @@
           <button class="prefs-account-btn" id="acct-btn-gemini" onclick="onAccountAction('gemini')">로그인</button>
         </div>
         <div class="prefs-form-row">
-          <label class="prefs-label">Gemini API key</label>
-          <input type="password" class="prefs-input" id="pref-geminiApiKey" placeholder="(이미지 생성·Context Cache 용 — 비워두면 OAuth)">
-          <button class="prefs-account-btn" style="margin-left:4px" onclick="saveGeminiApiKey()">저장</button>
+          <label class="prefs-label" data-i18n="prefs_geminiApiKey">Gemini API key</label>
+          <input type="password" class="prefs-input" id="pref-geminiApiKey" data-i18n-placeholder="prefs_geminiApiKey_placeholder" placeholder="(이미지 생성·Context Cache 용 — 비워두면 OAuth)">
+          <button class="prefs-account-btn" style="margin-left:4px" onclick="saveGeminiApiKey()" data-i18n="prefs_geminiApiKey_save">저장</button>
         </div>
-        <div class="prefs-hint">로그인은 OAuth 브라우저 창이 열려요. 모든 텍스트 호출은 구독·무료 티어로 우회 (API 과금 0원).</div>
+        <div class="prefs-hint" data-i18n="prefs_account_hint">로그인은 OAuth 브라우저 창이 열려요. 모든 텍스트 호출은 구독·무료 티어로 우회 (API 과금 0원).</div>
       </div>
 
       <div class="prefs-section">
-        <div class="prefs-section-title">🔌 MCP 서버</div>
+        <div class="prefs-section-title" data-i18n="prefs_section_mcp">🔌 MCP 서버</div>
         <div id="pref-mcp-list" class="prefs-mcp-list"></div>
-        <button id="pref-mcp-add-btn" onclick="toggleMcpForm()" class="prefs-add-btn">+ MCP 서버 추가</button>
+        <button id="pref-mcp-add-btn" onclick="toggleMcpForm()" class="prefs-add-btn" data-i18n="prefs_mcp_add">+ MCP 서버 추가</button>
         <div id="pref-mcp-form" style="display:none">
           <div class="prefs-form-row">
-            <label class="prefs-label">이름</label>
+            <label class="prefs-label" data-i18n="prefs_mcp_name">이름</label>
             <input type="text" class="prefs-input" id="pref-mcp-name" placeholder="filesystem / sqlite / 등">
           </div>
           <div class="prefs-form-row">
-            <label class="prefs-label">command</label>
+            <label class="prefs-label" data-i18n="prefs_mcp_command">command</label>
             <input type="text" class="prefs-input" id="pref-mcp-command" placeholder="npx">
           </div>
           <div class="prefs-form-row">
-            <label class="prefs-label">args (한 줄에 하나)</label>
+            <label class="prefs-label" data-i18n="prefs_mcp_args">args (한 줄에 하나)</label>
             <textarea class="prefs-input" id="pref-mcp-args" rows="3" placeholder="-y&#10;@modelcontextprotocol/server-filesystem&#10;${workspaceFolder}"></textarea>
           </div>
           <div class="prefs-form-row">
-            <label class="prefs-label">env (KEY=VAL, 한 줄에 하나, 선택)</label>
+            <label class="prefs-label" data-i18n="prefs_mcp_env">env (KEY=VAL, 한 줄에 하나, 선택)</label>
             <textarea class="prefs-input" id="pref-mcp-env" rows="2" placeholder="API_KEY=sk-..."></textarea>
           </div>
           <div class="prefs-form-actions">
-            <button onclick="saveMcpServer()" class="prefs-save-btn">저장</button>
-            <button onclick="cancelMcpForm()" class="prefs-cancel-btn">취소</button>
+            <button onclick="saveMcpServer()" class="prefs-save-btn" data-i18n="prefs_mcp_save">저장</button>
+            <button onclick="cancelMcpForm()" class="prefs-cancel-btn" data-i18n="prefs_mcp_cancel">취소</button>
           </div>
-          <div class="prefs-hint">서버는 사이드바 다시 열 때마다 자동 spawn 됨.</div>
+          <div class="prefs-hint" data-i18n="prefs_mcp_hint">서버는 사이드바 다시 열 때마다 자동 spawn 됨.</div>
         </div>
       </div>
 
       <div class="prefs-section">
-        <div class="prefs-section-title">🗄 기타</div>
-        <button class="prefs-account-btn prefs-wide-btn" onclick="postToExtension({type:'settingsAction', action:'telegram'})">
+        <div class="prefs-section-title" data-i18n="prefs_section_misc">🗄 기타</div>
+        <button class="prefs-account-btn prefs-wide-btn" onclick="postToExtension({type:'settingsAction', action:'telegram'})" data-i18n="prefs_misc_telegram">
           ✈ Telegram (원격 채팅)
         </button>
-        <button class="prefs-account-btn prefs-wide-btn" onclick="postToExtension({type:'settingsAction', action:'restoreArchive'})">
+        <button class="prefs-account-btn prefs-wide-btn" onclick="postToExtension({type:'settingsAction', action:'restoreArchive'})" data-i18n="prefs_misc_restoreArchive">
           ↺ 아카이브에서 대화 복원
         </button>
-        <button class="prefs-account-btn prefs-wide-btn" onclick="postToExtension({type:'settingsAction', action:'openArchives'})">
+        <button class="prefs-account-btn prefs-wide-btn" onclick="postToExtension({type:'settingsAction', action:'openArchives'})" data-i18n="prefs_misc_openArchives">
           📂 아카이브 폴더 열기
         </button>
-        <button class="prefs-account-btn prefs-wide-btn" onclick="postToExtension({type:'settingsAction', action:'logs'})">
+        <button class="prefs-account-btn prefs-wide-btn" onclick="postToExtension({type:'settingsAction', action:'logs'})" data-i18n="prefs_misc_showLogs">
           📜 로그 표시 (OUTPUT 채널)
         </button>
-        <button class="prefs-account-btn prefs-wide-btn" onclick="postToExtension({type:'settingsAction', action:'resetUsage'})">
+        <button class="prefs-account-btn prefs-wide-btn" onclick="postToExtension({type:'settingsAction', action:'resetUsage'})" data-i18n="prefs_misc_resetUsage">
           🔄 세션 토큰 카운터 리셋
         </button>
       </div>
@@ -2875,7 +2887,7 @@
            accept="image/*,application/pdf,audio/*,video/*,text/*,.md,.markdown,.txt,.json,.yaml,.yml,.toml,.csv,.tsv,.log,.xml,.html,.htm,.svg,.css,.scss,.less,.ts,.tsx,.js,.jsx,.mjs,.cjs,.py,.rb,.go,.rs,.java,.kt,.swift,.c,.cc,.cpp,.h,.hpp,.cs,.php,.lua,.sh,.bash,.zsh,.ps1,.bat,.cmd,.sql,.dockerfile,.gitignore,.env,.xlsx,.xls,.xlsm,.ods,.docx,.ipynb,.pptx,.mp3,.wav,.m4a,.flac,.ogg,.mp4,.mov,.webm,.eml,.msg,.rtf,.odt"
            multiple hidden onchange="handleImageFiles(this.files)">
     <div class="attach-preview" id="attach-preview"></div>
-    <textarea id="input" placeholder="무엇을 만들까요... (@ 치면 모델 선택)" rows="1"
+    <textarea id="input" data-i18n-placeholder="input_placeholder" placeholder="무엇을 만들까요... (@ 치면 모델 선택)" rows="1"
       oninput="onInputChange(event)" onkeydown="handleKey(event)"
       onblur="setTimeout(closeMention, 150)"></textarea>
     <div class="input-footer">
@@ -2960,6 +2972,40 @@
 </div>
 
 <script>
+  // ── i18n helper (v0.1.33+) ──
+  // window.I18N 은 extension._getHtml() 에서 inject. 없으면 빈 dict (fallback = key 자체).
+  window.I18N = window.I18N || {}
+  window.I18N_LOCALE = window.I18N_LOCALE || 'ko'
+  // T(key) — JS 안에서 한 줄로 가져오기. {placeholder} 치환 지원.
+  window.T = function(key, repl) {
+    var s = (window.I18N && window.I18N[key]) || key
+    if (repl) for (var k in repl) s = s.replace(new RegExp('\\{' + k + '\\}', 'g'), String(repl[k]))
+    return s
+  }
+  // data-i18n / data-i18n-title / data-i18n-placeholder 속성 일괄 sweep.
+  // 정적 HTML 안 한국어를 키로 마킹해두면 페이지 로드 시 active locale 로 자동 교체.
+  function applyI18n(root) {
+    root = root || document
+    var I = window.I18N || {}
+    root.querySelectorAll('[data-i18n]').forEach(function(el) {
+      var k = el.getAttribute('data-i18n')
+      if (k && I[k] !== undefined) el.textContent = I[k]
+    })
+    root.querySelectorAll('[data-i18n-title]').forEach(function(el) {
+      var k = el.getAttribute('data-i18n-title')
+      if (k && I[k] !== undefined) el.title = I[k]
+    })
+    root.querySelectorAll('[data-i18n-placeholder]').forEach(function(el) {
+      var k = el.getAttribute('data-i18n-placeholder')
+      if (k && I[k] !== undefined) el.placeholder = I[k]
+    })
+  }
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', function() { applyI18n() })
+  } else {
+    applyI18n()
+  }
+
   // ── Marked.js 설정 (CDN 실패 시 fallback) ──
   const HAS_MARKED = typeof marked !== 'undefined'
   const HAS_HLJS = typeof hljs !== 'undefined'
@@ -3691,6 +3737,7 @@
     chk('pref-geminiContextCache-enabled', !!prefs['geminiContextCache.enabled'])
     seg('pref-contextWindow', prefs.contextWindow ?? 'default')
     seg('pref-codexEngine', prefs.codexEngine ?? 'native')
+    seg('pref-language', prefs.language ?? 'auto')
     const cthr = prefs.confidenceThreshold ?? 0.92
     const slider = document.getElementById('pref-confidenceThreshold')
     const lbl = document.getElementById('pref-confidenceVal')
@@ -3781,9 +3828,9 @@
     menu.style.left = `${evt.clientX}px`
     menu.style.top = `${evt.clientY}px`
     menu.innerHTML = `
-      <button class="chat-tab-menu-item" onclick="renameChatTab('${escapeAttr(id)}')">✎ 이름 변경</button>
-      <button class="chat-tab-menu-item" onclick="duplicateChatTab('${escapeAttr(id)}')">⎘ 복제 (모든 메시지 복사)</button>
-      ${_currentTabs.length > 1 ? `<button class="chat-tab-menu-item danger" onclick="closeChatTab('${escapeAttr(id)}');closeChatTabMenu()">× 닫기</button>` : ''}
+      <button class="chat-tab-menu-item" onclick="renameChatTab('${escapeAttr(id)}')">${escapeHtml(T('tab_rename'))}</button>
+      <button class="chat-tab-menu-item" onclick="duplicateChatTab('${escapeAttr(id)}')">${escapeHtml(T('tab_duplicate'))}</button>
+      ${_currentTabs.length > 1 ? `<button class="chat-tab-menu-item danger" onclick="closeChatTab('${escapeAttr(id)}');closeChatTabMenu()">${escapeHtml(T('tab_close') + ' ' + (T('tab_close_tooltip') || ''))}</button>` : ''}
     `
     document.body.appendChild(menu)
     // 바깥 클릭 시 닫기
@@ -3802,7 +3849,7 @@
     closeChatTabMenu()
     const tab = _currentTabs.find(t => t.id === id)
     if (!tab) return
-    const next = prompt('새 탭 이름:', tab.title)
+    const next = prompt(T('tab_rename_prompt'), tab.title)
     if (next && next.trim() && next.trim() !== tab.title) {
       postToExtension({ type: 'renameChat', id, title: next.trim() })
     }
@@ -4680,8 +4727,8 @@
               <span class="tokens-tag">${(m.tokens ?? 0).toLocaleString()} tok</span>
             </div>
             <div class="bubble-actions">
-              <button class="float-btn" onclick="copyMessage('${m.id}', this)">copy</button>
-              <button class="float-btn" onclick="postToExtension({type:'forkChat', fromMessageId: '${m.id}'})" title="이 메시지까지의 history 복사해서 새 탭으로 — 다른 방향 탐색용">⑂ fork</button>
+              <button class="float-btn" onclick="copyMessage('${m.id}', this)">${escapeHtml(T('copy'))}</button>
+              <button class="float-btn" onclick="postToExtension({type:'forkChat', fromMessageId: '${m.id}'})" title="${escapeHtml(T('tab_fork_tooltip'))}">${escapeHtml(T('fork'))}</button>
             </div>
             <div class="msg-content md" id="content-${m.id}">${renderMarkdown(m.content)}</div>
           </div>${verdictHtml}`
@@ -4984,8 +5031,8 @@
         <span class="tokens-tag" id="tok-${id}">...</span>
       </div>
       <div class="bubble-actions">
-        <button class="float-btn" onclick="copyMessage('${id}', this)">copy</button>
-        <button class="float-btn" onclick="postToExtension({type:'forkChat', fromMessageId: '${id}'})" title="이 메시지까지 복사해서 새 탭으로">⑂ fork</button>
+        <button class="float-btn" onclick="copyMessage('${id}', this)">${T('copy')}</button>
+        <button class="float-btn" onclick="postToExtension({type:'forkChat', fromMessageId: '${id}'})" title="${T('fork_tooltip')}">${T('fork')}</button>
       </div>
       <div class="msg-content" id="content-${id}"></div>
     </div>`

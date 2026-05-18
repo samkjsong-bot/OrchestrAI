@@ -39,6 +39,7 @@ import {
   emptyArgueTotals, addToArgueTotals, argueOutputCapKR,
   type DebateTurnSummary,
 } from './util/argueDebate'
+import { t, getLocale, getActiveDict, invalidateLocaleCache } from './i18n'
 import { fetchAgentFromUrl, loadAgentStore, addAgent, removeAgent, setActiveAgent, getActiveAgent } from './util/agentMarketplace'
 import { isQuotaError, summarizeQuotaError } from './util/quota'
 import { TelegramBridge } from './telegram/bridge'
@@ -1764,12 +1765,12 @@ ${hit.kind === 'cmd' ? 'When done, the AI! comment line itself can stay — user
   // directive 6.4 — Full Context Mode 는 매 요청 명시 확인. OAuth/API 쿼터 폭주 방지.
   private async _confirmFullContextMode(): Promise<boolean> {
     const result = await vscode.window.showWarningMessage(
-      'Full Context Mode: 활성 파일 전체 + 관련 파일 + 프로젝트 요약을 모든 모델에 보냅니다.\n\nClaude/GPT/Gemini 쿼터 사용량이 크게 늘 수 있습니다. 진행하시겠어요?',
+      t('full_context_warning'),
       { modal: true },
-      '진행',
-      'Balanced 로 진행',
+      t('full_context_continue'),
+      t('full_context_balanced'),
     )
-    return result === '진행'
+    return result === t('full_context_continue')
   }
 
   // 1회성 모드 (argue/team/loop/boomerang) 종료 시 auto 로 자동 회귀.
@@ -1923,6 +1924,15 @@ ${hit.kind === 'cmd' ? 'When done, the AI! comment line itself can stay — user
               const cfg = vscode.workspace.getConfiguration('orchestrai')
               await cfg.update(msg.key, msg.value, vscode.ConfigurationTarget.Global)
               if (msg.key === 'contextWindow') this._applyContextWindow()
+              // language 변경 — locale cache invalidate + webview HTML 재생성 trigger.
+              if (msg.key === 'language') {
+                invalidateLocaleCache()
+                if (this._view) {
+                  this._view.webview.html = this._getHtml()
+                  // HTML 통째 재생성 후 webview JS 가 webviewReady 다시 보낼 거 — _pushWebviewState 자동.
+                  this._webviewReady = false
+                }
+              }
               // captain / activeProviders 변경되면 webview UI 도 즉시 갱신 — team/boomerang disable 등
               if (msg.key === 'captain' || msg.key === 'activeProviders' || msg.key === 'customProviders') {
                 await this._pushPrefs()
@@ -2056,7 +2066,7 @@ ${hit.kind === 'cmd' ? 'When done, the AI! comment line itself can stay — user
             if (!this._chats[id]) break
             // 마지막 탭은 닫지 못하게 — 비우기는 clearChat 으로.
             if (Object.keys(this._chats).length <= 1) {
-              this._post({ type: 'toast', message: '마지막 탭은 닫을 수 없어요. 비우려면 휴지통 사용.' })
+              this._post({ type: 'toast', message: t('tab_last_cant_close') })
               break
             }
             delete this._chats[id]
@@ -2086,7 +2096,7 @@ ${hit.kind === 'cmd' ? 'When done, the AI! comment line itself can stay — user
             if (!current) break
             const idx = current.messages.findIndex(m => m.id === fromMsgId)
             if (idx < 0) {
-              this._post({ type: 'toast', message: '⚠ 포크 대상 메시지 못 찾음' })
+              this._post({ type: 'toast', message: t('tab_fork_no_target') })
               break
             }
             // 그 메시지까지 포함 — directive: "그 메시지까지의 history 전체"
@@ -2104,7 +2114,7 @@ ${hit.kind === 'cmd' ? 'When done, the AI! comment line itself can stay — user
             this._post({ type: 'rehydrate', messages: this._messages })
             this._postContextGauge()
             this._postTabs()
-            this._post({ type: 'toast', message: `⑂ "${titleHint}" 포크 — ${sliced.length}msg 복사` })
+            this._post({ type: 'toast', message: t('tab_fork_toast', { name: titleHint, n: sliced.length }) })
             break
           }
           case 'requestTabs':
@@ -2133,7 +2143,7 @@ ${hit.kind === 'cmd' ? 'When done, the AI! comment line itself can stay — user
               await this._authStorage.deleteGeminiApiKey()
               setGeminiApiKey(null)
             }
-            this._post({ type: 'toast', message: key ? '✓ Gemini API key 저장' : '✓ Gemini API key 제거' })
+            this._post({ type: 'toast', message: key ? t('toast_apikey_saved') : t('toast_apikey_removed') })
             await this._pushPrefs()
             break
           }
@@ -2149,7 +2159,7 @@ ${hit.kind === 'cmd' ? 'When done, the AI! comment line itself can stay — user
               env: msg.env && typeof msg.env === 'object' ? msg.env : undefined,
             }
             await cfg.update('mcpServers', current, vscode.ConfigurationTarget.Global)
-            this._post({ type: 'toast', message: `✓ MCP "${name}" 저장. 다음 사이드바 열 때 자동 spawn.` })
+            this._post({ type: 'toast', message: t('toast_mcp_saved', { name }) })
             // 즉시 prefs UI 다시 push
             await this._pushPrefs()
             break
@@ -2161,7 +2171,7 @@ ${hit.kind === 'cmd' ? 'When done, the AI! comment line itself can stay — user
             const current = (cfg.get<Record<string, any>>('mcpServers') ?? {}) as Record<string, any>
             delete current[name]
             await cfg.update('mcpServers', current, vscode.ConfigurationTarget.Global)
-            this._post({ type: 'toast', message: `✓ MCP "${name}" 삭제됨.` })
+            this._post({ type: 'toast', message: t('toast_mcp_deleted', { name }) })
             await this._pushPrefs()
             break
           }
@@ -2184,7 +2194,7 @@ ${hit.kind === 'cmd' ? 'When done, the AI! comment line itself can stay — user
             // 현재 턴 끝나면 webview 의 _drainQueue 가 자동 dispatch. 메시지 분실 X.
             if (this._activeSteering) {
               this._activeSteering.push(String(msg.text ?? ''))
-              this._post({ type: 'toast', message: '📤 steering 전달됨 — AI 가 판단해서 처리' })
+              this._post({ type: 'toast', message: t('toast_steer_pushed') })
               // 사용자 메시지로 채팅에도 표시
               const steerMsg: ChatMessage = {
                 id: `steer-${Date.now()}`, role: 'user',
@@ -2200,7 +2210,7 @@ ${hit.kind === 'cmd' ? 'When done, the AI! comment line itself can stay — user
                 text: msg.text ?? '',
                 attachments: msg.attachments ?? [],
               })
-              this._post({ type: 'toast', message: '📤 다음 턴 시작 시 우선 전달됨' })
+              this._post({ type: 'toast', message: t('toast_steer_queued') })
             }
             break
           case 'setPermissionMode':
@@ -2353,6 +2363,7 @@ ${hit.kind === 'cmd' ? 'When done, the AI! comment line itself can stay — user
       'codebaseRag.enabled', 'codebaseRag.autoIndex',
       'contextWindow', 'codexEngine', 'confidenceThreshold',
       'tokenBudget.enabled', 'geminiContextCache.enabled',
+      'language',
     ]
     const prefs: Record<string, any> = {}
     for (const k of PREF_KEYS) prefs[k] = cfg.get(k)
@@ -3611,7 +3622,7 @@ Be concise. Use conventional commit style if commits do.`
       if (tokenMode === 'full') {
         const proceed = await this._confirmFullContextMode()
         if (!proceed) {
-          this._post({ type: 'toast', message: 'Full Context 취소됨 — Balanced 로 진행' })
+          this._post({ type: 'toast', message: t('toast_steer_cancelled') })
           // 사용자가 취소했으니 balanced 로 한 번 보내준다 (이 턴만).
         }
         if (proceed) {
@@ -5452,9 +5463,18 @@ Be concise. Korean if reviews are Korean.`
 
   private _getHtml(): string {
     const htmlPath = path.join(this._extensionUri.fsPath, 'webview', 'chat.html')
-    if (fs.existsSync(htmlPath)) return fs.readFileSync(htmlPath, 'utf8')
-    return `<html><body style="background:#0d0d0f;color:#e8e8f0;font-family:sans-serif;padding:24px">
-      <p>webview/chat.html 파일이 없어요</p></body></html>`
+    if (!fs.existsSync(htmlPath)) {
+      return `<html><body style="background:#0d0d0f;color:#e8e8f0;font-family:sans-serif;padding:24px">
+        <p>webview/chat.html missing</p></body></html>`
+    }
+    let html = fs.readFileSync(htmlPath, 'utf8')
+    // i18n inject — webview JS 가 window.I18N.<key> 로 사용. 사용자가 ⚙ 에서 language 바꾸면 webview reload 됨.
+    const dict = getActiveDict()
+    const locale = getLocale()
+    const injection = `<script>window.I18N = ${JSON.stringify(dict)}; window.I18N_LOCALE = ${JSON.stringify(locale)};</script>`
+    // <head> 종료 직전에 박음 — 모든 후속 script 보다 먼저 evaluate 되어야.
+    html = html.replace('</head>', `${injection}\n</head>`)
+    return html
   }
 
   // VSCode 내장 chat 패널 (@orchestrai 멘션) 핸들러 — 라우팅 + 단일 모델 응답 스트리밍

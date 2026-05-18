@@ -2,7 +2,7 @@
   "name": "orchestrai",
   "displayName": "OrchestrAI",
   "description": "Multi-model AI in one VSCode sidebar — Claude + Codex + Gemini. Auto-routing, model debate, team delegation, until-it-works loop, codebase RAG, multi-model code review, Telegram phone bridge. Zero API billing (uses your existing subscriptions).",
-  "version": "0.1.32",
+  "version": "0.1.33",
   "publisher": "samkj",
   "license": "MIT",
   "icon": "resources/icon.png",
@@ -305,6 +305,21 @@
           "type": "boolean",
           "default": true,
           "description": "Token-aware context projection 활성화. true 면 활성 파일 통째로 보내는 대신 selection/활성 심볼/요약으로 prompt 구성 → 토큰 영수증 표시. false 면 v0.1.28 이전 동작 (활성 파일 통째로)."
+        },
+        "orchestrai.language": {
+          "type": "string",
+          "default": "auto",
+          "enum": [
+            "auto",
+            "ko",
+            "en"
+          ],
+          "enumDescriptions": [
+            "Auto: follow VSCode's UI language (Korean if VSCode is Korean, else English).",
+            "한국어 강제",
+            "Force English"
+          ],
+          "description": "OrchestrAI UI language. 'auto' detects from vscode.env.language."
         },
         "orchestrai.geminiContextCache.enabled": {
           "type": "boolean",

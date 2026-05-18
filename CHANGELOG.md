@@ -1,5 +1,35 @@
 # Changelog
 
+## v0.1.33 — 2026-05-18 (i18n — 한국어/영어 다국어 지원)
+
+사용자 요청: "UI, 호버, 여기저기에 한글들 죄다 i18n 으로 다국어 가능 확장으로". 영어로도 쓸 수 있게.
+
+### i18n 인프라
+- **`src/i18n/strings.ts`** — `{ ko, en }` 한 곳에 모든 UI 키. 의존성 X
+- **`src/i18n/index.ts`** — `t(key, replacements?)` + `getLocale()` 자동 감지 (`vscode.env.language` 한국어 → ko, 그 외 → en)
+- **`orchestrai.language` setting** — `auto / ko / en`. default `auto`
+- extension `_getHtml()` 가 active locale dict 를 `window.I18N` 으로 inject → webview 가 그걸 보고 일괄 sweep
+- webview 의 `applyI18n()` 헬퍼: `data-i18n="key"`, `data-i18n-title="key"`, `data-i18n-placeholder="key"` 속성 박힌 모든 element 페이지 로드 시 active locale 로 자동 교체
+- webview JS 안 dynamic content 는 `T('key', { name, n })` 함수로
+
+### 적용 범위 (Phase 1 — 가장 자주 보이는 영역)
+- **환경설정 패널 전체**: 모든 section title + 토글 라벨 + tooltip + hint + 버튼 (`prefs_*` 키 ~50개)
+- **🌐 Language 섹션** 추가 (auto / 한국어 / English 토글)
+- **탭 (multi-chat) UI**: 탭 닫기 / 새 탭 / 우클릭 메뉴 (이름 변경 / 복제 / 닫기) / fork tooltip / 포크 메시지
+- **fork 버튼**: assistant 메시지의 `⑂ fork` 버튼 + tooltip
+- **input placeholder**: "무엇을 만들까요..." / "What shall we build..."
+- **Full Context 경고 모달**: 한국어/영어 둘 다
+- **주요 toast**: API key 저장 / MCP 저장·삭제 / steering / 포크 / fork target 못 찾음 등
+
+### Phase 2 (다음 patch)
+- 라우팅 배지 / argue 카드 / 토큰 영수증 / Account & Usage 패널 dynamic content
+- extension.ts 의 `vscode.window.show*Message` 들
+
+### 동작
+- 처음 켤 때 — VSCode 가 한국어면 한국어 UI, 영어면 영어 UI 자동
+- ⚙ → 🌐 Language 섹션에서 `auto / ko / en` 토글 — 변경 즉시 webview reload → 새 locale 적용
+- system prompt (LLM 한테 보내는 instructions) 는 **한국어 그대로 유지** (LLM 한국어 능숙 + token budget 영향 X)
+
 ## v0.1.32 — 2026-05-18 (Multi-chat 탭 + 포크 (분기) + Codex MCP / SSE cache 토큰 + 라우터 fix)
 
 사용자 요청: "탭 기능은 언제 만들거냐 ㅋㅋ 포크하는것도 있음 좋을거같은데". v0.1.31 추가 hotfix 4건 (라우터·캐시·prefs 패널) 묶음.
