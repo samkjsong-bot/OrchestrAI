@@ -26,9 +26,9 @@ ext install samkj.orchestrai
 
 ## 🎬 시연 영상 (v0.1.37)
 
-<video src="https://github.com/samkjsong-bot/OrchestrAI/releases/download/v0.1.37/demo-v0.1.37.mp4" controls width="720"></video>
+https://github.com/user-attachments/assets/359f9cc2-cc80-4ea6-a6d6-377fbf594fd3
 
-> github.com 메인 페이지에선 인라인 재생, VSCode Marketplace 에선 → [▶ 시연 동영상 보기](https://github.com/samkjsong-bot/OrchestrAI/releases/download/v0.1.37/demo-v0.1.37.mp4)
+> github.com 메인 페이지에선 인라인 재생. 직접 링크: [▶ 압축본 (10 MB)](https://github.com/user-attachments/assets/359f9cc2-cc80-4ea6-a6d6-377fbf594fd3) · [▶ 원본 (77 MB)](https://github.com/samkjsong-bot/OrchestrAI/releases/download/v0.1.37/demo-v0.1.37.mp4)
 
 ## 🆕 새 기능
 
