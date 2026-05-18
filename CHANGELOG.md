@@ -1,5 +1,51 @@
 # Changelog
 
+## v0.1.32 — 2026-05-18 (Multi-chat 탭 + 포크 (분기) + Codex MCP / SSE cache 토큰 + 라우터 fix)
+
+사용자 요청: "탭 기능은 언제 만들거냐 ㅋㅋ 포크하는것도 있음 좋을거같은데". v0.1.31 추가 hotfix 4건 (라우터·캐시·prefs 패널) 묶음.
+
+### Multi-chat 탭 (v0.1.32 핵심)
+- **헤더 아래 새 탭 줄** — 가로 스크롤, active highlight, `+` 새 탭
+- **storage v2 마이그레이션**: 옛 단일 `{messages, compaction}` 발견 시 자동 "메인" 탭 1개로 변환. 데이터 손실 0
+- **워크스페이스당 무제한 탭** — 각각 독립된 messages·compaction. 활성 탭 전환은 instant
+- **provider `_messages` 41군데 그대로** — getter/setter 가 active chat 으로 redirect (deep refactor 안 했음)
+- **새 메시지 핸들러**: `switchChat` / `newChat` / `forkChat` / `closeChat` / `renameChat` / `requestTabs`
+
+### 포크 (분기) — 다른 방향 탐색
+- assistant 메시지 우상단에 `⑂ fork` 버튼 (`copy` 옆)
+- 클릭 → 그 메시지까지의 history 전체 복사 + 새 탭 자동 활성화
+- 새 탭 title 자동: `⑂ <마지막 user msg 첫 20자>`
+- `branchedFrom: { parentChatId, atMessageId }` 메타 보존 — 탭에 `⑂` 아이콘 표시. 추후 "원본 점프" 추가 가능
+
+### 탭 UX 디테일
+- 우클릭 컨텍스트 메뉴: 이름 변경 / 복제 (마지막 메시지에서 fork) / 닫기
+- 마지막 탭은 닫기 X (휴지통으로 비우기만)
+- 활성 탭이 닫히면 가장 최근 updatedAt 탭으로 자동 전환
+- 탭 진행 중 다른 탭으로 switch → 현재 호출 abort (다른 탭에 응답 누락 방지)
+
+### 라우터 (inferEffort) 거꾸로 사고 fix
+사용자 발견: "안녕?" → effort=medium (full 모델), "100글자 시 써봐" → effort=low (mini 모델). 거꾸로!
+
+- 짧은 인사 (`안녕|하이|헬로|ㅎㅇ|hi|hello`) → 우선순위 low (typo 보다 먼저)
+- 창작 글쓰기 (`시·소설·에세이·편지·노래·대본·시나리오·동시·일기` 명사 + `써봐·써줘·작성·지어` 동사 한 prompt 안에) → high
+- 영어 `\b(write|compose|draft|author)\b.{0,40}\b(poem|story|essay|...)\b` → high
+
+### Cache 토큰 진단·표시 보강
+- **Codex MCP (native)**: result 전체 + progress notifications 재귀 탐색 (deepFindUsage, 6 depth). `_meta` / `meta` / `structuredContent.usage` / OpenAI 형식 `prompt_tokens_details.cached_tokens` 등 모든 후보 키 자동 탐색. **codex.exe MCP server v0.131.0-alpha.9 는 토큰 노출 X 확정** (첫 호출 raw dump 로 검증). 노출 시작하면 자동 잡힘
+- **Codex legacy (SSE)**: `response.usage.input_tokens_details.cached_tokens` 추출. gpt-5.4 류 자동 prompt cache hit 까지 정확 표시
+- **Claude SDK**: `cache_read_input_tokens` / `cache_creation_input_tokens` 추적 (v0.1.30 fix 확장 — argueTurnTokens 까지 흐름)
+
+### Account & Usage 패널 cache 줄
+- ⚡ cache_read / ↑ cache_write / 📦 cached_in 3 컬럼 (있을 때만)
+- input 라인: `in 6 + cache 36.7k = 36.7k` 처럼 처리량 vs 새 input 분리
+- 절약 추정 $ 도 cache 단가 반영 (cache_read 10%, cache_write 1.25x, Gemini cached 25%)
+
+### 환경설정 패널 헤더에 버전 표시
+- `⚙ 환경설정 v0.1.32` 헤더에 큰 글씨로. 풋터에도 같이
+
+### Tests
+216 통과. patternRouter +12 (인사 low, 창작 high 회귀).
+
 ## v0.1.31 — 2026-05-13 (모든 설정을 환경설정 패널 안에서 — QuickPick 우회)
 
 사용자 지적: "다 빠른엑세스에서 설정하지않고 설정창같이 별도창에서 설정하고 넣고 하며 좋겠는데" / "MCP같은경우 누르면 빠른엑세스로 넘어감 ㅡㅡ"

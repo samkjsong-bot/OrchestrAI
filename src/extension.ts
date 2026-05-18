@@ -82,64 +82,101 @@ function chatStateFilePath(context: vscode.ExtensionContext): string {
   return path.join(dir, `${hash}.json`)
 }
 
-interface ChatStorage {
-  messages: ChatMessage[]
+// v0.1.31 까지: ChatStorage = { messages, compaction } 단일 chat.
+// v0.1.32+: ChatWorkspaceStorage = { version: 2, activeChatId, chats: { [id]: ChatTab } } — 탭 (multi-chat).
+// 두 포맷 모두 자동 로드 (v1 발견 시 v2 로 변환).
+import type { ChatTab, ChatWorkspaceStorage } from './router/types'
+
+function newChatId(): string {
+  return require('crypto').createHash('sha1').update(`${Date.now()}-${Math.random()}`).digest('hex').slice(0, 12)
+}
+function makeEmptyChat(title = '메인'): ChatTab {
+  const now = Date.now()
+  return { id: newChatId(), title, messages: [], createdAt: now, updatedAt: now }
+}
+function emptyWorkspaceStorage(): ChatWorkspaceStorage {
+  const c = makeEmptyChat('메인')
+  return { version: 2, activeChatId: c.id, chats: { [c.id]: c } }
+}
+
+interface LegacyChatFile {
+  messages?: ChatMessage[]
   compaction?: CompactionState
   workspaceKey?: string
   workspacePath?: string
-  updatedAt?: number
 }
 
-function readChatFile(filePath: string): ChatStorage | null {
+function readChatFile(filePath: string): ChatWorkspaceStorage | null {
   try {
     const raw = fs.readFileSync(filePath, 'utf8')
     const parsed = JSON.parse(raw)
-    if (Array.isArray(parsed)) return { messages: parsed }
-    return {
-      messages: Array.isArray(parsed.messages) ? parsed.messages : [],
-      compaction: parsed.compaction,
+    // v2 — 이미 multi-chat 구조
+    if (parsed && parsed.version === 2 && parsed.chats && typeof parsed.chats === 'object') {
+      // sanity: activeChatId 가 chats 안에 있어야 함
+      const ids = Object.keys(parsed.chats)
+      const active = ids.includes(parsed.activeChatId) ? parsed.activeChatId : ids[0]
+      return { version: 2, activeChatId: active, chats: parsed.chats }
     }
+    // legacy v1 — array of messages OR { messages, compaction } 단일.
+    let legacyMsgs: ChatMessage[] = []
+    let legacyCompaction: CompactionState | undefined
+    if (Array.isArray(parsed)) {
+      legacyMsgs = parsed
+    } else if (parsed && typeof parsed === 'object') {
+      const p = parsed as LegacyChatFile
+      legacyMsgs = Array.isArray(p.messages) ? p.messages : []
+      legacyCompaction = p.compaction
+    }
+    // v1 → v2 마이그레이션: 모든 옛 메시지를 "메인" 탭 1개로 묶어 변환.
+    const main = makeEmptyChat('메인')
+    main.messages = legacyMsgs
+    main.compaction = legacyCompaction
+    return { version: 2, activeChatId: main.id, chats: { [main.id]: main } }
   } catch {
     return null
   }
 }
 
-function loadChatStorage(context: vscode.ExtensionContext): ChatStorage {
+function loadChatStorage(context: vscode.ExtensionContext): ChatWorkspaceStorage {
   const file = chatStateFilePath(context)
   // 1) 현재 키 파일 우선
   if (fs.existsSync(file)) {
     const loaded = readChatFile(file)
     if (loaded) {
-      log.info('persist', `loaded ${loaded.messages.length} messages from ${file}`)
+      const total = Object.values(loaded.chats).reduce((s, c) => s + c.messages.length, 0)
+      log.info('persist', `loaded ${Object.keys(loaded.chats).length} chats (${total} msgs), active=${loaded.activeChatId} from ${file}`)
       return loaded
     }
   }
-  // 2) 옛 workspaceState 마이그레이션
+  // 2) 옛 workspaceState 마이그레이션 (v0.1.x 이전 — 거의 없음)
   try {
     const old = context.workspaceState.get<ChatMessage[]>(chatStateKey())
     if (old && old.length > 0) {
-      const storage: ChatStorage = { messages: old }
+      const main = makeEmptyChat('메인')
+      main.messages = old
+      const storage: ChatWorkspaceStorage = { version: 2, activeChatId: main.id, chats: { [main.id]: main } }
       fs.writeFileSync(file, JSON.stringify(storage))
-      log.info('persist', `migrated ${old.length} from workspaceState ??${file}`)
+      log.info('persist', `migrated ${old.length} msgs from workspaceState → v2 chat`)
       return storage
     }
   } catch {}
-  // Workspace-scoped history: never pull another folder's latest chat automatically.
-  return { messages: [] }
+  // 첫 사용 — 빈 "메인" 탭 1개 생성.
+  return emptyWorkspaceStorage()
 }
 
-function saveChatStorage(context: vscode.ExtensionContext, storage: ChatStorage): void {
+function saveChatStorage(context: vscode.ExtensionContext, storage: ChatWorkspaceStorage): void {
   try {
     const file = chatStateFilePath(context)
     const folder = vscode.workspace.workspaceFolders?.[0]
-    const next: ChatStorage = {
+    const next = {
       ...storage,
       workspaceKey: chatStateKey(),
       workspacePath: folder?.uri.fsPath,
       updatedAt: Date.now(),
     }
     fs.writeFileSync(file, JSON.stringify(next))
-    log.info('persist', `saved ${storage.messages.length} messages, compaction=${storage.compaction ? 'yes' : 'no'} ??${file}`)
+    const total = Object.values(storage.chats).reduce((s, c) => s + c.messages.length, 0)
+    log.info('persist', `saved ${Object.keys(storage.chats).length} chats (${total} msgs), active=${storage.activeChatId}`)
   } catch (err) {
     log.error('persist', 'save failed:', err)
   }
@@ -990,8 +1027,28 @@ Answer questions about this file directly. Show modified code for edits.`
 // ?? WebView Provider ??????????????????????????????????????????????
 class OrchestrAIViewProvider implements vscode.WebviewViewProvider, vscode.Disposable {
   private _view?: vscode.WebviewView
-  private _messages: ChatMessage[] = []
   private _chatKey = chatStateKey()
+  // Multi-chat tabs (v0.1.32+). _messages getter 가 active chat 으로 redirect — 기존 41 군데 코드 그대로 동작.
+  private _chats: Record<string, ChatTab> = {}
+  private _activeChatId: string = ''
+  private get _messages(): ChatMessage[] {
+    const c = this._chats[this._activeChatId]
+    if (!c) return []
+    return c.messages
+  }
+  private set _messages(v: ChatMessage[]) {
+    const c = this._chats[this._activeChatId]
+    if (!c) return
+    c.messages = v
+    c.updatedAt = Date.now()
+  }
+  private get _compaction(): CompactionState | undefined {
+    return this._chats[this._activeChatId]?.compaction
+  }
+  private set _compaction(v: CompactionState | undefined) {
+    const c = this._chats[this._activeChatId]
+    if (c) c.compaction = v
+  }
   private _override: RouterMode = 'auto'
   private _useFileContext = true
   // Token-aware context — directive Phase 1.
@@ -1013,7 +1070,7 @@ class OrchestrAIViewProvider implements vscode.WebviewViewProvider, vscode.Dispo
   private _effortOverride: Effort | null = null
   private _fileSnapshotsByTurn = new Map<string, FileSnapshot[]>()
   private _pendingApproval?: PendingApproval
-  private _compaction?: CompactionState  // 압축본 저장 — 각 model에 [요약 + 최근원문] 으로 보냄
+  // _compaction 은 위 getter/setter 가 활성 chat 으로 redirect — 여기서 직접 선언 X.
   private _compactingNow = false
   private _currentAbort?: AbortController  // 현재 진행 중인 generation 중단용
   private _activeSteering?: import('./providers/claudeProvider').ControllableUserStream  // mid-stream steering 용 push 가능 stream
@@ -1036,6 +1093,13 @@ class OrchestrAIViewProvider implements vscode.WebviewViewProvider, vscode.Dispo
     this._codexAuth = new CodexAuth(this._authStorage)
     this._geminiAuth = new GeminiAuth(this._authStorage)
     this._usage = new UsageTracker()
+    // 빈 chat 초기값 — resolveWebviewView 전에 _messages 접근해도 push 가 leak 안 되게.
+    // resolveWebviewView 가 진짜 disk 로드 후 _chats 통째로 교체.
+    {
+      const c = makeEmptyChat('메인')
+      this._chats[c.id] = c
+      this._activeChatId = c.id
+    }
     this._mcp = new McpManager(() => this._cfg<Record<string, McpServerConfig>>('mcpServers') ?? {})
     this._statusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 99)
     this._statusBarItem.command = 'orchestrai.openChat'
@@ -1415,8 +1479,27 @@ ${hit.kind === 'cmd' ? 'When done, the AI! comment line itself can stay — user
   }
 
   private async _persistMessages() {
-    saveChatStorage(this._context, { messages: this._messages, compaction: this._compaction })
+    // 활성 chat 의 updatedAt 갱신 — 탭 정렬용
+    const active = this._chats[this._activeChatId]
+    if (active) active.updatedAt = Date.now()
+    saveChatStorage(this._context, { version: 2, activeChatId: this._activeChatId, chats: this._chats })
     this._postContextGauge()
+    // 탭 메타도 webview 에 push (제목·메시지 수 같이 갱신)
+    this._postTabs()
+  }
+
+  // 사이드바 탭 바에 현재 모든 chat 메타 (id/title/count/active) 전송.
+  private _postTabs() {
+    const tabs = Object.values(this._chats)
+      .sort((a, b) => b.updatedAt - a.updatedAt)
+      .map(c => ({
+        id: c.id,
+        title: c.title,
+        count: c.messages.length,
+        branchedFrom: c.branchedFrom,
+        updatedAt: c.updatedAt,
+      }))
+    this._post({ type: 'chatTabs', tabs, activeChatId: this._activeChatId })
   }
 
   // 현재 대화의 전체 토큰 추정 + 모델별 컨텍스트 시드 → UI 게이지
@@ -1653,8 +1736,9 @@ ${hit.kind === 'cmd' ? 'When done, the AI! comment line itself can stay — user
         this._messages = parsed.messages ?? []
         this._compaction = parsed.compaction
       }
-      saveChatStorage(this._context, { messages: this._messages, compaction: this._compaction })
+      saveChatStorage(this._context, { version: 2, activeChatId: this._activeChatId, chats: this._chats })
       this._post({ type: 'rehydrate', messages: this._messages })
+      this._postTabs()
       vscode.window.showInformationMessage(`✓ 복원됨 (${this._messages.length} msg)`)
     } catch (err) {
       vscode.window.showErrorMessage(`복원 실패: ${err instanceof Error ? err.message : String(err)}`)
@@ -1768,8 +1852,8 @@ ${hit.kind === 'cmd' ? 'When done, the AI! comment line itself can stay — user
     this._view = webviewView
     this._chatKey = chatStateKey()
     const storage = loadChatStorage(this._context)
-    this._messages = storage.messages
-    this._compaction = storage.compaction
+    this._chats = storage.chats
+    this._activeChatId = storage.activeChatId
     this._webviewReady = false  // 새 webview면 다시 ready 신호 받아야 함
     this._lastWebviewReadyInstance = undefined
     webviewView.webview.options = {
@@ -1939,6 +2023,93 @@ ${hit.kind === 'cmd' ? 'When done, the AI! comment line itself can stay — user
             await this._handleSettingsAction(msg.action)
             break
           // ── 인라인 prefs 패널 직접 동작 (QuickPick 우회) — v0.1.31+ ──
+          // ── Multi-chat tab 동작 (v0.1.32+) ──
+          case 'switchChat': {
+            const id = String(msg.id ?? '')
+            if (!this._chats[id] || id === this._activeChatId) break
+            this._activeChatId = id
+            // 진행 중 호출이 있으면 abort (다른 탭의 응답이 활성 탭에 흘러들어가지 않게)
+            if (this._isSending) {
+              this._argueStop = true
+              this._currentAbort?.abort()
+              this._isSending = false
+              this._post({ type: 'sendUnlocked' })
+              this._post({ type: 'generationEnd' })
+            }
+            await this._persistMessages()
+            this._post({ type: 'rehydrate', messages: this._messages })
+            this._postContextGauge()
+            this._postTabs()
+            break
+          }
+          case 'newChat': {
+            const c = makeEmptyChat(String(msg.title ?? '새 탭'))
+            this._chats[c.id] = c
+            this._activeChatId = c.id
+            await this._persistMessages()
+            this._post({ type: 'rehydrate', messages: [] })
+            this._postTabs()
+            break
+          }
+          case 'closeChat': {
+            const id = String(msg.id ?? '')
+            if (!this._chats[id]) break
+            // 마지막 탭은 닫지 못하게 — 비우기는 clearChat 으로.
+            if (Object.keys(this._chats).length <= 1) {
+              this._post({ type: 'toast', message: '마지막 탭은 닫을 수 없어요. 비우려면 휴지통 사용.' })
+              break
+            }
+            delete this._chats[id]
+            // 활성 탭이 닫혔으면 가장 최근 updatedAt 으로 fallback.
+            if (this._activeChatId === id) {
+              this._activeChatId = Object.values(this._chats).sort((a, b) => b.updatedAt - a.updatedAt)[0].id
+              this._post({ type: 'rehydrate', messages: this._messages })
+              this._postContextGauge()
+            }
+            await this._persistMessages()
+            this._postTabs()
+            break
+          }
+          case 'renameChat': {
+            const id = String(msg.id ?? '')
+            const title = String(msg.title ?? '').trim().slice(0, 40)
+            if (!this._chats[id] || !title) break
+            this._chats[id].title = title
+            await this._persistMessages()
+            this._postTabs()
+            break
+          }
+          case 'forkChat': {
+            // assistant 메시지 클릭 시: 그 메시지까지의 history 통째로 복사 → 새 탭 활성화.
+            const fromMsgId = String(msg.fromMessageId ?? '')
+            const current = this._chats[this._activeChatId]
+            if (!current) break
+            const idx = current.messages.findIndex(m => m.id === fromMsgId)
+            if (idx < 0) {
+              this._post({ type: 'toast', message: '⚠ 포크 대상 메시지 못 찾음' })
+              break
+            }
+            // 그 메시지까지 포함 — directive: "그 메시지까지의 history 전체"
+            const sliced = current.messages.slice(0, idx + 1)
+              .map(m => ({ ...m }))  // shallow copy 충분 (메시지 객체 새로 만들기)
+            // 새 탭 title — 사용자 마지막 user msg 의 첫 20자.
+            const lastUser = [...sliced].reverse().find(m => m.role === 'user')
+            const titleHint = lastUser?.content?.trim().slice(0, 20) || '포크'
+            const fork = makeEmptyChat(`⑂ ${titleHint}`)
+            fork.messages = sliced
+            fork.branchedFrom = { parentChatId: current.id, atMessageId: fromMsgId }
+            this._chats[fork.id] = fork
+            this._activeChatId = fork.id
+            await this._persistMessages()
+            this._post({ type: 'rehydrate', messages: this._messages })
+            this._postContextGauge()
+            this._postTabs()
+            this._post({ type: 'toast', message: `⑂ "${titleHint}" 포크 — ${sliced.length}msg 복사` })
+            break
+          }
+          case 'requestTabs':
+            this._postTabs()
+            break
           case 'accountAction': {
             // login*/logout* — _showAccountSubmenu 의 분기를 직접 호출.
             switch (msg.action) {
@@ -2144,20 +2315,23 @@ ${hit.kind === 'cmd' ? 'When done, the AI! comment line itself can stay — user
   }
 
   private async _pushWebviewState(reason: string) {
-    // 메모리 _messages가 빈 배열인데 디스크에는 살아있을 수 있음 (resolveWebviewView race / SDK 초기화 timing).
-    // 매번 디스크에서 freshly 로드해서 메모리가 더 적으면 디스크 기준으로 sync.
+    // 메모리 chats 가 비어있는데 디스크엔 살아있을 수 있음 (resolveWebviewView race / SDK 초기화 timing).
+    // 디스크 기준 chat 수가 더 많으면 통째로 sync.
     const fresh = loadChatStorage(this._context)
-    if (fresh.messages.length > this._messages.length) {
-      log.warn('persist', `memory had ${this._messages.length} but disk has ${fresh.messages.length} — restoring from disk`)
-      this._messages = fresh.messages
-      this._compaction = fresh.compaction
+    const memTotal = Object.values(this._chats).reduce((s, c) => s + c.messages.length, 0)
+    const diskTotal = Object.values(fresh.chats).reduce((s, c) => s + c.messages.length, 0)
+    if (diskTotal > memTotal) {
+      log.warn('persist', `memory ${memTotal} msgs / disk ${diskTotal} msgs — restoring from disk`)
+      this._chats = fresh.chats
+      this._activeChatId = fresh.activeChatId
     }
-    log.info('persist', `push webview state (${reason}) messages=${this._messages.length}, key=${this._chatKey}`)
+    log.info('persist', `push webview state (${reason}) tabs=${Object.keys(this._chats).length}, active=${this._activeChatId}, messages=${this._messages.length}`)
     await this._sendAuthStatus()
     this._notifyContextChange()
     this._postContextGauge()
     this._post({ type: 'permissionModeState', mode: this._permissionMode })
     this._post({ type: 'effortOverrideState', effort: this._effortOverride })
+    this._postTabs()
     this._post({ type: 'rehydrate', messages: this._messages })
   }
 
@@ -4055,7 +4229,7 @@ ${result.failureSummary || result.output.slice(-3000)}
     onChunk: (text: string) => void,
     streamId: string,
     turnId?: string,
-  ): Promise<{ content: string; inputTokens: number; outputTokens: number; usedModel?: string }> {
+  ): Promise<{ content: string; inputTokens: number; outputTokens: number; usedModel?: string; cacheReadInputTokens?: number; cacheCreationInputTokens?: number }> {
     // native engine: codex.exe mcp-server 통해 호출. tool/path/auth 다 codex가 처리.
     const engine = this._cfg<string>('codexEngine') ?? 'native'
     if (engine === 'native') {

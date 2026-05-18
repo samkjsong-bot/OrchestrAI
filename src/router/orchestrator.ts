@@ -87,6 +87,11 @@ export function inferEffort(input: string): Effort {
   if (/\btypo\b|타이포|오타/i.test(text)) {
     return 'low'
   }
+  // 짧은 인사 / 한 줄 chit-chat — high 보다 우선. 인사는 무조건 low.
+  // (예: "안녕", "안녕?", "hi", "ㅎㅇ", "헬로"). 짧고 인사 키워드면 mini 충분.
+  if (compact.length <= 15 && /^(안녕|하이|헬로|ㅎㅇ|반가워|hi+|hello|hey|yo|sup)[\s.,!?~ㅋㅎ]*$/i.test(compact.trim())) {
+    return 'low'
+  }
 
   // ── HIGH: 코드 작성/수정/리팩토링/디버깅 — 모델의 깊은 사고 필요 ──
   if (/\b(high|deep|thorough|complex|architecture|architect|refactor|security|audit|optimize|debug)\b/i.test(text)) {
@@ -110,6 +115,18 @@ export function inferEffort(input: string): Effort {
   }
   // 한국어 코딩 동사 — '만들어줘 / 구현해 / 짜줘 / 작성해' 단독 키워드도 high (작은 작업도 깊이 보장)
   if (/(만들어|만들|구현|짜줘|작성|개발)/.test(text)) {
+    return 'high'
+  }
+  // 창작 / 글쓰기 — 창작물 명사 + 작문 동사 한 prompt 안에 같이 있으면 high.
+  // 짧은 prompt 라도 quality 영향 큼 → full 모델 권장.
+  // 명사 패턴은 조사 동반 필수 ("시를/시한/한 편 시" 등) — "글로벌" 의 "글" 같은 false positive 방지.
+  // ("글" 단어 자체는 너무 흔해서 단독으로 매칭 X.)
+  const writingNoun = /(소설|에세이|수필|편지|이야기|스토리|대본|시나리오|시놉시스|가사|노래|시조|동시|일기|에피소드|시(?:를|한|을|좀)|한\s*편\s*(?:의\s*)?시)/.test(text)
+  const writingVerb = /(써봐|써줘|써|쓰|작성|적어|지어줘|지어)/.test(text)
+  if (writingNoun && writingVerb) {
+    return 'high'
+  }
+  if (/\b(write|compose|draft|author)\b.{0,40}\b(poem|story|essay|letter|song|lyrics|script|article|post|email|chapter|paragraph)\b/i.test(text)) {
     return 'high'
   }
   if (compact.length > 500) {

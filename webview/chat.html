@@ -929,6 +929,103 @@
   .route-item:hover { background: var(--surface); color: var(--text); }
 
   /* 컨텍스트 게이지 (헤더 바로 아래) */
+  /* 채팅 탭 바 (v0.1.32+) — 헤더 아래, 좌→우 가로 스크롤 */
+  .chat-tabs {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 4px 8px 0;
+    border-bottom: 1px solid var(--border);
+    background: var(--surface);
+  }
+  .chat-tabs-list {
+    display: flex;
+    gap: 2px;
+    flex: 1;
+    min-width: 0;
+    overflow-x: auto;
+    overflow-y: hidden;
+    scrollbar-width: thin;
+  }
+  .chat-tabs-list::-webkit-scrollbar { height: 3px; }
+  .chat-tabs-list::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+  .chat-tab {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 4px 10px 5px;
+    border-radius: 5px 5px 0 0;
+    border: 1px solid transparent;
+    background: transparent;
+    color: var(--text-muted);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    cursor: pointer;
+    max-width: 140px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    flex-shrink: 0;
+    border-bottom: none;
+  }
+  .chat-tab:hover { background: var(--surface2); color: var(--text); }
+  .chat-tab.active {
+    background: var(--bg);
+    border-color: var(--border);
+    color: var(--text);
+    font-weight: 600;
+  }
+  .chat-tab .chat-tab-count {
+    font-size: 9px;
+    color: var(--text-dim);
+    margin-left: 2px;
+  }
+  .chat-tab .chat-tab-close {
+    margin-left: 4px;
+    color: var(--text-dim);
+    padding: 0 2px;
+    border-radius: 3px;
+  }
+  .chat-tab .chat-tab-close:hover { background: rgba(255,255,255,0.1); color: #f87171; }
+  .chat-tab .chat-tab-fork-icon { color: #a78bfa; font-size: 9px; }
+  .chat-tab-new {
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--text-muted);
+    border-radius: 5px;
+    padding: 2px 8px;
+    font-size: 12px;
+    cursor: pointer;
+    flex-shrink: 0;
+  }
+  .chat-tab-new:hover { border-color: var(--accent); color: var(--accent); }
+
+  /* 탭 우클릭 컨텍스트 메뉴 */
+  .chat-tab-menu {
+    position: fixed;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 4px 0;
+    z-index: 1000;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+    min-width: 140px;
+  }
+  .chat-tab-menu-item {
+    display: block;
+    width: 100%;
+    text-align: left;
+    background: transparent;
+    border: none;
+    color: var(--text);
+    font-size: 11px;
+    padding: 6px 12px;
+    cursor: pointer;
+    font-family: inherit;
+  }
+  .chat-tab-menu-item:hover { background: var(--surface2); }
+  .chat-tab-menu-item.danger:hover { color: #f87171; }
+
   .ctx-gauge {
     padding: 6px 16px 8px;
     border-bottom: 1px solid var(--border);
@@ -2315,6 +2412,12 @@
   </div>
 </div>
 
+<!-- 채팅 탭 바 — 헤더 아래. 가로 스크롤, active highlight, + 버튼 -->
+<div class="chat-tabs" id="chat-tabs">
+  <div class="chat-tabs-list" id="chat-tabs-list"></div>
+  <button class="chat-tab-new" onclick="postToExtension({type:'newChat'})" title="새 탭">+</button>
+</div>
+
 <!-- 컨텍스트 게이지 (메모리 사용량 + 리셋) -->
 <div class="ctx-gauge" id="ctx-gauge" onclick="onGaugeClick()" title="클릭하면 대화 리셋 (컨텍스트 초기화)">
   <span class="ctx-gauge-label">🧠 memory</span>
@@ -3394,6 +3497,10 @@
         // directive Phase 1 — token-budgeted context 진단 정보 (intent / level / mode).
         showContextBundleBadge(msg)
         break
+      case 'chatTabs':
+        // v0.1.32+ 멀티 chat 탭 바 갱신.
+        renderChatTabs(msg.tabs || [], msg.activeChatId)
+        break
       case 'tokenReceipt':
         // directive 10.8 / 17절 — 한 모델에 얼마나 보냈는지 영수증.
         showTokenReceipt(msg.short, msg.receipt, msg.detail)
@@ -3631,6 +3738,84 @@
   }
   function onConfidenceSlide(input) {
     document.getElementById('pref-confidenceVal').textContent = Number(input.value).toFixed(2)
+  }
+
+  // ── 채팅 탭 (v0.1.32+) — 멀티 chat ──
+  let _currentTabs = []
+  let _activeTabId = ''
+  function renderChatTabs(tabs, activeId) {
+    _currentTabs = tabs
+    _activeTabId = activeId
+    const list = document.getElementById('chat-tabs-list')
+    if (!list) return
+    list.innerHTML = tabs.map(t => {
+      const isActive = t.id === activeId
+      const forkIcon = t.branchedFrom ? `<span class="chat-tab-fork-icon" title="포크">⑂</span>` : ''
+      const closeBtn = tabs.length > 1
+        ? `<span class="chat-tab-close" onclick="event.stopPropagation();closeChatTab('${escapeAttr(t.id)}')" title="탭 닫기">×</span>`
+        : ''
+      return `<button class="chat-tab${isActive ? ' active' : ''}"
+        onclick="switchChatTab('${escapeAttr(t.id)}')"
+        oncontextmenu="event.preventDefault();openChatTabMenu(event, '${escapeAttr(t.id)}')"
+        title="${escapeAttr(t.title)} · ${t.count}msg${t.branchedFrom ? ' · 포크' : ''}">
+        ${forkIcon}<span class="chat-tab-title-text">${escapeHtml(t.title)}</span>
+        <span class="chat-tab-count">${t.count}</span>
+        ${closeBtn}
+      </button>`
+    }).join('')
+  }
+  function switchChatTab(id) {
+    if (id === _activeTabId) return
+    postToExtension({ type: 'switchChat', id })
+  }
+  function closeChatTab(id) {
+    postToExtension({ type: 'closeChat', id })
+  }
+  function openChatTabMenu(evt, id) {
+    const tab = _currentTabs.find(t => t.id === id)
+    if (!tab) return
+    closeChatTabMenu()
+    const menu = document.createElement('div')
+    menu.className = 'chat-tab-menu'
+    menu.id = 'chat-tab-menu'
+    menu.style.left = `${evt.clientX}px`
+    menu.style.top = `${evt.clientY}px`
+    menu.innerHTML = `
+      <button class="chat-tab-menu-item" onclick="renameChatTab('${escapeAttr(id)}')">✎ 이름 변경</button>
+      <button class="chat-tab-menu-item" onclick="duplicateChatTab('${escapeAttr(id)}')">⎘ 복제 (모든 메시지 복사)</button>
+      ${_currentTabs.length > 1 ? `<button class="chat-tab-menu-item danger" onclick="closeChatTab('${escapeAttr(id)}');closeChatTabMenu()">× 닫기</button>` : ''}
+    `
+    document.body.appendChild(menu)
+    // 바깥 클릭 시 닫기
+    setTimeout(() => {
+      const dismiss = (e) => {
+        if (!menu.contains(e.target)) { closeChatTabMenu(); document.removeEventListener('click', dismiss) }
+      }
+      document.addEventListener('click', dismiss)
+    }, 0)
+  }
+  function closeChatTabMenu() {
+    const m = document.getElementById('chat-tab-menu')
+    if (m) m.remove()
+  }
+  function renameChatTab(id) {
+    closeChatTabMenu()
+    const tab = _currentTabs.find(t => t.id === id)
+    if (!tab) return
+    const next = prompt('새 탭 이름:', tab.title)
+    if (next && next.trim() && next.trim() !== tab.title) {
+      postToExtension({ type: 'renameChat', id, title: next.trim() })
+    }
+  }
+  function duplicateChatTab(id) {
+    closeChatTabMenu()
+    // 마지막 메시지에서 fork 와 동일 — 모든 메시지 복사. assistant 마지막 message id 찾아서 forkChat 호출.
+    // (간단한 webview side helper — backend 가 이미 모든 메시지 다 가지고 있음)
+    const messages = document.querySelectorAll('#messages .msg-ai')
+    const last = messages[messages.length - 1]
+    const msgId = last?.id?.replace(/^msg-/, '')
+    if (!msgId) return showToast('복제할 메시지 없음 — 빈 탭은 + 로 새로')
+    postToExtension({ type: 'forkChat', fromMessageId: msgId })
   }
 
   // ── 계정 (Claude / Codex / Gemini) 로그인·로그아웃 + Gemini API key ──
@@ -4496,6 +4681,7 @@
             </div>
             <div class="bubble-actions">
               <button class="float-btn" onclick="copyMessage('${m.id}', this)">copy</button>
+              <button class="float-btn" onclick="postToExtension({type:'forkChat', fromMessageId: '${m.id}'})" title="이 메시지까지의 history 복사해서 새 탭으로 — 다른 방향 탐색용">⑂ fork</button>
             </div>
             <div class="msg-content md" id="content-${m.id}">${renderMarkdown(m.content)}</div>
           </div>${verdictHtml}`
@@ -4551,13 +4737,25 @@
 
     // 단가 ($/1M tokens) — 우리는 zero-billing 우회라 실제 청구 0이지만,
     // '구독 안 썼을 경우' 절약 금액 추정 (사용자에게 가치 환산).
+    // cache_read = 10% 단가 (Anthropic), cache_creation = 125% (1.25x), Gemini cached = 25%.
     const PRICING = {
-      claude: { in: 3, out: 15 },         // Sonnet 4.6 기준
-      codex:  { in: 5, out: 20 },          // gpt-5.4 기준 (Pro 평균)
-      gemini: { in: 0.30, out: 2.5 },      // Flash 기준
+      claude: { in: 3, out: 15, cacheRead: 0.30, cacheWrite: 3.75 },  // Sonnet 4.6
+      codex:  { in: 5, out: 20, cacheRead: 0.50, cacheWrite: 5 },     // gpt-5.4 (Pro 평균)
+      gemini: { in: 0.30, out: 2.5, cacheRead: 0.075, cacheWrite: 0.30 }, // Flash, cached = 25%
     }
-    const calcCost = (m, u) => (u.inputTokens * PRICING[m].in + u.outputTokens * PRICING[m].out) / 1_000_000
-    const totalSaved = ['claude','codex','gemini'].reduce((s, m) => s + calcCost(m, session[m] || { inputTokens: 0, outputTokens: 0 }), 0)
+    // 모델이 실제 처리한 총 input = 새 input + cache hit + cache 생성. cache 단가 별도 합산.
+    const calcCost = (m, u) => {
+      const p = PRICING[m]
+      const newIn = (u.inputTokens || 0) * p.in
+      const cacheReadCost = (u.cacheReadTokens || 0) * p.cacheRead
+      const cacheCreateCost = (u.cacheCreationTokens || 0) * p.cacheWrite
+      const cachedInCost = (u.cachedInputTokens || 0) * p.cacheRead  // Gemini 명시 캐시는 cacheRead 단가에 맵핑
+      const outCost = (u.outputTokens || 0) * p.out
+      return (newIn + cacheReadCost + cacheCreateCost + cachedInCost + outCost) / 1_000_000
+    }
+    const totalSaved = ['claude','codex','gemini'].reduce((s, m) => s + calcCost(m, session[m] || {}), 0)
+    // 처리량 ≠ 청구량 — 모델이 본 input 의 진짜 총합.
+    const processedInput = (u) => (u.inputTokens||0) + (u.cacheReadTokens||0) + (u.cacheCreationTokens||0) + (u.cachedInputTokens||0)
 
     body.innerHTML = `
       <div style="font-size:10px;color:var(--text-muted);margin-bottom:14px;font-family:'JetBrains Mono',monospace;padding-bottom:10px;border-bottom:1px solid var(--border)">
@@ -4566,11 +4764,28 @@
       ${['claude','codex','gemini'].map(m => {
         const u = session[m] || { requests: 0, inputTokens: 0, outputTokens: 0 }
         const p = plans[m]
-        const total = u.inputTokens + u.outputTokens
+        const procIn = processedInput(u)
+        const total = procIn + (u.outputTokens || 0)  // 진짜 처리량 — quota 무게 판단 기준
         const limit = HEURISTIC_LIMIT[m]
         const pct = Math.min(100, (total / limit) * 100)
         const fmtTok = (n) => n >= 1000 ? (n/1000).toFixed(1) + 'k' : String(n)
         const cost = calcCost(m, u)
+        // cache 줄 — 실제로 cache 토큰이 있을 때만 표시.
+        const cacheRead = u.cacheReadTokens || 0
+        const cacheWrite = u.cacheCreationTokens || 0
+        const cachedIn = u.cachedInputTokens || 0
+        const hasCacheData = cacheRead > 0 || cacheWrite > 0 || cachedIn > 0
+        const cacheLine = hasCacheData
+          ? `<div class="usage-card-cache" style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;font-size:10px;color:#a78bfa;font-family:'JetBrains Mono',monospace;padding:4px 0;border-top:1px dashed var(--border);margin-top:4px">
+              ${cacheRead > 0 ? `<span>⚡ cache_read <b>${fmtTok(cacheRead)}</b></span>` : '<span></span>'}
+              ${cacheWrite > 0 ? `<span>↑ cache_write <b>${fmtTok(cacheWrite)}</b></span>` : '<span></span>'}
+              ${cachedIn > 0 ? `<span>📦 cached_in <b>${fmtTok(cachedIn)}</b></span>` : '<span></span>'}
+            </div>`
+          : ''
+        // 처리량 vs 새 input — 차이 있으면 같이 보여줌 (Claude 의 in=12 같이 작은 거 misleading 방지).
+        const inLabel = procIn > (u.inputTokens || 0)
+          ? `in <b>${fmtTok(u.inputTokens)}</b> <span style="color:#a78bfa">+ cache <b>${fmtTok(procIn - (u.inputTokens||0))}</b></span> = <b>${fmtTok(procIn)}</b>`
+          : `in <b>${fmtTok(u.inputTokens)}</b>`
         return `
         <div class="usage-card">
           <div class="usage-card-head">
@@ -4585,16 +4800,18 @@
           <div class="usage-card-stats">
             <span>요청 <b>${u.requests}</b></span>
             <span></span>
-            <span>in <b>${fmtTok(u.inputTokens)}</b></span>
+            <span>${inLabel}</span>
             <span></span>
             <span>out <b>${fmtTok(u.outputTokens)}</b></span>
             <span></span>
             <span>$ <b style="color:#34d399">$${cost.toFixed(2)}</b></span>
           </div>
+          ${cacheLine}
           <div class="usage-card-hint">${p.limitHint}</div>
         </div>`
       }).join('')}
       <div style="font-size:9px;color:var(--text-muted);margin-top:14px;padding-top:10px;border-top:1px solid var(--border);font-family:'JetBrains Mono',monospace">
+      ⚡ cache_read = SDK 자동 prompt cache 재사용 (10% 단가) · ↑ cache_write = 1회성 캐시 생성 (1.25배) · 📦 cached_in = Gemini Context Cache (25% 단가)<br>
       대화 게이지는 세션 누적치 기반 추정치예요. 정확한 잔여량은:<br>
       • Claude: 터미널 <code>claude /status</code><br>
       • Codex: ChatGPT 설정 → 사용량<br>
@@ -4768,6 +4985,7 @@
       </div>
       <div class="bubble-actions">
         <button class="float-btn" onclick="copyMessage('${id}', this)">copy</button>
+        <button class="float-btn" onclick="postToExtension({type:'forkChat', fromMessageId: '${id}'})" title="이 메시지까지 복사해서 새 탭으로">⑂ fork</button>
       </div>
       <div class="msg-content" id="content-${id}"></div>
     </div>`

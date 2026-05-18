@@ -36,7 +36,15 @@ interface SSEEvent {
   type?: string
   delta?: string
   item?: { type?: string; name?: string; arguments?: string; call_id?: string }
-  response?: { usage?: { input_tokens?: number; output_tokens?: number } }
+  response?: {
+    usage?: {
+      input_tokens?: number
+      output_tokens?: number
+      // OpenAI Responses API 가 노출하는 cache 정보 — gpt-5 류 자동 prompt cache hit.
+      input_tokens_details?: { cached_tokens?: number }
+      cache_creation_input_tokens?: number
+    }
+  }
 }
 
 // Codex가 raw text에 잘린 JSON fragment / literal escape 흘려보낼 때 정리
@@ -72,7 +80,7 @@ export async function callCodex(
   systemPrompt?: string,
   accountId?: string,
   abortSignal?: AbortSignal,
-): Promise<{ content: string; inputTokens: number; outputTokens: number; usedModel: string }> {
+): Promise<{ content: string; inputTokens: number; outputTokens: number; usedModel: string; cacheReadInputTokens?: number; cacheCreationInputTokens?: number }> {
   if (!accountId) {
     throw new Error('Codex 계정 ID가 없습니다. 다시 로그인해주세요.')
   }
@@ -171,6 +179,8 @@ export async function callCodex(
   let fullContent = ''
   let inputTokens = 0
   let outputTokens = 0
+  let cacheReadInputTokens = 0       // gpt-5 류 자동 prompt cache hit
+  let cacheCreationInputTokens = 0   // 새 cache 생성 — OpenAI 가 노출 안 할 수도 있지만 일단 잡음
   const seenEventTypes: Record<string, number> = {}  // 디버그용 이벤트 타입 카운트
 
   const reader = res.body.getReader()
@@ -252,6 +262,9 @@ export async function callCodex(
         if (usage) {
           inputTokens = usage.input_tokens ?? 0
           outputTokens = usage.output_tokens ?? 0
+          // OpenAI Responses API 의 prompt cache hit — gpt-5 류 자동 동작.
+          cacheReadInputTokens = usage.input_tokens_details?.cached_tokens ?? 0
+          cacheCreationInputTokens = usage.cache_creation_input_tokens ?? 0
         }
         // response.completed 안의 output 배열에 최종 텍스트가 통째로 담길 때 회수
         // (delta가 빠진 reasoning-only 응답이거나 stream 변형 케이스)
@@ -286,6 +299,6 @@ export async function callCodex(
   }
 
   log.info('codex', `done: usedModel=${usedModel}, contentChars=${fullContent.length}, in=${inputTokens}, out=${outputTokens}`)
-  return { content: fullContent, inputTokens, outputTokens, usedModel }
+  return { content: fullContent, inputTokens, outputTokens, usedModel, cacheReadInputTokens, cacheCreationInputTokens }
 }
 

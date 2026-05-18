@@ -39,8 +39,28 @@ describe('inferEffort — 단순/짧은 (low)', () => {
     ['typo 고쳐'],
     ['요약'],
     ['quick summary'],
+    // 회귀: 짧은 인사도 low — v0.1.31 이전엔 ? 끝나면 medium fallthrough 사고.
+    ['안녕'],
+    ['안녕?'],
+    ['ㅎㅇ'],
+    ['hi'],
+    ['hello'],
   ])('"%s" → low', (text) => {
     expect(inferEffort(text)).toBe('low')
+  })
+})
+
+describe('inferEffort — 창작/글쓰기 (high)', () => {
+  it.each([
+    ['100글자 짜리 시를 한편 써봐 주제는 인생'],
+    ['소설 한 편 써줘'],
+    ['에세이 작성해줘 주제는 가을'],
+    ['짧은 편지 써줘'],
+    ['노래 가사 만들어'],
+    ['write a poem about love'],
+    ['compose a short story'],
+  ])('"%s" → high', (text) => {
+    expect(inferEffort(text)).toBe('high')
   })
 })
 

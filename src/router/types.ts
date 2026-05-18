@@ -29,6 +29,23 @@ export interface RouterConfig {
   openaiApiKey: string
 }
 
+// Multi-chat (tab) storage — v0.1.32+
+export interface ChatTab {
+  id: string                  // uuid (sha1 of timestamp + random)
+  title: string               // "메인" / "시 쓰기" / 자동 명명
+  messages: ChatMessage[]
+  compaction?: any            // util/compaction CompactionState (any 로 두는 건 순환 의존 회피)
+  branchedFrom?: { parentChatId: string; atMessageId: string }
+  createdAt: number
+  updatedAt: number
+}
+
+export interface ChatWorkspaceStorage {
+  version: 2                   // v1 = { messages, compaction } 단일 — 자동 마이그레이션
+  activeChatId: string
+  chats: Record<string, ChatTab>
+}
+
 export interface ChatMessage {
   id: string
   role: 'user' | 'assistant'
