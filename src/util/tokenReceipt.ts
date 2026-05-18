@@ -90,9 +90,18 @@ export function formatReceiptShort(r: TokenReceipt): string {
     ? Math.round((1 - r.finalSentTokens / r.rawCandidateTokens) * 100)
     : 0
   const modeLabel = r.mode.charAt(0).toUpperCase() + r.mode.slice(1)
+  // i18n — circular import 피하려고 dynamic require.
+  let tFn: any = null
+  try { tFn = require('../i18n').t } catch {}
   if (r.rawCandidateTokens <= r.finalSentTokens) {
+    if (tFn) return tFn('receipt_short_no_savings', { mode: modeLabel, n: r.finalSentTokens.toLocaleString() })
     return `OrchestrAI ${modeLabel}: ${r.finalSentTokens.toLocaleString()} tok`
   }
+  if (tFn) return tFn('receipt_short', {
+    mode: modeLabel, pct,
+    raw: r.rawCandidateTokens.toLocaleString(),
+    final: r.finalSentTokens.toLocaleString(),
+  })
   return `OrchestrAI ${modeLabel}: ${pct}% saved (${r.rawCandidateTokens.toLocaleString()} → ${r.finalSentTokens.toLocaleString()} tok)`
 }
 

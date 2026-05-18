@@ -2428,7 +2428,7 @@
 
 <!-- argue 스코어보드 (판정 실시간 점수) -->
 <div class="argue-board" id="argue-board">
-  <div class="argue-board-title"><span class="pulse"></span> argue 판정 (Claude Haiku) · 0~10점</div>
+  <div class="argue-board-title"><span class="pulse"></span> <span data-i18n="argue_board_title">argue 판정 (Claude Haiku) · 0~10점</span></div>
   <div id="argue-rows"></div>
 </div>
 
@@ -2471,11 +2471,11 @@
 <div class="usage-overlay" id="usage-overlay" onclick="if(event.target===this)closeUsagePanel()">
   <div class="usage-panel">
     <div class="usage-header">
-      <div class="usage-title">📊 Account & Usage</div>
+      <div class="usage-title" data-i18n="usage_title">📊 Account & Usage</div>
       <button class="usage-close" onclick="closeUsagePanel()">×</button>
     </div>
     <div id="usage-body"></div>
-    <button class="usage-reset" onclick="postToExtension({type:'resetSessionUsage'})">세션 카운터 리셋</button>
+    <button class="usage-reset" onclick="postToExtension({type:'resetSessionUsage'})" data-i18n="usage_reset_btn">세션 카운터 리셋</button>
   </div>
 </div>
 
@@ -4457,7 +4457,7 @@
 
   function showJudgingHint(model) {
     const scoreEl = document.getElementById(`argue-score-${model}`)
-    if (scoreEl) scoreEl.textContent = '채점중...'
+    if (scoreEl) scoreEl.textContent = T('argue_judging')
   }
 
   function finalizeArgueBoard(scoreboard) {
@@ -4480,10 +4480,11 @@
       cacheStr = ` (+cache_write ${cacheCreation.toLocaleString()})`
     }
     const titleAttr = note ? ` title="${note.replace(/"/g, '&quot;')}"` : ''
+    const base = T('argue_round_tokens', { round, model, input: input.toLocaleString(), output: output.toLocaleString() })
     el.innerHTML = `
       <div class="routing-line"></div>
       <div class="routing-badge" style="color:var(--text-muted);border-color:var(--border);background:transparent;font-size:9px;font-family:'JetBrains Mono',monospace"${titleAttr}>
-      R${round} ${model}: in ${input.toLocaleString()} / out ${output.toLocaleString()} tok${cacheStr}
+      ${escapeHtml(base)}${cacheStr}
       </div>
       <div class="routing-line"></div>`
     messages.appendChild(el)
@@ -4498,7 +4499,7 @@
     el.innerHTML = `
       <div class="routing-line"></div>
       <div class="routing-badge" style="color:#a78bfa;border-color:rgba(167,139,250,0.4);background:rgba(167,139,250,0.08);font-size:9px">
-      ⊟ R${round} ${model} 요약 중... (다음 라운드 input 절약)
+      ${escapeHtml(T('argue_summarizing', { round, model }))}
       </div>
       <div class="routing-line"></div>`
     messages.appendChild(el)
@@ -4530,39 +4531,40 @@
         </div>`
       }).join('')
     const maxNote = totals.maxOutputModel
-      ? `<span style="color:#fb923c">가장 길게 답함: <b>${escapeHtml(totals.maxOutputModel)}</b> (${totals.maxOutputTokens.toLocaleString()} tok)</span>`
+      ? `<span style="color:#fb923c">${escapeHtml(T('argue_max_output_model', { model: totals.maxOutputModel, n: totals.maxOutputTokens.toLocaleString() }))}</span>`
       : ''
     // cache 요약 — 있으면 한 줄 추가. Claude SDK auto cache vs Gemini Context Cache 구분.
     const cacheSummary = (() => {
       const lines = []
       if ((totals.cacheReadTokens || 0) > 0) {
-        lines.push(`Claude prompt cache: <b>${totals.cacheReadTokens.toLocaleString()}</b> tok 재사용 (청구 X 처리됨)`)
+        lines.push(T('argue_cache_claude_summary', { n: totals.cacheReadTokens.toLocaleString() }))
       }
       if ((totals.cacheCreationTokens || 0) > 0) {
-        lines.push(`Claude cache 생성: ${totals.cacheCreationTokens.toLocaleString()} tok (1회성)`)
+        lines.push(T('argue_cache_claude_creation', { n: totals.cacheCreationTokens.toLocaleString() }))
       }
       if ((totals.cachedInputTokens || 0) > 0) {
-        lines.push(`Gemini Context Cache: <b>${totals.cachedInputTokens.toLocaleString()}</b> tok cached (~25% 단가)`)
+        lines.push(T('argue_cache_gemini_summary', { n: totals.cachedInputTokens.toLocaleString() }))
       }
       return lines.length ? `<div style="margin-top:4px;color:#4ade80">⚡ ${lines.join(' · ')}</div>` : ''
     })()
-    const cacheHeader = showCacheCols ? `<span class="argue-total-cell" title="cache_read + cached_input">⚡ cache</span>` : ''
+    const cacheHeader = showCacheCols ? `<span class="argue-total-cell" title="cache_read + cached_input">${escapeHtml(T('argue_cache_header'))}</span>` : ''
+    const capLabel = (window.I18N_LOCALE === 'ko') ? `cap ${outputCapKR ?? '?'}자` : `cap ${outputCapKR ?? '?'} chars`
     el.innerHTML = `<div class="bubble" style="background:rgba(167,139,250,0.06);border:1px solid rgba(167,139,250,0.25)">
       <div class="msg-header">
-        <span class="model-tag" style="color:#a78bfa">⚖ Argue 토큰 요약</span>
-        <span class="effort-tag">${escapeHtml(mode || '?')} · cap ${outputCapKR ?? '?'}자</span>
+        <span class="model-tag" style="color:#a78bfa">${escapeHtml(T('argue_summary_title'))}</span>
+        <span class="effort-tag">${escapeHtml(mode || '?')} · ${escapeHtml(capLabel)}</span>
       </div>
       <div class="msg-content" style="font-family:'JetBrains Mono',monospace;font-size:11px;line-height:1.7">
-        <div>총 ${totals.rounds} 라운드 · input <b>${totals.inputTokens.toLocaleString()}</b> · output <b>${totals.outputTokens.toLocaleString()}</b> · total <b>${totals.totalTokens.toLocaleString()}</b> tok</div>
+        <div>${escapeHtml(T('argue_total_summary', { rounds: totals.rounds, in: totals.inputTokens.toLocaleString(), out: totals.outputTokens.toLocaleString(), total: totals.totalTokens.toLocaleString() }))}</div>
         ${maxNote ? `<div style="margin-top:4px">${maxNote}</div>` : ''}
         ${cacheSummary}
         <div style="margin-top:8px;border-top:1px solid var(--border);padding-top:6px">
           <div class="argue-total-row${showCacheCols ? ' with-cache' : ''}" style="color:var(--text-muted)">
-            <span class="argue-total-model">model</span>
-            <span class="argue-total-cell">↓ input</span>
-            <span class="argue-total-cell">↑ output</span>
+            <span class="argue-total-model">${escapeHtml(T('argue_models_header'))}</span>
+            <span class="argue-total-cell">${escapeHtml(T('argue_input_header'))}</span>
+            <span class="argue-total-cell">${escapeHtml(T('argue_output_header'))}</span>
             ${cacheHeader}
-            <span class="argue-total-cell">rounds</span>
+            <span class="argue-total-cell">${escapeHtml(T('argue_rounds_header'))}</span>
           </div>
           ${byModelRows}
         </div>
@@ -4577,7 +4579,7 @@
     if (!msgEl) return
     const v = document.createElement('div')
     v.className = 'judge-verdict'
-    v.innerHTML = `<b>판정:</b> ${verdict.score}/10 · ${verdict.reason}`
+    v.innerHTML = `<b>${T('argue_verdict_label')}</b> ${verdict.score}/10 · ${verdict.reason}`
     msgEl.appendChild(v)
   }
 
@@ -4717,7 +4719,7 @@
           el.dataset.model = model
           el.id = `msg-${m.id}`
           const verdictHtml = m.verdict
-            ? `<div class="judge-verdict"><b>판정:</b> ${m.verdict.score}/10 · ${escapeHtml(m.verdict.reason || '')}</div>`
+            ? `<div class="judge-verdict"><b>${T('argue_verdict_label')}</b> ${m.verdict.score}/10 · ${escapeHtml(m.verdict.reason || '')}</div>`
             : ''
           el.innerHTML = `<div class="bubble">
             <div class="msg-header">
@@ -4806,7 +4808,7 @@
 
     body.innerHTML = `
       <div style="font-size:10px;color:var(--text-muted);margin-bottom:14px;font-family:'JetBrains Mono',monospace;padding-bottom:10px;border-bottom:1px solid var(--border)">
-        세션 시작 이후 ${elapsed} · 💰 절약 추정: <b style="color:#34d399">$${totalSaved.toFixed(2)}</b> (구독 우회로 실제 청구 0)
+        ${T('usage_session_elapsed', { time: elapsed })} · ${T('usage_saved_estimate')}: <b style="color:#34d399">$${totalSaved.toFixed(2)}</b> ${T('usage_zero_billing')}
       </div>
       ${['claude','codex','gemini'].map(m => {
         const u = session[m] || { requests: 0, inputTokens: 0, outputTokens: 0 }
@@ -4845,7 +4847,7 @@
             <div class="usage-bar-fill" style="width:${pct}%;background:${COLOR[m]}"></div>
           </div>
           <div class="usage-card-stats">
-            <span>요청 <b>${u.requests}</b></span>
+            <span>${T('usage_requests')} <b>${u.requests}</b></span>
             <span></span>
             <span>${inLabel}</span>
             <span></span>
@@ -4858,10 +4860,10 @@
         </div>`
       }).join('')}
       <div style="font-size:9px;color:var(--text-muted);margin-top:14px;padding-top:10px;border-top:1px solid var(--border);font-family:'JetBrains Mono',monospace">
-      ⚡ cache_read = SDK 자동 prompt cache 재사용 (10% 단가) · ↑ cache_write = 1회성 캐시 생성 (1.25배) · 📦 cached_in = Gemini Context Cache (25% 단가)<br>
-      대화 게이지는 세션 누적치 기반 추정치예요. 정확한 잔여량은:<br>
-      • Claude: 터미널 <code>claude /status</code><br>
-      • Codex: ChatGPT 설정 → 사용량<br>
+      ${T('usage_cache_legend')}<br>
+      ${T('usage_footer_note')}<br>
+      • Claude: <code>claude /status</code><br>
+      • Codex: ChatGPT → Settings → Usage<br>
       • Gemini: <a href="https://aistudio.google.com" target="_blank">AI Studio</a>
       </div>
     `
@@ -5339,11 +5341,14 @@
     const messages = document.getElementById('messages')
     const el = document.createElement('div')
     el.className = 'routing-event'
-    const trimInfo = trimmed ? ` (전체 ${totalMessages}중 ${includedMessages})` : ''
+    const trimInfo = trimmed
+      ? (window.I18N_LOCALE === 'ko' ? ` (전체 ${totalMessages}중 ${includedMessages})` : ` (${includedMessages} of ${totalMessages})`)
+      : ''
+    const label = T('routing_to_model', { model, n: includedMessages, tok: estimatedTokens.toLocaleString() })
     el.innerHTML = `
       <div class="routing-line"></div>
       <div class="routing-badge" style="color:var(--text-muted);border-color:var(--border);background:transparent;font-size:9px">
-      ↪ ${model}에 ${includedMessages}msg · ~${estimatedTokens.toLocaleString()}tok${trimInfo}
+      ${escapeHtml(label)}${trimInfo}
       </div>
       <div class="routing-line"></div>`
     messages.appendChild(el)
@@ -5355,14 +5360,15 @@
     const messages = document.getElementById('messages')
     const el = document.createElement('div')
     el.className = 'routing-event'
-    const levelNames = ['Selection', 'ActiveSymbol', 'ActiveFile', 'RelatedFiles', 'ProjectSummary+Diff', 'FullContext']
-    const levelLabel = levelNames[msg.contextLevel] ?? `L${msg.contextLevel}`
+    const levelKeys = ['context_levels_selection', 'context_levels_active_symbol', 'context_levels_active_file', 'context_levels_related_files', 'context_levels_project_summary', 'context_levels_full_context']
+    const levelLabel = levelKeys[msg.contextLevel] ? T(levelKeys[msg.contextLevel]) : `L${msg.contextLevel}`
     const warn = (msg.warnings && msg.warnings.length > 0) ? ` ⚠ ${msg.warnings.length}` : ''
+    const badge = T('context_bundle_badge', { mode: msg.mode, intent: msg.intent, level: levelLabel })
     el.innerHTML = `
       <div class="routing-line"></div>
       <div class="routing-badge" style="color:#a78bfa;border-color:rgba(167,139,250,0.4);background:rgba(167,139,250,0.08);font-size:9px"
-           title="${msg.warnings ? msg.warnings.join('\n') : ''}">
-      ⊟ ${msg.mode} · ${msg.intent} · ${levelLabel}${warn}
+           title="${msg.warnings ? msg.warnings.join('\n').replace(/"/g, '&quot;') : ''}">
+      ${escapeHtml(badge)}${warn}
       </div>
       <div class="routing-line"></div>`
     messages.appendChild(el)
@@ -5374,14 +5380,18 @@
     const messages = document.getElementById('messages')
     const el = document.createElement('div')
     el.className = 'routing-event'
-    const icon = msg.hit ? '✓ HIT' : '↑ NEW'
     const color = msg.hit ? '#4ade80' : '#a78bfa'
-    const detail = `cached ${(msg.cachedTokens || 0).toLocaleString()} tok (재전송 X) + dynamic ${(msg.dynamicInput || 0).toLocaleString()} tok 만 전송`
+    const detail = T('gemini_cache_detail', {
+      cached: (msg.cachedTokens || 0).toLocaleString(),
+      dynamic: (msg.dynamicInput || 0).toLocaleString(),
+    })
+    const labelKey = msg.hit ? 'gemini_cache_hit' : 'gemini_cache_new'
+    const label = T(labelKey, { model: msg.model || '' })
     el.innerHTML = `
       <div class="routing-line"></div>
       <div class="routing-badge" style="color:${color};border-color:${color}44;background:${color}11;font-size:9px;font-family:'JetBrains Mono',monospace"
-           title="${detail}">
-      ⚡ Gemini cache ${icon} · ${msg.model || ''}
+           title="${escapeHtml(detail)}">
+      ⚡ ${escapeHtml(label)}
       </div>
       <div class="routing-line"></div>`
     messages.appendChild(el)

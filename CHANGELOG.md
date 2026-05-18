@@ -1,5 +1,28 @@
 # Changelog
 
+## v0.1.34 — 2026-05-18 (i18n Phase 2 — dynamic 영역 적용)
+
+v0.1.33 의 static 영역 (환경설정 패널 / 탭 UI / fork 버튼) 에 이어 dynamic content 들에 i18n 적용. 매 호출마다 보이는 라우팅 배지·영수증·argue 카드·Usage 패널 다 한·영 둘 다.
+
+### 추가된 i18n 영역
+- **Account & Usage 패널**: 카드 헤더, 요청 카운트, 절약 추정 라인, cache 컬럼 헤더, footer note · cache legend (영문 단가 설명)
+- **argue 카드 / 판정 보드**: 보드 제목 ("argue 판정 (Claude Haiku) · 0~10점" ↔ "argue verdict (Claude Haiku) · 0~10 score"), "채점중..." ↔ "scoring...", 모델 헤더, 라운드 토큰 표시 (R{round} {model}), totals 카드의 "가장 길게 답함" · "총 N 라운드" · cache 요약 (Claude prompt / cache 생성 / Gemini cached)
+- **judge verdict**: `<b>판정:</b>` ↔ `<b>verdict:</b>`
+- **라우팅 배지**: `↪ codex에 22msg · ~3,077tok` ↔ `↪ to codex · 22 msgs · ~3,077 tok`
+- **컨텍스트 번들 배지**: `⊟ balanced · bug_fix · ActiveSymbol` (mode/intent/level 그대로, ContextLevel 이름만 i18n)
+- **Gemini cache 배지**: HIT/NEW + tooltip "cached X tok (재전송 X) + dynamic Y tok 만 전송" ↔ 영문
+- **argue 요약 hint**: "⊟ R3 gemini 요약 중..." ↔ "⊟ R3 gemini summarizing..."
+- **token receipt short** (backend `formatReceiptShort`): "OrchestrAI Balanced: 84% saved (18,400 → 3,200 tok)" 의 "saved" 부분 영문 그대로지만 dict 통한 포맷
+
+### 추가된 strings.ts 키
+~30 개 — usage_* (12), argue_* (10), context_* / receipt_* / gemini_cache_* / routing_to_model (8). 점점 누적 중.
+
+### 남은 곳 (Phase 3 후보)
+- extension 측 `vscode.window.show*Message` 들 (Telegram 연결, 인덱싱 진행, 복원 모달 등 — 가끔 보임)
+- 일부 dynamic toast / 에러 메시지 (자주 안 보임)
+
+Tests: 216 통과.
+
 ## v0.1.33 — 2026-05-18 (i18n — 한국어/영어 다국어 지원)
 
 사용자 요청: "UI, 호버, 여기저기에 한글들 죄다 i18n 으로 다국어 가능 확장으로". 영어로도 쓸 수 있게.

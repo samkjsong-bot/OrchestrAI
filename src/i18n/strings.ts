@@ -175,6 +175,55 @@ export type StringsDict = {
   full_context_continue: string
   full_context_balanced: string
 
+  // Account & Usage 패널
+  usage_title: string
+  usage_session_elapsed: string         // "세션 시작 이후 {time}"
+  usage_saved_estimate: string           // "💰 절약 추정"
+  usage_zero_billing: string             // "(구독 우회로 실제 청구 0)"
+  usage_requests: string                 // "요청"
+  usage_reset_btn: string
+  usage_plan_claude_max: string          // PLAN_INFO.claude.label
+  usage_plan_chatgpt_pro: string
+  usage_plan_gemini_free: string
+  usage_limit_claude_hint: string
+  usage_limit_codex_hint: string
+  usage_limit_gemini_hint: string
+  usage_footer_note: string
+  usage_cache_legend: string             // "⚡ cache_read = ... · ↑ cache_write = ... · 📦 cached_in = ..."
+
+  // argue 판정 보드
+  argue_board_title: string              // "argue 판정 (Claude Haiku) · 0~10점"
+  argue_judging: string                  // "채점중..."
+  argue_models_header: string
+  argue_input_header: string
+  argue_output_header: string
+  argue_rounds_header: string
+  argue_cache_header: string
+  argue_verdict_label: string            // "판정:"
+  argue_cache_claude_summary: string     // "Claude prompt cache: {n} tok 재사용 (청구 X 처리됨)"
+  argue_cache_claude_creation: string    // "Claude cache 생성: {n} tok (1회성)"
+  argue_cache_gemini_summary: string     // "Gemini Context Cache: {n} tok cached (~25% 단가)"
+  argue_round_tokens: string             // "R{round} {model}: in {input} / out {output} tok"
+  argue_max_output_model: string         // "가장 길게 답함: {model} ({n} tok)"
+  argue_total_summary: string            // "총 {rounds} 라운드 · input {in} · output {out} · total {total} tok"
+
+  // 토큰 영수증 / 컨텍스트 배지
+  receipt_short: string                  // "OrchestrAI {mode}: {pct}% saved ({raw} → {final} tok)"
+  receipt_short_no_savings: string       // "OrchestrAI {mode}: {n} tok"
+  context_bundle_badge: string           // "⊟ {mode} · {intent} · {level}"
+  context_levels_selection: string
+  context_levels_active_symbol: string
+  context_levels_active_file: string
+  context_levels_related_files: string
+  context_levels_project_summary: string
+  context_levels_full_context: string
+  gemini_cache_hit: string               // "Gemini cache ✓ HIT · {model}"
+  gemini_cache_new: string               // "Gemini cache ↑ NEW · {model}"
+  gemini_cache_detail: string            // "cached {cached} tok (재전송 X) + dynamic {dynamic} tok 만 전송"
+
+  // routing 배지
+  routing_to_model: string               // "↪ {model}에 {n}msg · ~{tok}tok"
+
   // 일반
   loading: string
   error_prefix: string
@@ -340,6 +389,51 @@ const ko: StringsDict = {
   full_context_continue: '진행',
   full_context_balanced: 'Balanced 로 진행',
 
+  usage_title: '📊 Account & Usage',
+  usage_session_elapsed: '세션 시작 이후 {time}',
+  usage_saved_estimate: '💰 절약 추정',
+  usage_zero_billing: '(구독 우회로 실제 청구 0)',
+  usage_requests: '요청',
+  usage_reset_btn: '세션 카운터 리셋',
+  usage_plan_claude_max: 'Claude Max',
+  usage_plan_chatgpt_pro: 'ChatGPT Pro',
+  usage_plan_gemini_free: 'Google 무료 티어',
+  usage_limit_claude_hint: '5시간 단위 롤링 한도 (`claude /status`로 정확히 확인)',
+  usage_limit_codex_hint: 'gpt-5.5/5.4 사용량 주간 한도',
+  usage_limit_gemini_hint: '60 req/min · 1000 req/day',
+  usage_footer_note: '대화 게이지는 세션 누적치 기반 추정치예요. 정확한 잔여량은:',
+  usage_cache_legend: '⚡ cache_read = SDK 자동 prompt cache 재사용 (10% 단가) · ↑ cache_write = 1회성 캐시 생성 (1.25배) · 📦 cached_in = Gemini Context Cache (25% 단가)',
+
+  argue_board_title: 'argue 판정 (Claude Haiku) · 0~10점',
+  argue_judging: '채점중...',
+  argue_models_header: 'model',
+  argue_input_header: '↓ input',
+  argue_output_header: '↑ output',
+  argue_rounds_header: 'rounds',
+  argue_cache_header: '⚡ cache',
+  argue_verdict_label: '판정:',
+  argue_cache_claude_summary: 'Claude prompt cache: {n} tok 재사용 (청구 X 처리됨)',
+  argue_cache_claude_creation: 'Claude cache 생성: {n} tok (1회성)',
+  argue_cache_gemini_summary: 'Gemini Context Cache: {n} tok cached (~25% 단가)',
+  argue_round_tokens: 'R{round} {model}: in {input} / out {output} tok',
+  argue_max_output_model: '가장 길게 답함: {model} ({n} tok)',
+  argue_total_summary: '총 {rounds} 라운드 · input {in} · output {out} · total {total} tok',
+
+  receipt_short: 'OrchestrAI {mode}: {pct}% saved ({raw} → {final} tok)',
+  receipt_short_no_savings: 'OrchestrAI {mode}: {n} tok',
+  context_bundle_badge: '⊟ {mode} · {intent} · {level}',
+  context_levels_selection: 'Selection',
+  context_levels_active_symbol: 'ActiveSymbol',
+  context_levels_active_file: 'ActiveFile',
+  context_levels_related_files: 'RelatedFiles',
+  context_levels_project_summary: 'ProjectSummary+Diff',
+  context_levels_full_context: 'FullContext',
+  gemini_cache_hit: 'Gemini cache ✓ HIT · {model}',
+  gemini_cache_new: 'Gemini cache ↑ NEW · {model}',
+  gemini_cache_detail: 'cached {cached} tok (재전송 X) + dynamic {dynamic} tok 만 전송',
+
+  routing_to_model: '↪ {model}에 {n}msg · ~{tok}tok',
+
   loading: '로딩 중...',
   error_prefix: '⚠ 에러',
   required: '필수',
@@ -503,6 +597,51 @@ const en: StringsDict = {
   full_context_warning: 'Full Context Mode: sends entire active file + related files + project summary to ALL models.\n\nClaude/GPT/Gemini quota usage may increase significantly. Continue?',
   full_context_continue: 'Continue',
   full_context_balanced: 'Use Balanced',
+
+  usage_title: '📊 Account & Usage',
+  usage_session_elapsed: '{time} since session start',
+  usage_saved_estimate: '💰 Estimated saved',
+  usage_zero_billing: '(actual bill 0 via subscription bypass)',
+  usage_requests: 'requests',
+  usage_reset_btn: 'Reset session counter',
+  usage_plan_claude_max: 'Claude Max',
+  usage_plan_chatgpt_pro: 'ChatGPT Pro',
+  usage_plan_gemini_free: 'Google Free Tier',
+  usage_limit_claude_hint: '5-hour rolling quota (use `claude /status` for exact)',
+  usage_limit_codex_hint: 'gpt-5.5/5.4 weekly usage limit',
+  usage_limit_gemini_hint: '60 req/min · 1000 req/day',
+  usage_footer_note: 'Gauges are session-cumulative estimates. For accurate remaining quota:',
+  usage_cache_legend: '⚡ cache_read = SDK auto prompt cache reuse (10% price) · ↑ cache_write = one-time cache creation (1.25×) · 📦 cached_in = Gemini Context Cache (25% price)',
+
+  argue_board_title: 'argue verdict (Claude Haiku) · 0~10 score',
+  argue_judging: 'scoring...',
+  argue_models_header: 'model',
+  argue_input_header: '↓ input',
+  argue_output_header: '↑ output',
+  argue_rounds_header: 'rounds',
+  argue_cache_header: '⚡ cache',
+  argue_verdict_label: 'verdict:',
+  argue_cache_claude_summary: 'Claude prompt cache: {n} tok reused (no charge)',
+  argue_cache_claude_creation: 'Claude cache creation: {n} tok (one-time)',
+  argue_cache_gemini_summary: 'Gemini Context Cache: {n} tok cached (~25% price)',
+  argue_round_tokens: 'R{round} {model}: in {input} / out {output} tok',
+  argue_max_output_model: 'Longest output: {model} ({n} tok)',
+  argue_total_summary: 'Total {rounds} rounds · input {in} · output {out} · total {total} tok',
+
+  receipt_short: 'OrchestrAI {mode}: {pct}% saved ({raw} → {final} tok)',
+  receipt_short_no_savings: 'OrchestrAI {mode}: {n} tok',
+  context_bundle_badge: '⊟ {mode} · {intent} · {level}',
+  context_levels_selection: 'Selection',
+  context_levels_active_symbol: 'ActiveSymbol',
+  context_levels_active_file: 'ActiveFile',
+  context_levels_related_files: 'RelatedFiles',
+  context_levels_project_summary: 'ProjectSummary+Diff',
+  context_levels_full_context: 'FullContext',
+  gemini_cache_hit: 'Gemini cache ✓ HIT · {model}',
+  gemini_cache_new: 'Gemini cache ↑ NEW · {model}',
+  gemini_cache_detail: 'cached {cached} tok (not resent) + dynamic {dynamic} tok only',
+
+  routing_to_model: '↪ to {model} · {n} msgs · ~{tok} tok',
 
   loading: 'Loading...',
   error_prefix: '⚠ Error',
