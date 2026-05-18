@@ -1,5 +1,39 @@
 # Changelog
 
+## v0.1.35 — 2026-05-18 (i18n Phase 3 — hover tooltips + dynamic content 마무리)
+
+사용자 보고: "각 모드들 호버메시지 마우스 갖다대면 설명 뜨는거 다 한글로만 나오는데". v0.1.33/34 에서 핵심 라벨은 잡았지만 `title=` 속성 (hover tooltip) 들이 sweep 안 됐던 문제.
+
+### 호버 tooltip / title 속성 i18n
+- **override-bar 모드 버튼**: `argue / team / loop / boomerang` 의 title 다 영문/한국어
+- **route dropdown**: `✦ auto` tooltip
+- **컨텍스트 윈도우 segment**: `narrow / default / wide / full` 각각 모드별 설명
+- **Codex 엔진 segment**: `native / legacy`
+- **⚙ 톱니 / 📄 ctx-btn / mode-btn / 음성 입력 / memory 게이지 / ■ 중단 버튼**
+- **mcp 삭제 ×** / **bg-task 취소 ✕** / **chat 탭 hover (닫기/포크)** / **commit chip "↶ 이 턴 되돌리기"**
+
+### Dynamic content 마무리
+- **변경 파일 카드**: `↗ 파일 열기 / ≡ diff 보기 / ↶ 이 파일만 되돌리기 / ↶ 이 turn 다 되돌리기 / ↗ 전부 열기` 다 영어
+- **commit revert confirm 다이얼로그**: `이 턴 작업을 되돌리고 이전 상태로 reset 하시겠어요?` 한·영
+- **MCP 빈 리스트** `등록된 MCP 서버 없음.` → `No MCP servers registered.`
+- **로컬 LLM probe 실패** `로컬 LLM 서버 발견 안 됨 — Ollama (port 11434) 또는 LM Studio (port 1234) 실행 중인지 확인`
+- **custom provider 활성 토글** `gemma4 (model) 활성` → `gemma4 (model) active`
+- **Gemini API key saved placeholder** `(저장됨 — 새 값 입력 시 덮어쓰기)`
+- **input hint chips** `리팩토링 / git / 설명` → `Refactor / git / Explain` + 클릭 시 영어 prompt 자동 채움
+- **모델 변종 select** `auto (effort 따라)` × 3 (Claude/Codex/Gemini) → `auto (by effort)`
+- **Custom Provider 폼**: 이름 / URL / 모델 ID / API Key / 저장 / 취소 / "🔍 로컬 LLM 자동 감지" / "+ 수동 추가"
+
+### 추가된 strings.ts 키
+~25 개 — hover tooltip + custom provider 폼 + dynamic 라벨.
+
+### 결과
+i18n 가 사용자 보는 거의 모든 텍스트 커버. 남은 한국어:
+- `extension.ts` 의 `vscode.window.show*Message` 들 (인덱싱·텔레그램·복원 모달 — 가끔 보임)
+- 일부 발화 시 한국어 (debug 로그 — 개발자용)
+- system prompt (LLM 한테 보내는 instructions — 의도된 유지)
+
+Tests: 216 통과.
+
 ## v0.1.34 — 2026-05-18 (i18n Phase 2 — dynamic 영역 적용)
 
 v0.1.33 의 static 영역 (환경설정 패널 / 탭 UI / fork 버튼) 에 이어 dynamic content 들에 i18n 적용. 매 호출마다 보이는 라우팅 배지·영수증·argue 카드·Usage 패널 다 한·영 둘 다.

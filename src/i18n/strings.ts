@@ -224,6 +224,62 @@ export type StringsDict = {
   // routing 배지
   routing_to_model: string               // "↪ {model}에 {n}msg · ~{tok}tok"
 
+  // hint chips (input footer)
+  hint_refactor: string
+  hint_refactor_prompt: string
+  hint_git: string
+  hint_git_prompt: string
+  hint_explain: string
+  hint_explain_prompt: string
+
+  // attach 버튼 + image input
+  attach_tooltip: string
+
+  // custom provider 섹션 — 추가 버튼들
+  custom_probe_local: string
+  custom_add_manual: string
+  custom_form_url: string
+  custom_form_model: string
+  custom_form_apikey: string
+  custom_probe_none_found: string
+  custom_active_label: string            // "{name} 활성"
+
+  // 자주 보는 tooltip / 버튼 (Phase 2 후속)
+  settings_btn_tooltip: string
+  ctx_gauge_tooltip: string
+  ctx_btn_tooltip: string
+  voice_btn_tooltip: string
+  progress_stop: string
+  route_auto_tooltip: string
+  mode_btn_tooltip: string                  // "Mode · Effort (Shift+Tab)"
+
+  // contextWindow segment tooltips
+  contextWindow_narrow_tooltip: string
+  contextWindow_default_tooltip: string
+  contextWindow_wide_tooltip: string
+  contextWindow_full_tooltip: string
+
+  // codexEngine segment tooltips
+  codexEngine_native_tooltip: string
+  codexEngine_legacy_tooltip: string
+
+  // changed-files panel
+  change_panel_toggle: string               // "펼치기/접기"
+  change_file_open: string                  // "파일 열기"
+  change_file_diff: string                  // "diff 보기"
+  change_file_revert: string                // "이 파일만 되돌리기 (git checkout)"
+  change_bulk_revert_turn: string           // 텍스트 + 툴팁
+  change_bulk_revert_tooltip: string
+  change_bulk_open_all: string
+  change_bulk_open_all_tooltip: string
+
+  // commit chip
+  commit_revert_btn: string                 // "↶ 이 턴 되돌리기"
+  commit_revert_tooltip: string             // "이 턴 변경을 되돌림 (parent commit으로 reset)"
+  commit_revert_confirm: string             // confirm dialog
+  bg_task_cancel: string                    // "작업 취소"
+  fork_icon_tooltip: string
+
   // 일반
   loading: string
   error_prefix: string
@@ -434,6 +490,54 @@ const ko: StringsDict = {
 
   routing_to_model: '↪ {model}에 {n}msg · ~{tok}tok',
 
+  hint_refactor: '리팩토링',
+  hint_refactor_prompt: '전체 구조 리팩토링해줘',
+  hint_git: 'git',
+  hint_git_prompt: 'git commit 메시지 써줘',
+  hint_explain: '설명',
+  hint_explain_prompt: '이 코드 어떻게 동작해?',
+
+  attach_tooltip: '파일 첨부 (이미지/PDF/텍스트/코드 — Claude Code 수준)',
+
+  custom_probe_local: '🔍 로컬 LLM 자동 감지 (Ollama / LM Studio)',
+  custom_add_manual: '+ 수동 추가 (OpenRouter 등)',
+  custom_form_url: 'URL',
+  custom_form_model: '모델 ID',
+  custom_form_apikey: 'API Key',
+  custom_probe_none_found: '로컬 LLM 서버 발견 안 됨 — Ollama (port 11434) 또는 LM Studio (port 1234) 실행 중인지 확인',
+  custom_active_label: '{name} 활성',
+
+  settings_btn_tooltip: '환경설정',
+  ctx_gauge_tooltip: '클릭하면 대화 리셋 (컨텍스트 초기화)',
+  ctx_btn_tooltip: '현재 파일 컨텍스트 자동 주입',
+  voice_btn_tooltip: '음성 입력',
+  progress_stop: '중단',
+  route_auto_tooltip: '라우터가 작업 보고 모델 자동 선택',
+  mode_btn_tooltip: 'Mode · Effort (Shift+Tab)',
+
+  contextWindow_narrow_tooltip: 'Eco: selection·활성 심볼만, 자동 멀티모델 X. 토큰 최저.',
+  contextWindow_default_tooltip: 'Balanced: selection·활성 심볼·관련 snippets·diff. 권장.',
+  contextWindow_wide_tooltip: 'Deep: 활성 파일+관련 파일+심볼 그래프+RAG+diff. 복잡한 작업.',
+  contextWindow_full_tooltip: '⚠ Full: 전 워크스페이스. 매 요청 확인 모달. OAuth/API 쿼터 폭주 위험.',
+
+  codexEngine_native_tooltip: 'OpenAI 공식 codex.exe MCP (권장)',
+  codexEngine_legacy_tooltip: '자체 fetch chatgpt.com 백엔드',
+
+  change_panel_toggle: '펼치기/접기',
+  change_file_open: '파일 열기',
+  change_file_diff: 'diff 보기',
+  change_file_revert: '이 파일만 되돌리기 (git checkout)',
+  change_bulk_revert_turn: '↶ 이 turn 다 되돌리기',
+  change_bulk_revert_tooltip: '이 turn 의 모든 변경 되돌리기',
+  change_bulk_open_all: '↗ 전부 열기',
+  change_bulk_open_all_tooltip: '변경 파일 전부 에디터 탭에 열기',
+
+  commit_revert_btn: '↶ 이 턴 되돌리기',
+  commit_revert_tooltip: '이 턴 변경을 되돌림 (parent commit으로 reset)',
+  commit_revert_confirm: '이 턴 작업을 되돌리고 이전 상태로 reset 하시겠어요? (git reset --hard {hash}^)',
+  bg_task_cancel: '작업 취소',
+  fork_icon_tooltip: '포크',
+
   loading: '로딩 중...',
   error_prefix: '⚠ 에러',
   required: '필수',
@@ -642,6 +746,54 @@ const en: StringsDict = {
   gemini_cache_detail: 'cached {cached} tok (not resent) + dynamic {dynamic} tok only',
 
   routing_to_model: '↪ to {model} · {n} msgs · ~{tok} tok',
+
+  hint_refactor: 'Refactor',
+  hint_refactor_prompt: 'Refactor the overall structure',
+  hint_git: 'git',
+  hint_git_prompt: 'Write a git commit message',
+  hint_explain: 'Explain',
+  hint_explain_prompt: 'How does this code work?',
+
+  attach_tooltip: 'Attach file (image / PDF / text / code — Claude Code level)',
+
+  custom_probe_local: '🔍 Auto-detect local LLM (Ollama / LM Studio)',
+  custom_add_manual: '+ Add manually (OpenRouter etc.)',
+  custom_form_url: 'URL',
+  custom_form_model: 'Model ID',
+  custom_form_apikey: 'API Key',
+  custom_probe_none_found: 'No local LLM server found — check if Ollama (port 11434) or LM Studio (port 1234) is running',
+  custom_active_label: '{name} active',
+
+  settings_btn_tooltip: 'Preferences',
+  ctx_gauge_tooltip: 'Click to reset conversation (clear context)',
+  ctx_btn_tooltip: 'Auto-inject current file context',
+  voice_btn_tooltip: 'Voice input',
+  progress_stop: 'Stop',
+  route_auto_tooltip: 'Router picks model based on task',
+  mode_btn_tooltip: 'Mode · Effort (Shift+Tab)',
+
+  contextWindow_narrow_tooltip: 'Eco: selection / active symbol only, no auto multi-model. Min tokens.',
+  contextWindow_default_tooltip: 'Balanced: selection · active symbol · related snippets · diff. Recommended.',
+  contextWindow_wide_tooltip: 'Deep: active file + related files + symbol graph + RAG + diff. Complex work.',
+  contextWindow_full_tooltip: '⚠ Full: entire workspace. Per-request confirmation. OAuth/API quota risk.',
+
+  codexEngine_native_tooltip: 'OpenAI official codex.exe MCP (recommended)',
+  codexEngine_legacy_tooltip: 'Self-fetch chatgpt.com backend',
+
+  change_panel_toggle: 'Expand/collapse',
+  change_file_open: 'Open file',
+  change_file_diff: 'View diff',
+  change_file_revert: 'Revert this file only (git checkout)',
+  change_bulk_revert_turn: '↶ Revert this turn',
+  change_bulk_revert_tooltip: 'Revert all changes in this turn',
+  change_bulk_open_all: '↗ Open all',
+  change_bulk_open_all_tooltip: 'Open all changed files in editor tabs',
+
+  commit_revert_btn: '↶ Revert this turn',
+  commit_revert_tooltip: 'Revert this turn (git reset --hard to parent commit)',
+  commit_revert_confirm: 'Revert this turn and reset to previous state? (git reset --hard {hash}^)',
+  bg_task_cancel: 'Cancel task',
+  fork_icon_tooltip: 'Fork',
 
   loading: 'Loading...',
   error_prefix: '⚠ Error',
