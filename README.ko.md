@@ -24,6 +24,20 @@ ext install samkj.orchestrai
 
 ---
 
+## 🎬 시연 영상 (v0.1.37)
+
+[▶ 시연 동영상 보기](https://github.com/samkjsong-bot/OrchestrAI/releases/download/v0.1.37/demo-v0.1.37.mp4) — argue 모드 + Static/Dynamic 캐시 hit 실제 작동 화면
+
+## 🆕 새 기능
+
+- **v0.1.37** — Codex Static/Dynamic 프롬프트 분리 → OpenAI 자동 prompt cache hit (argue/team 다회 호출 시 cached input 약 50% 단가)
+- **v0.1.36** — Gemini Context Cache 분리 (hit rate 90%+ 목표) + `/style` — 모델별 응답 스타일 통계 (길이·코드·이모지·정중함·한·영 비율)
+- **v0.1.35** — i18n (한국어 / 영어 UI)
+
+전체 이력은 [CHANGELOG.md](./CHANGELOG.md) 참조.
+
+---
+
 ## ✨ 한눈에
 
 | | OrchestrAI | Cursor | Continue | Cline/Roo | Copilot |
@@ -121,6 +135,7 @@ ext install samkj.orchestrai
 /agent ...        agent marketplace (import / list / use / remove)
 /perf             성능 통계 출력
 /perfreset        성능 통계 초기화
+/style [all]      모델별 응답 스타일 통계 (길이·코드·이모지·한·영 비율)
 ```
 
 ## 🎤 음성 입력

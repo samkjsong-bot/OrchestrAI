@@ -24,6 +24,20 @@ ext install samkj.orchestrai
 
 ---
 
+## 🎬 Demo (v0.1.37)
+
+[▶ Watch demo video](https://github.com/samkjsong-bot/OrchestrAI/releases/download/v0.1.37/demo-v0.1.37.mp4) — argue mode + Static/Dynamic cache hits in action.
+
+## 🆕 What's new
+
+- **v0.1.37** — Codex Static/Dynamic prompt split → OpenAI auto prompt cache hits (argue/team multi-turn token cost ~50% on cached input)
+- **v0.1.36** — Gemini Context Cache split (90%+ hit rate target) + `/style` command — per-model response style stats (length, code/emoji/header ratio, politeness, KR/EN ratio)
+- **v0.1.35** — i18n (Korean / English UI)
+
+See [CHANGELOG.md](./CHANGELOG.md) for full history.
+
+---
+
 ## ✨ At a glance
 
 | | OrchestrAI | Cursor | Continue | Cline/Roo | Copilot |
@@ -123,6 +137,7 @@ By default OrchestrAI auto-picks the model variant for each provider based on ef
 /agent ...        Agent marketplace (import / list / use / remove)
 /perf             Show performance metrics
 /perfreset        Reset performance metrics
+/style [all]      Per-model response style stats (length / code / emoji / KR-EN)
 ```
 
 ## 🎤 Voice input
