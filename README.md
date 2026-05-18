@@ -28,7 +28,7 @@ ext install samkj.orchestrai
 
 https://github.com/user-attachments/assets/359f9cc2-cc80-4ea6-a6d6-377fbf594fd3
 
-> Inline player works on github.com. Direct links: [▶ Compressed (10 MB)](https://github.com/user-attachments/assets/359f9cc2-cc80-4ea6-a6d6-377fbf594fd3) · [▶ Original (77 MB)](https://github.com/samkjsong-bot/OrchestrAI/releases/download/v0.1.37/demo-v0.1.37.mp4)
+> Full-quality original (77 MB): [▶ Download from release](https://github.com/samkjsong-bot/OrchestrAI/releases/download/v0.1.37/demo-v0.1.37.mp4)
 
 ## 🆕 What's new
 

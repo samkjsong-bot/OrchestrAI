@@ -28,7 +28,7 @@ ext install samkj.orchestrai
 
 https://github.com/user-attachments/assets/359f9cc2-cc80-4ea6-a6d6-377fbf594fd3
 
-> github.com 메인 페이지에선 인라인 재생. 직접 링크: [▶ 압축본 (10 MB)](https://github.com/user-attachments/assets/359f9cc2-cc80-4ea6-a6d6-377fbf594fd3) · [▶ 원본 (77 MB)](https://github.com/samkjsong-bot/OrchestrAI/releases/download/v0.1.37/demo-v0.1.37.mp4)
+> 원본 화질 (77 MB): [▶ release 에서 다운로드](https://github.com/samkjsong-bot/OrchestrAI/releases/download/v0.1.37/demo-v0.1.37.mp4)
 
 ## 🆕 새 기능
 

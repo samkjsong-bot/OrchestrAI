@@ -5,6 +5,7 @@ node_modules/
 dist/
 *.vsix
 *.mp4
+ffmpeg2pass-*.log*
 
 # VSCode workspace
 .vscode/
