@@ -5656,6 +5656,25 @@
     { id: 'browser',  label: '@browser',  icon: '🧭', hint: '실제 브라우저로 페이지 열기 (JS/SPA 지원, Playwright)', kind: 'cmd' },
     { id: 'problem',  label: '@problem',  icon: '⚠', hint: 'VS Code Problems 패널 (현재 에러/경고)',         kind: 'cmd' },
   ]
+  // Slash commands — `/` 로 시작하면 popup 에 표시. handleSlashCommand 가 실제 처리.
+  const SLASH_ITEMS = [
+    { id: 'style',     label: '/style',    icon: '📊', hint: '모델별 응답 스타일 분석 카드',                  kind: 'slash' },
+    { id: 'stats',     label: '/stats',    icon: '📊', hint: '/style 와 동일 (alias)',                       kind: 'slash' },
+    { id: 'clear',     label: '/clear',    icon: '🗑', hint: '현재 chat 리셋 (archive 로 백업)',              kind: 'slash' },
+    { id: 'plan',      label: '/plan',     icon: '📐', hint: 'Plan 모드 — 코드 변경 전 계획만',               kind: 'slash' },
+    { id: 'ask',       label: '/ask',      icon: '❓', hint: 'Ask 모드 — 모든 변경 사용자 승인',              kind: 'slash' },
+    { id: 'auto',      label: '/auto',     icon: '⚡', hint: 'Auto-edit 모드 — 자동 적용',                   kind: 'slash' },
+    { id: 'smart',     label: '/smart',    icon: '🧠', hint: 'Smart-auto — 큰 변경만 사용자 승인',            kind: 'slash' },
+    { id: 'team',      label: '/team',     icon: '👥', hint: 'team 모드 (Claude orchestrator + 동료 consult)', kind: 'slash' },
+    { id: 'argue',     label: '/argue',    icon: '⚔', hint: 'argue 모드 — 모델들 토론',                       kind: 'slash' },
+    { id: 'effort',    label: '/effort',   icon: '🎚', hint: '/effort low|medium|high|extra-high — effort 강제',  kind: 'slash' },
+    { id: 'review',    label: '/review',   icon: '🔍', hint: '/review staged|lastCommit — 멀티 모델 코드 리뷰', kind: 'slash' },
+    { id: 'index',     label: '/index',    icon: '📚', hint: '코드베이스 RAG 인덱싱',                          kind: 'slash' },
+    { id: 'pr',        label: '/pr',       icon: '🚀', hint: '/pr [title] — git push + gh pr create',          kind: 'slash' },
+    { id: 'perf',      label: '/perf',     icon: '⏱', hint: '핵심 함수 실행 시간 통계',                       kind: 'slash' },
+    { id: 'perfreset', label: '/perfreset', icon: '🔄', hint: 'perf 통계 리셋',                                kind: 'slash' },
+    { id: 'bg',        label: '/bg',       icon: '🪟', hint: '/bg <task> — 백그라운드 task 실행',              kind: 'slash' },
+  ]
   // settings 의 customProviders 배열 → 동적 추가됨 (server 가 'customProviders' 메시지로 push)
   let CUSTOM_MENTIONS = []
   // 합친 결과
@@ -5669,8 +5688,13 @@
          : arr[prop]
   }})
 
+  // trigger 캐릭터 — '@' 면 model/cmd/custom, '/' 면 slash command.
+  let mentionTrigger = '@'  // onInputChange 에서 set
   function filteredMentions() {
     const f = mentionFilter.toLowerCase()
+    if (mentionTrigger === '/') {
+      return SLASH_ITEMS.filter(m => m.id.toLowerCase().startsWith(f))
+    }
     return getMentionItems()
       // 모델 (claude/codex/gemini) 은 로그인된 것만, command/custom 은 모두
       .filter(m => m.kind !== 'model' || loggedInModels[m.id])
@@ -5712,6 +5736,27 @@
   }
 
   function insertMention(idOrCmd) {
+    // SLASH trigger 인지 먼저 분기 — SLASH_ITEMS 안에 있으면 즉시 handleSlashCommand 실행.
+    const isSlash = mentionTrigger === '/'
+    const slashItem = isSlash ? SLASH_ITEMS.find(m => m.id === idOrCmd) : null
+    if (slashItem) {
+      // 입력창 비우고 명령 실행 — handleSlashCommand 가 명령 처리
+      const ta = document.getElementById('input')
+      ta.value = ''
+      ta.style.height = 'auto'
+      closeMention()
+      ta.focus()
+      // 명령에 인자가 필요한 것 (effort / review / pr / bg / style all) 은 prefix 채워서 사용자가 인자 입력
+      if (['effort', 'review', 'pr', 'bg'].includes(slashItem.id)) {
+        ta.value = '/' + slashItem.id + ' '
+        autoResize(ta)
+        ta.setSelectionRange(ta.value.length, ta.value.length)
+        return
+      }
+      // 인자 없는 명령 즉시 실행
+      handleSlashCommand('/' + slashItem.id)
+      return
+    }
     const item = getMentionItems().find(m => m.id === idOrCmd)
     const ta = document.getElementById('input')
     // mentionStartPos 신뢰성 검증 — 그 위치에 진짜 '@' 가 있는지.
@@ -5766,11 +5811,20 @@
     const ta = e.target
     const pos = ta.selectionStart
     const textBefore = ta.value.slice(0, pos)
-    // 커서 바로 앞이 @(영문법) 형태인지
+    // 커서 바로 앞이 @<word> 또는 /<word> 형태인지
     const atMatch = textBefore.match(/@([a-zA-Z]*)$/)
+    const slashMatch = textBefore.match(/(?:^|\s)\/([a-zA-Z]*)$/)
     if (atMatch) {
+      mentionTrigger = '@'
       mentionStartPos = pos - atMatch[0].length
       mentionFilter = atMatch[1]
+      renderMentionList()
+    } else if (slashMatch && textBefore.trim().startsWith('/')) {
+      // 슬래시는 입력의 맨 앞 (또는 공백 뒤 X — 줄 처음만) 일 때만 popup. 일반 텍스트 안 X.
+      mentionTrigger = '/'
+      const slashChar = textBefore.lastIndexOf('/')
+      mentionStartPos = slashChar
+      mentionFilter = slashMatch[1]
       renderMentionList()
     } else {
       closeMention()

@@ -4320,6 +4320,9 @@ ${result.failureSummary || result.output.slice(-3000)}
     onChunk: (text: string) => void,
     streamId: string,
     turnId?: string,
+    // v0.1.37+: Static/Dynamic 분리로 OpenAI 자동 prompt cache 활용.
+    staticPrompt?: string,     // baseInstructions / instructions 자리 — argue 라운드 사이 동일
+    dynamicContext?: string,   // prompt 첫 부분에 prepend (또는 input[0] 앞)
   ): Promise<{ content: string; inputTokens: number; outputTokens: number; usedModel?: string; cacheReadInputTokens?: number; cacheCreationInputTokens?: number }> {
     // native engine: codex.exe mcp-server 통해 호출. tool/path/auth 다 codex가 처리.
     const engine = this._cfg<string>('codexEngine') ?? 'native'
@@ -4329,15 +4332,21 @@ ${result.failureSummary || result.output.slice(-3000)}
         const wsRoot = getWorkspaceRoot() ?? process.cwd()
         const last = history[history.length - 1]
         const prior = history.slice(0, -1)
-        const prompt = (prior.length
+        const historyPrompt = (prior.length
           ? prior.map(m => `${m.role === 'user' ? 'User' : 'Assistant'}: ${m.content}`).join('\n\n') + '\n\n---\n\n'
           : ''
         ) + (last?.content ?? '')
+        // Static/Dynamic split: baseInstructions = staticPrompt 만 (stable hash).
+        // dynamicContext 는 prompt 첫 부분에 <context> 래퍼로 prepend.
+        const baseInstructions = staticPrompt ?? systemPrompt
+        const prompt = dynamicContext
+          ? `<context>\n${dynamicContext}\n</context>\n\n${historyPrompt}`
+          : historyPrompt
         try {
           const result = await client.run({
             prompt,
             cwd: wsRoot,
-            baseInstructions: systemPrompt,
+            baseInstructions,
             approvalPolicy: this._permissionMode === 'ask' ? 'on-request' : 'never',
             onProgress: onChunk,
             abortSignal: this._currentAbort?.signal,
@@ -4378,6 +4387,8 @@ ${result.failureSummary || result.output.slice(-3000)}
         systemPrompt,
         accountId,
         this._currentAbort?.signal,
+        staticPrompt,
+        dynamicContext,
       )
       inputTokens += result.inputTokens
       outputTokens += result.outputTokens
@@ -4893,6 +4904,7 @@ PATH RULES: paths are relative to workspace root. Don't prefix with "${gWsBase}/
           result = await this._runCodexAgent(
             history, effectiveDecision.effort, codexToken, accountId ?? undefined,
             systemPrompt, onChunk, assistantMsgId, turnId,
+            staticPrompt, fullDynamic,
           )
         } else if (currentModel === 'gemini') {
           if (!(await this._geminiAuth.isLoggedIn())) {

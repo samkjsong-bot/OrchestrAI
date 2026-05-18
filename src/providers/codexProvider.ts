@@ -80,6 +80,11 @@ export async function callCodex(
   systemPrompt?: string,
   accountId?: string,
   abortSignal?: AbortSignal,
+  // v0.1.37+: Static/Dynamic 분리로 OpenAI 자동 prompt cache hit 율 올림.
+  // staticPrompt 가 있으면 instructions= 자리에 그것만. dynamicContext 는 input[0] 앞에 <context> 래퍼로 prepend.
+  // → 라운드마다 systemPrompt 의 collabHint 변경이 cache miss 안 만듦.
+  staticPrompt?: string,
+  dynamicContext?: string,
 ): Promise<{ content: string; inputTokens: number; outputTokens: number; usedModel: string; cacheReadInputTokens?: number; cacheCreationInputTokens?: number }> {
   if (!accountId) {
     throw new Error('Codex 계정 ID가 없습니다. 다시 로그인해주세요.')
@@ -120,12 +125,24 @@ export async function callCodex(
     }
   })
 
+  // Static/Dynamic 분리: staticPrompt 가 있으면 그것만 instructions 로 → OpenAI prompt cache prefix 안정.
+  //   - instructions = staticPrompt 만 (collabHint, file ctx 빠짐 → argue 라운드 사이 동일)
+  //   - dynamicContext 는 input 첫 항목 앞에 <context> 래퍼 user msg 로 prepend
+  // staticPrompt 없으면 옛 동작 그대로 (backward compat).
+  const cacheStableInstructions = staticPrompt ?? systemPrompt ?? 'You are an expert coding assistant.'
+  const inputWithContext = dynamicContext
+    ? [
+        { role: 'user' as const, content: `<context>\n${dynamicContext}\n</context>` },
+        ...transformedInput,
+      ]
+    : transformedInput
+
   // 한 모델로 fetch 시도 (429/5xx 지수 백오프 재시도 포함, 스트림 시작 전까지)
   async function tryFetch(model: string): Promise<{ res: Response | null; lastErr: { status: number; text: string } | null }> {
     const body = {
       model,
-      instructions: systemPrompt ?? 'You are an expert coding assistant.',
-      input: transformedInput,
+      instructions: cacheStableInstructions,
+      input: inputWithContext,
       stream: true,
       store: false,
       reasoning: { effort },

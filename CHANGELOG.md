@@ -1,5 +1,21 @@
 # Changelog
 
+## v0.1.37 — 2026-05-18 (Codex 도 Static/Dynamic 분리 → OpenAI 자동 prompt cache hit)
+
+### Codex Static/Dynamic 분리 (v0.1.36 의 Gemini-only 분리를 Codex 까지 확장)
+
+argue/team 실험에서 Claude 캐시는 잘 잡혔는데 Codex 캐시 read 가 0 으로 찍혀서 원인 분석. OpenAI Responses API auto cache 는 strict prefix match (1024+ tok 동일 prefix, 5분 윈도우) 인데 `instructions` 필드에 `collabHint` 같은 per-turn 변동분이 섞이면 prefix 가 매번 달라져서 hit 안 됨.
+
+해결:
+- **`codexProvider.callCodex(staticPrompt?, dynamicContext?)`** — staticPrompt 가 들어오면 `instructions = staticPrompt` 만 (안정), `dynamicContext` 는 input 첫 항목 앞에 `<context>` 래퍼 user msg 로 prepend
+- **`_runCodexAgent(staticPrompt?, dynamicContext?)`** — native MCP 경로에서 `baseInstructions = staticPrompt`, prompt 첫 부분에 `<context>` 래퍼 prepend. legacy 폴백도 동일 인자 forward
+- 메인 dispatch (단일 turn) 가 `staticPrompt, fullDynamic` 그대로 전달 → 이제 Gemini/Codex 둘 다 cache 친화 prefix
+- boomerang / multi-model review 등 단발성 호출은 optional 미사용 (backward compat) — sys prompt 가 호출마다 다르니 cache 효과 어차피 0
+
+기대 효과: argue 라운드 사이 system prompt 2k tok prefix 가 안정 → 2회차부터 OpenAI cached input price (~50%) 적용. Codex 사용량 토큰 표시도 native MCP engine 에 token meta 노출되면 실측 가능.
+
+### Tests: 228 passing (변경 없음 — 인자가 optional 이라 회귀 0)
+
 ## v0.1.36 — 2026-05-18 (Static/Dynamic 캐시 분리 + /style 슬래시 + team mode 실험 결과)
 
 ### Static/Dynamic 섬 분리 (Gemini Context Cache hit rate 90%+ 목표)
