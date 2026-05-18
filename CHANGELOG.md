@@ -1,5 +1,35 @@
 # Changelog
 
+## v0.1.36 — 2026-05-18 (Static/Dynamic 캐시 분리 + /style 슬래시 + team mode 실험 결과)
+
+### Static/Dynamic 섬 분리 (Gemini Context Cache hit rate 90%+ 목표)
+team mode 로 자기 자신을 개선하는 실험. 결과: Codex (legacy SSE) 가 한자 spam + fake JSON-RPC fragment 출력 사고 (메모리 `feedback_codex_delegation_hazards.md` 그대로 재현), Gemini 도 가짜 파일 (`src/prompts/systemPrompt.ts` 같은 거 없음) 만들어내고. Claude orchestrator 가 결국 직접 Edit tool 로 패치.
+
+기능 자체는 잘 들어감:
+- **`buildStaticPrompt(model, mode, mcpTools, teamRole)`** — cache hash 의 stable 한 부분만. 파일 바뀌어도 hit
+- **`buildDynamicContext(ctx, projection, collabHint, argueCap)`** — file context / argue / RAG → history 첫 항목 앞에 prepend
+- `_tryGeminiCachedCall(staticPrompt?, dynamicContext?)` — cache 키는 static, dynamic 은 `<context>` 래퍼로 messages 에 prepend
+- non-Gemini-cached (Claude/Codex/custom) 는 `staticPrompt + fullDynamic` combined 그대로 → backward compat 100%
+
+기대 효과: argue/team 다중 호출에서 sys prompt 2,170 tok 가 첫 호출만 풀 비용 + 이후 cache_read (~25% 단가). hit rate 90%+ 가능 (파일 바뀐다고 cache miss 안 됨).
+
+### /style slash command — 모델 응답 스타일 분석 카드
+사용자 입력 `/style` 또는 `/stats` → 활성 chat 의 assistant 메시지 스캔 → 모델별 통계 비교 카드.
+
+- **지표**: 평균 길이·줄수, 코드 블록 포함률, 이모지/헤더/리스트 빈도 (1k char 당), 정중함 score (한·영 "요·습니다·감사·please·sorry" 신호), 한·영 비율 (코드 제외 본문 기준), top 시작 phrase
+- **이모지 매칭**: `\p{Extended_Pictographic}` Unicode property — true emoji 만 (✓ 같은 일반 symbol 제외)
+- **i18n** 완전 지원 (한·영 카드 컬럼/legend)
+- **`/style all`** 옵션 — 모든 chat 통합 분석
+- `src/util/styleAnalytics.ts` (순수 함수, 의존성 0) + 12 회귀 tests
+
+### 메모리 검증 (이번 실험으로)
+- `feedback_codex_delegation_hazards.md` 의 "한자 spam + fake JSON" 사고 패턴 재현됨 — Codex legacy 위임 시 진단 어려운 silent fail
+- Gemini consult 의 file fetch 한계 — 실제 코드 못 보고 hallucinate. consult 시 prompt 에 raw 코드 전달 필수
+- Team mode 의 위임 효율 = 0% (이번 케이스). Claude orchestrator 가 결국 다 함. 단 사용자가 결과 검증할 수 있다는 점에서 일반 chat 보다 진단 도구로 가치 있음.
+
+### Tests: 216 → 228 (+12)
+styleAnalytics 회귀: 빈 입력, 모델별 분리, 코드 비율, 이모지 카운트, 정중함 한·영, 한·영 비율, top start phrase, 헤더·리스트, scope echo, custom: 모델 포함.
+
 ## v0.1.35 — 2026-05-18 (i18n Phase 3 — hover tooltips + dynamic content 마무리)
 
 사용자 보고: "각 모드들 호버메시지 마우스 갖다대면 설명 뜨는거 다 한글로만 나오는데". v0.1.33/34 에서 핵심 라벨은 잡았지만 `title=` 속성 (hover tooltip) 들이 sweep 안 됐던 문제.

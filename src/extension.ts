@@ -1025,6 +1025,75 @@ ${ctx.selectedText ? 'User has selected code —prioritize that selection.' : ''
 Answer questions about this file directly. Show modified code for edits.`
 }
 
+// ─── Static / Dynamic prompt split ────────────────────────────────────────────
+// Gemini Context Cache 90%+ hit rate 목표.
+// Static = model·mode·mcpTools·teamRole 기준으로만 바뀜 → SHA1 key 안정.
+// Dynamic = file ctx, argue hints, RAG → history 첫 항목 앞에 prepend.
+
+/** STATIC — safe to cache.
+ *  No file context, no argue hints, no RAG. Stable across file switches. */
+function buildStaticPrompt(
+  model: Model,
+  permissionMode: PermissionMode,
+  mcpTools: McpToolInfo[],
+  teamRole?: 'architect' | 'implementer' | 'reviewer',
+): string {
+  // Delegate to buildSystemPrompt with all dynamic args stripped out.
+  // collabHint=undefined → argueBlock='', ctx=null → no file block.
+  return buildSystemPrompt(null, model, undefined, mcpTools, permissionMode, teamRole, undefined, undefined)
+}
+
+/** DYNAMIC — prepend to first user message, never cached.
+ *  Argue hints, file context, projected context. Changes every turn. */
+function buildDynamicContext(
+  ctx: FileContext | null,
+  projectedContext?: string,
+  collabHint?: 'first' | 'reply',
+  argueOutputCapKR?: number,
+  model: Model = 'claude',
+  teamRole?: 'architect' | 'implementer' | 'reviewer',
+): string {
+  const parts: string[] = []
+
+  // Argue block (only when not in team mode — teamRole=undefined)
+  if (!teamRole && collabHint) {
+    const peers = (['claude', 'codex', 'gemini'] as Model[]).filter(m => m !== model)
+    const peerNames = peers.map(modelLabel).join(' and ')
+    const argueCapText = argueOutputCapKR
+      ? `\n\n⚠ OUTPUT BUDGET: this is Argue mode. Keep your response under ${argueOutputCapKR} Korean characters (~${Math.round(argueOutputCapKR / 1.5)} English words). One tight paragraph, max two. No headers, no bullet lists, no examples. If you can't cover everything, pick the strongest one point.`
+      : ''
+    const geminiTightening = (argueOutputCapKR && model === 'gemini')
+      ? `\n\n[Gemini-specific] You tend to be verbose. For this Argue turn: ONE focused paragraph only. Skip the "정리:" / "결론:" headers. State your stance, give one reason, stop.`
+      : ''
+    parts.push(collabHint === 'reply'
+      ? `ARGUE MODE — a peer just answered above. Add your own angle naturally: agree, disagree, build on it, whatever feels right. Keep it conversational and tight.${argueCapText}${geminiTightening}`
+      : `ARGUE MODE — your peers (${peerNames}) will reply after you. Give your take, they'll respond.${argueCapText}${geminiTightening}`)
+  }
+
+  // File context (projected or full)
+  if (projectedContext) {
+    parts.push([
+      `# Editor context (token-budgeted)`,
+      projectedContext,
+      ctx?.cursorLine ? `Cursor at line ${ctx.cursorLine}.` : '',
+      ctx?.selectedText ? 'User has selected code — prioritize that selection.' : '',
+      '',
+      'You are receiving a token-minimized context bundle. Do not assume unseen files. If the context is insufficient, say exactly what additional file, symbol, or log is needed. Prefer actionable, patch-ready output.',
+    ].filter(Boolean).join('\n'))
+  } else if (ctx) {
+    parts.push([
+      `The user has this file open:`,
+      buildContextBlock(ctx),
+      ctx.cursorLine ? `Cursor at line ${ctx.cursorLine}.` : '',
+      ctx.selectedText ? 'User has selected code —prioritize that selection.' : '',
+      '',
+      'Answer questions about this file directly. Show modified code for edits.',
+    ].filter(Boolean).join('\n'))
+  }
+
+  return parts.join('\n\n')
+}
+
 // ?? WebView Provider ??????????????????????????????????????????????
 class OrchestrAIViewProvider implements vscode.WebviewViewProvider, vscode.Disposable {
   private _view?: vscode.WebviewView
@@ -1908,6 +1977,17 @@ ${hit.kind === 'cmd' ? 'When done, the AI! comment line itself can stay — user
           case 'showPerf': {
             const { formatReport } = await import('./util/perf')
             this._post({ type: 'appendInput', text: `## 📊 Performance metrics\n\n${formatReport()}` })
+            break
+          }
+          case 'requestStyleStats': {
+            // /style slash command — 활성 chat (default) 또는 모든 chats 의 모델별 응답 스타일 분석.
+            const { analyzeMessageStyles } = await import('./util/styleAnalytics')
+            const scope = msg.scope === 'all' ? 'all_chats' : 'active_chat'
+            const sourceMessages = scope === 'all_chats'
+              ? Object.values(this._chats).flatMap(c => c.messages)
+              : this._messages
+            const analysis = analyzeMessageStyles(sourceMessages, scope)
+            this._post({ type: 'styleStats', analysis })
             break
           }
           case 'resetPerf': {
@@ -4337,28 +4417,38 @@ ${result.failureSummary || result.output.slice(-3000)}
   }
 
   // Gemini API Context Cache 경로 — _runGeminiAgent 가 호출. 성공 시 결과 반환, null 이면 caller 가 OAuth fallback.
-  // 큰 static (system prompt) 만 캐시 → 매 요청은 dynamic (history) + cache 참조만.
+  // staticPrompt 만 캐시(hash) → 파일 바뀌어도 hit. dynamicContext 는 history 첫 항목 앞에 prepend.
   private async _tryGeminiCachedCall(args: {
     history: Array<{ role: 'user' | 'assistant'; content: string }>
     effort: Effort
-    systemPrompt: string
+    systemPrompt: string       // combined (fallback when staticPrompt not provided)
+    staticPrompt?: string      // STATIC only → used as cache key for 90%+ hit rate
+    dynamicContext?: string    // DYNAMIC (file ctx, argue, RAG) → prepended to history
     apiKey: string
     onChunk: (text: string) => void
     streamId: string
   }): Promise<{ content: string; inputTokens: number; outputTokens: number; usedModel: string; cacheHit: boolean; cachedInputTokens: number } | null> {
-    const { history, effort, systemPrompt, apiKey, onChunk, streamId } = args
+    const { history, effort, systemPrompt, staticPrompt, dynamicContext, apiKey, onChunk, streamId } = args
     // 사용자 override 우선, 없으면 effort → model.
     const override = this._cfg<string>('geminiModel')
     const model = override && override !== 'auto'
       ? override
       : (effort === 'high' || effort === 'extra-high') ? 'gemini-2.5-pro' : 'gemini-2.5-flash'
-    // 캐시 보장 — minimum token 미달이면 null 반환.
-    const cached = await ensureGeminiCache({ apiKey, model, systemInstruction: systemPrompt })
+    // staticPrompt 있으면 그것만 캐시 — hash 안에 dynamic file ctx 가 빠져 hit rate 급등.
+    // 없으면 기존처럼 전체 systemPrompt 캐시 (backward compat for consult calls).
+    const cacheInstruction = staticPrompt ?? systemPrompt
+    const cached = await ensureGeminiCache({ apiKey, model, systemInstruction: cacheInstruction })
     if (!cached) return null
+    // dynamicContext 가 있으면 history 맨 앞에 가상 user 메시지로 prepend.
+    // 모델은 시스템 캐시 + dynamic context + 실제 대화 순으로 수신.
+    type DynMsg = { role: 'user' | 'assistant'; content: string }
+    const dynamicMessages: DynMsg[] = dynamicContext
+      ? [{ role: 'user' as const, content: `<context>\n${dynamicContext}\n</context>` }, ...history]
+      : history
     // 호출 — dynamic 만 보냄.
     const r = await callGeminiCached({
       apiKey, model, cachedContent: cached.name,
-      dynamicMessages: history, onChunk,
+      dynamicMessages, onChunk,
       abortSignal: this._currentAbort?.signal,
       generationConfig: { maxOutputTokens: this._geminiMaxOutputFor(effort) },
     })
@@ -4395,15 +4485,17 @@ ${result.failureSummary || result.output.slice(-3000)}
     onChunk: (text: string) => void,
     streamId: string,
     turnId?: string,
+    staticPrompt?: string,     // STATIC portion for cache key (omit → falls back to systemPrompt)
+    dynamicContext?: string,   // DYNAMIC portion to prepend to history (file ctx, argue, RAG)
   ): Promise<{ content: string; inputTokens: number; outputTokens: number; usedModel?: string; cacheHit?: boolean; cachedInputTokens?: number }> {
     // ── Gemini API Context Cache 경로 (directive Phase 3) ──
-    // 설정 on + apiKey + 캐시 가능한 minimum 토큰 + 툴 미사용 turn 이면 캐시 호출. 실패 시 OAuth 로 fallback.
+    // staticPrompt 만 캐시. dynamicContext 는 history 첫 항목 앞에 prepend → hit rate 90%+.
     const cacheEnabled = this._cfg<boolean>('geminiContextCache.enabled') === true
     const apiKey = await this._authStorage.getGeminiApiKey()
     if (cacheEnabled && apiKey) {
       try {
         const cached = await this._tryGeminiCachedCall({
-          history, effort, systemPrompt, apiKey, onChunk, streamId,
+          history, effort, systemPrompt, staticPrompt, dynamicContext, apiKey, onChunk, streamId,
         })
         if (cached) return cached
       } catch (err) {
@@ -4554,19 +4646,22 @@ ${result.failureSummary || result.output.slice(-3000)}
         })
         lastProjection = projection
       }
-      let systemPrompt = buildSystemPrompt(
-        fileCtx, currentModel, collabHint, mcpTools, this._permissionMode, teamRole,
-        projection?.prompt,
-        argueCtx?.outputCapKR,
+      // ─── Static/Dynamic split for Gemini Context Cache ─────────────────────
+      // staticPrompt: stable per (model, mode, mcpTools, teamRole) → SHA1 key 안정 → 90%+ cache hit
+      const staticPrompt = buildStaticPrompt(currentModel, this._permissionMode, mcpTools ?? [], teamRole)
+      // dynamicCtx: file ctx + argue hints — changes per turn → prepend to history messages
+      const dynamicCtx = buildDynamicContext(
+        fileCtx, projection?.prompt, collabHint, argueCtx?.outputCapKR, currentModel, teamRole,
       )
-      // RAG: 관련 파일 컨텍스트 prepend
+      // RAG + active agent are also dynamic (per-turn)
       const ragCtx = (this as any)._ragContextForCurrentTurn
-      if (ragCtx) systemPrompt = `${ragCtx}\n\n${systemPrompt}`
-      // 활성 agent (marketplace) prepend — 사용자 커스텀 system prompt
       const activeAgent = getActiveAgent(getStorageRoot(this._context))
-      if (activeAgent) {
-        systemPrompt = `# ACTIVE AGENT: ${activeAgent.name}\n${activeAgent.description}\n\n${activeAgent.systemPrompt}\n\n---\n\n${systemPrompt}`
-      }
+      const agentPrefix = activeAgent
+        ? `# ACTIVE AGENT: ${activeAgent.name}\n${activeAgent.description}\n\n${activeAgent.systemPrompt}`
+        : ''
+      const fullDynamic = [agentPrefix, ragCtx as string | undefined, dynamicCtx].filter(Boolean).join('\n\n---\n\n')
+      // Combined prompt for non-Gemini-cached paths (Claude, Codex, custom providers)
+      let systemPrompt = fullDynamic ? `${staticPrompt}\n\n${fullDynamic}` : staticPrompt
       // Argue 모드면 buildTaggedHistory 건너뛰고 compact summaries 만. directive 15.1.
       const trimmed = argueCtx
         ? { messages: argueCtx.historyOverride, totalMessages: argueCtx.historyOverride.length, includedMessages: argueCtx.historyOverride.length, estimatedTokens: 0, trimmed: false }
@@ -4806,6 +4901,7 @@ PATH RULES: paths are relative to workspace root. Don't prefix with "${gWsBase}/
           }
           result = await this._runGeminiAgent(
             history, effectiveDecision.effort, systemPrompt, onChunk, assistantMsgId, turnId,
+            staticPrompt, fullDynamic,
           )
         } else {
           // Custom provider — model 필드가 'custom:<name>' 형식

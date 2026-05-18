@@ -3547,6 +3547,10 @@
         // v0.1.32+ 멀티 chat 탭 바 갱신.
         renderChatTabs(msg.tabs || [], msg.activeChatId)
         break
+      case 'styleStats':
+        // /style slash — 모델별 응답 스타일 분석 카드.
+        showStyleStatsCard(msg.analysis)
+        break
       case 'tokenReceipt':
         // directive 10.8 / 17절 — 한 모델에 얼마나 보냈는지 영수증.
         showTokenReceipt(msg.short, msg.receipt, msg.detail)
@@ -4317,6 +4321,12 @@
         showToast('perf 통계 초기화')
         return true
       }
+      case 'style':
+      case 'stats': {
+        // /style [all]  — 모델별 응답 스타일 분석 카드. arg='all' 이면 모든 chat 통합.
+        postToExtension({ type: 'requestStyleStats', scope: arg === 'all' ? 'all' : 'active' })
+        return true
+      }
       case 'bg':
       case 'background': {
         if (!arg) { showToast('사용법: /bg <작업내용>'); return true }
@@ -4510,6 +4520,85 @@
     scrollIfNearBottom(messages)
     // 2초 후 자동 fade-out (다음 라운드 시작 시 이미 사라져야 깔끔).
     setTimeout(() => { try { el.remove() } catch {} }, 2500)
+  }
+
+  // /style slash command — 모델별 응답 스타일 분석 카드.
+  function showStyleStatsCard(analysis) {
+    if (!analysis) return
+    const messages = document.getElementById('messages')
+    const el = document.createElement('div')
+    el.className = 'msg'
+    const modelKeys = Object.keys(analysis.byModel || {})
+    if (modelKeys.length === 0 || analysis.totalAssistantMessages === 0) {
+      el.innerHTML = `<div class="bubble" style="background:rgba(167,139,250,0.06);border:1px solid rgba(167,139,250,0.25)">
+        <div class="msg-header"><span class="model-tag" style="color:#a78bfa">${escapeHtml(T('style_card_title'))}</span></div>
+        <div class="msg-content" style="font-family:'JetBrains Mono',monospace;font-size:11px">${escapeHtml(T('style_no_data'))}</div>
+      </div>`
+      messages.appendChild(el)
+      scrollIfNearBottom(messages)
+      return
+    }
+    const scopeLabel = analysis.scope === 'all_chats' ? T('style_scope_all') : T('style_scope_active')
+    const subtitle = T('style_card_subtitle', { n: analysis.totalAssistantMessages, scope: scopeLabel })
+    const modelColor = (m) => m === 'claude' ? 'var(--claude)' : m === 'codex' ? 'var(--codex)' : m === 'gemini' ? 'var(--gemini)' : '#a78bfa'
+    const num = (x, d = 0) => (typeof x === 'number' && isFinite(x)) ? x.toFixed(d) : '—'
+    const pct = (x) => (typeof x === 'number' && isFinite(x)) ? Math.round(x * 100) + '%' : '—'
+    const langLabel = (s) => {
+      if (s.engCharRatio + s.korCharRatio === 0) return '—'
+      const e = Math.round(s.engCharRatio * 100), k = Math.round(s.korCharRatio * 100)
+      return `EN ${e}% / KR ${k}%`
+    }
+    // header row + 모델별 row
+    const rows = modelKeys.sort().map(model => {
+      const s = analysis.byModel[model]
+      const top = (s.topStartPatterns || []).slice(0, 2).map(p => `<span style="color:var(--text-dim)" title="${escapeAttr(p.phrase)} (×${p.count})">"${escapeHtml(p.phrase.slice(0, 12))}"</span>`).join(', ') || '<span style="color:var(--text-dim)">—</span>'
+      return `<tr>
+        <td style="color:${modelColor(model)};font-weight:600">${escapeHtml(model)}</td>
+        <td>${s.count}</td>
+        <td>${num(s.avgChars, 0)}</td>
+        <td>${num(s.avgLines, 1)}</td>
+        <td>${pct(s.codeBlockRatio)}</td>
+        <td>${num(s.emojiPer1k, 1)}</td>
+        <td>${num(s.headerPer1k, 1)}</td>
+        <td>${num(s.listPer1k, 1)}</td>
+        <td>${num(s.politenessScore, 2)}</td>
+        <td style="color:var(--text-dim);font-size:9px">${langLabel(s)}</td>
+        <td style="font-size:9px">${top}</td>
+      </tr>`
+    }).join('')
+    el.innerHTML = `<div class="bubble" style="background:rgba(167,139,250,0.06);border:1px solid rgba(167,139,250,0.25)">
+      <div class="msg-header">
+        <span class="model-tag" style="color:#a78bfa">${escapeHtml(T('style_card_title'))}</span>
+        <span class="effort-tag">${escapeHtml(subtitle)}</span>
+      </div>
+      <div class="msg-content" style="font-family:'JetBrains Mono',monospace;font-size:10px;overflow-x:auto">
+        <table class="style-stats-table" style="border-collapse:collapse;width:100%;line-height:1.7">
+          <thead>
+            <tr style="color:var(--text-muted);border-bottom:1px solid var(--border);text-align:left">
+              <th style="padding:4px 6px">${escapeHtml(T('style_col_model'))}</th>
+              <th>${escapeHtml(T('style_col_count'))}</th>
+              <th>${escapeHtml(T('style_col_avg_chars'))}</th>
+              <th>${escapeHtml(T('style_col_avg_lines'))}</th>
+              <th>${escapeHtml(T('style_col_code_pct'))}</th>
+              <th title="${escapeAttr(T('style_emoji_per1k'))}">${escapeHtml(T('style_col_emoji'))}</th>
+              <th title="${escapeAttr(T('style_emoji_per1k'))}">${escapeHtml(T('style_col_headers'))}</th>
+              <th title="${escapeAttr(T('style_emoji_per1k'))}">${escapeHtml(T('style_col_lists'))}</th>
+              <th>${escapeHtml(T('style_col_politeness'))}</th>
+              <th>${escapeHtml(T('style_col_lang'))}</th>
+              <th>${escapeHtml(T('style_col_start'))}</th>
+            </tr>
+          </thead>
+          <tbody style="font-family:'JetBrains Mono',monospace">
+            ${rows}
+          </tbody>
+        </table>
+        <div style="margin-top:8px;padding-top:8px;border-top:1px dashed var(--border);font-size:9px;color:var(--text-dim);line-height:1.5">
+          ${escapeHtml(T('style_legend'))}
+        </div>
+      </div>
+    </div>`
+    messages.appendChild(el)
+    scrollIfNearBottom(messages)
   }
 
   // Argue 종료 카드 — 전체 input/output/총합, 가장 길게 답한 모델, 라운드 수, cache 정보.

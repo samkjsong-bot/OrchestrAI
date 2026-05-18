@@ -280,6 +280,26 @@ export type StringsDict = {
   bg_task_cancel: string                    // "작업 취소"
   fork_icon_tooltip: string
 
+  // /style 분석 카드
+  style_card_title: string
+  style_card_subtitle: string            // "{n} assistant 응답 · {scope}"
+  style_scope_active: string
+  style_scope_all: string
+  style_no_data: string
+  style_col_model: string
+  style_col_count: string
+  style_col_avg_chars: string
+  style_col_avg_lines: string
+  style_col_code_pct: string
+  style_col_emoji: string
+  style_col_headers: string
+  style_col_lists: string
+  style_col_politeness: string
+  style_col_lang: string
+  style_col_start: string
+  style_emoji_per1k: string              // "/1k chars"
+  style_legend: string
+
   // 일반
   loading: string
   error_prefix: string
@@ -538,6 +558,25 @@ const ko: StringsDict = {
   bg_task_cancel: '작업 취소',
   fork_icon_tooltip: '포크',
 
+  style_card_title: '📊 모델 스타일 분석',
+  style_card_subtitle: '{n} assistant 응답 · {scope}',
+  style_scope_active: '현재 탭',
+  style_scope_all: '모든 탭',
+  style_no_data: '분석할 assistant 응답이 없어요. 모델 호출 몇 번 한 뒤 다시 시도해보세요.',
+  style_col_model: '모델',
+  style_col_count: '응답수',
+  style_col_avg_chars: '평균 길이',
+  style_col_avg_lines: '평균 줄수',
+  style_col_code_pct: '코드 포함',
+  style_col_emoji: '이모지',
+  style_col_headers: '헤더',
+  style_col_lists: '리스트',
+  style_col_politeness: '정중함',
+  style_col_lang: '한·영 비율',
+  style_col_start: '자주 쓰는 시작',
+  style_emoji_per1k: '/1k자',
+  style_legend: '⚡ 코드 포함 = 코드 블록(```) 있는 메시지 비율 · 이모지/헤더/리스트 = 1000자당 빈도 · 정중함 = "요/습니다/감사/please/sorry" 등 신호 빈도 (0~1) · 한·영 비율 = 코드 제외 본문',
+
   loading: '로딩 중...',
   error_prefix: '⚠ 에러',
   required: '필수',
@@ -794,6 +833,25 @@ const en: StringsDict = {
   commit_revert_confirm: 'Revert this turn and reset to previous state? (git reset --hard {hash}^)',
   bg_task_cancel: 'Cancel task',
   fork_icon_tooltip: 'Fork',
+
+  style_card_title: '📊 Model Style Analysis',
+  style_card_subtitle: '{n} assistant responses · {scope}',
+  style_scope_active: 'current tab',
+  style_scope_all: 'all tabs',
+  style_no_data: 'No assistant responses to analyze yet. Make a few model calls and try again.',
+  style_col_model: 'model',
+  style_col_count: 'count',
+  style_col_avg_chars: 'avg chars',
+  style_col_avg_lines: 'avg lines',
+  style_col_code_pct: 'code %',
+  style_col_emoji: 'emoji',
+  style_col_headers: 'headers',
+  style_col_lists: 'lists',
+  style_col_politeness: 'politeness',
+  style_col_lang: 'EN/KR ratio',
+  style_col_start: 'common starts',
+  style_emoji_per1k: '/1k chars',
+  style_legend: '⚡ code % = messages with code blocks (```) · emoji/headers/lists = per 1000 chars · politeness = "please/sorry/요/습니다" signals (0~1) · EN/KR = excluding code',
 
   loading: 'Loading...',
   error_prefix: '⚠ Error',
