@@ -4,6 +4,7 @@ node_modules/
 # Build output
 dist/
 *.vsix
+*.mp4
 
 # VSCode workspace
 .vscode/

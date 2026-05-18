@@ -26,7 +26,9 @@ ext install samkj.orchestrai
 
 ## 🎬 Demo (v0.1.37)
 
-[▶ Watch demo video](https://github.com/samkjsong-bot/OrchestrAI/releases/download/v0.1.37/demo-v0.1.37.mp4) — argue mode + Static/Dynamic cache hits in action.
+<video src="https://github.com/samkjsong-bot/OrchestrAI/releases/download/v0.1.37/demo-v0.1.37.mp4" controls width="720"></video>
+
+> Inline player works on github.com. On VSCode Marketplace listing → [▶ Watch demo video](https://github.com/samkjsong-bot/OrchestrAI/releases/download/v0.1.37/demo-v0.1.37.mp4).
 
 ## 🆕 What's new
 

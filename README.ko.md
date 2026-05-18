@@ -26,7 +26,9 @@ ext install samkj.orchestrai
 
 ## 🎬 시연 영상 (v0.1.37)
 
-[▶ 시연 동영상 보기](https://github.com/samkjsong-bot/OrchestrAI/releases/download/v0.1.37/demo-v0.1.37.mp4) — argue 모드 + Static/Dynamic 캐시 hit 실제 작동 화면
+<video src="https://github.com/samkjsong-bot/OrchestrAI/releases/download/v0.1.37/demo-v0.1.37.mp4" controls width="720"></video>
+
+> github.com 메인 페이지에선 인라인 재생, VSCode Marketplace 에선 → [▶ 시연 동영상 보기](https://github.com/samkjsong-bot/OrchestrAI/releases/download/v0.1.37/demo-v0.1.37.mp4)
 
 ## 🆕 새 기능
 
