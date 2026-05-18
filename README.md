@@ -26,9 +26,11 @@ ext install samkj.orchestrai
 
 ## 🎬 Demo (v0.1.37)
 
-https://github.com/user-attachments/assets/359f9cc2-cc80-4ea6-a6d6-377fbf594fd3
+[![▶ Watch demo (90s)](resources/demo-thumb.png)](https://github.com/samkjsong-bot/OrchestrAI/releases/download/v0.1.37/demo-v0.1.37.mp4)
 
-> Full-quality original (77 MB): [▶ Download from release](https://github.com/samkjsong-bot/OrchestrAI/releases/download/v0.1.37/demo-v0.1.37.mp4)
+<sub>↑ Click thumbnail to play (opens in new tab). GitHub also embeds an inline player below ↓</sub>
+
+https://github.com/user-attachments/assets/359f9cc2-cc80-4ea6-a6d6-377fbf594fd3
 
 ## 🆕 What's new
 

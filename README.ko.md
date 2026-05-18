@@ -26,9 +26,11 @@ ext install samkj.orchestrai
 
 ## 🎬 시연 영상 (v0.1.37)
 
-https://github.com/user-attachments/assets/359f9cc2-cc80-4ea6-a6d6-377fbf594fd3
+[![▶ 시연 영상 (90초)](resources/demo-thumb.png)](https://github.com/samkjsong-bot/OrchestrAI/releases/download/v0.1.37/demo-v0.1.37.mp4)
 
-> 원본 화질 (77 MB): [▶ release 에서 다운로드](https://github.com/samkjsong-bot/OrchestrAI/releases/download/v0.1.37/demo-v0.1.37.mp4)
+<sub>↑ 섬네일 클릭하면 새 탭에서 원본 재생. GitHub 에선 아래에 inline player 도 떠요 ↓</sub>
+
+https://github.com/user-attachments/assets/359f9cc2-cc80-4ea6-a6d6-377fbf594fd3
 
 ## 🆕 새 기능
 
