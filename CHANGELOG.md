@@ -1,5 +1,40 @@
 # Changelog
 
+## v0.1.39 — 2026-05-20 (Codex cache 진짜로 잡힘 + Usage 영속화 + 절약 체감 + 토론 연장)
+
+### Codex prompt cache 본격 작동 (v0.1.37 버그 fix)
+v0.1.37 에서 Static/Dynamic 분리 박았지만 codex cache 가 여전히 0 으로만 표시되던 문제 진단:
+
+1. **dynamicContext 가 input[0] 앞에 prepend 됨** → OpenAI cache prefix 는 `instructions + input[0]` 부터 hash 라서 collabHint 같은 라운드별 변동분이 prefix 깨뜨림
+   - fix: dynamicContext 를 **마지막 user msg 직전** 으로 이동 → 사용자 원본 질문이 input 앞쪽 안정
+2. **`_runCodexAgent` / `_runGeminiAgent` 의 cache 토큰 누락** — tool loop 안에서 callCodex 결과의 cacheReadInputTokens 를 누적·return 안 함 → UI 표시 0
+   - fix: cacheReadAccum / cacheCreationAccum 누적 + return 객체에 포함
+3. **argue 모드에서 fileCtx 가 매 라운드 prefix 깨뜨림** — 출력 채널 같은 active editor 가 라운드마다 길어지면 dynamicContext 안의 fileCtx 도 매번 달라짐
+   - fix: argue 모드에선 fileCtx 무시 (채팅 토론이라 파일 컨텍스트 불필요)
+
+결과: R2/R5 모두 `cached_tokens: 1792` 잡힘. argue UI 의 codex `⚡` 칸이 0 → 1,792 로 정상 표시.
+
+### Usage 영속화 — Reload 해도 토큰 카드 살아있음
+이전엔 reload 마다 토큰 사용량 0 으로 리셋됨. fix:
+- `UsageTracker.attachStorage(globalState)` — record() 시 200ms debounce 자동 영속화
+- `_pushWebviewState` 가 reload 후 자동으로 usage push (이전엔 requestUsage 명시 요청해야만)
+
+### 💰 절약 효과 카드
+argue 종료 카드에 비용 절감 추정 추가:
+- 실제 비용 (with cache) vs 가상 비용 (no cache) → 절약 % 표시
+- Claude Pro 5h 한도 (~45 msg) 중 사용량 추정
+
+### 라운드 제한 설정 노출
+이전: argue=6 / team=4 하드코딩 → settings 로 변경 가능:
+- `orchestrai.argueMaxRounds` (2~30, default 6)
+- `orchestrai.argueContinueRounds` (1~12, default 3) — "이어서 토론" 클릭 시 추가 라운드
+- `orchestrai.teamMaxRounds` (1~15, default 4)
+
+### ➕ "이어서 토론" 버튼
+argue 종료 카드에 버튼 추가. 클릭 시 직전 라운드들의 summaries 그대로 인계 + `argueContinueRounds` 만큼 추가 라운드. 새 argue 시작이 아니라 **컨텍스트 보존 연장**.
+
+### Tests: 228 passing (회귀 0)
+
 ## v0.1.38 — 2026-05-18 (docs only — Marketplace listing 시연 영상 섬네일)
 
 VSCode Marketplace 는 README 의 `<video>` 태그도 `https://github.com/user-attachments/...` 자동 임베드도 strip 함 (이미지만 허용). v0.1.37 publish 후 marketplace listing 의 demo 섹션이 빈 채로 보이는 문제를 해결.

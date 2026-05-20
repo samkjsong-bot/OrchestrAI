@@ -2,7 +2,7 @@
   "name": "orchestrai",
   "displayName": "OrchestrAI",
   "description": "Multi-model AI in one VSCode sidebar — Claude + Codex + Gemini. Auto-routing, model debate, team delegation, until-it-works loop, codebase RAG, multi-model code review, Telegram phone bridge. Zero API billing (uses your existing subscriptions).",
-  "version": "0.1.38",
+  "version": "0.1.39",
   "publisher": "samkj",
   "license": "MIT",
   "icon": "resources/icon.png",
@@ -181,6 +181,27 @@
           "minimum": 0,
           "maximum": 1,
           "description": "Pattern router confidence가 이 값 이상이면 LLM 라우터 스킵. 낮을수록 LLM 라우터(Haiku)를 더 자주 사용해서 정확도 ↑ (Haiku 호출 비용 약간). default 0.92."
+        },
+        "orchestrai.argueMaxRounds": {
+          "type": "number",
+          "default": 6,
+          "minimum": 2,
+          "maximum": 30,
+          "description": "Argue 모드 한 세션 최대 라운드 수 (Claude→Codex→Gemini 순환). default 6 = 2 round/model. 늘리면 더 깊은 토론 + 더 많은 토큰. 줄이면 빠른 의견 교환."
+        },
+        "orchestrai.argueContinueRounds": {
+          "type": "number",
+          "default": 3,
+          "minimum": 1,
+          "maximum": 12,
+          "description": "Argue 종료 카드의 \"이어서 토론\" 버튼 클릭 시 추가할 라운드 수. default 3."
+        },
+        "orchestrai.teamMaxRounds": {
+          "type": "number",
+          "default": 4,
+          "minimum": 1,
+          "maximum": 15,
+          "description": "Team 모드 (Claude orchestrator) 의 최대 wrap-up 라운드 수. tool 호출 후 architect 가 추가 consult/리뷰 사이클 도는 횟수. default 4."
         },
         "orchestrai.autoOpenDiff": {
           "type": "boolean",

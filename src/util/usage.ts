@@ -1,7 +1,16 @@
 // src/util/usage.ts
 // 모델별 세션 사용량 추적 + argue 모드 전용 카운터.
+// v0.1.39: globalState 영속화 — reload 해도 session 유지. session reset 은 명시적 행동에만.
 
 import { Model } from '../router/types'
+
+// VSCode Memento (globalState) 의 최소 인터페이스. ExtensionContext 직접 import 피해서 test 쉬움.
+export interface UsageStorage {
+  get<T>(key: string): T | undefined
+  update(key: string, value: any): Thenable<void>
+}
+
+const STORAGE_KEY = 'orchestrai.usage.v1'
 
 export interface ModelUsage {
   requests: number
@@ -78,6 +87,29 @@ export class UsageTracker {
     claude: empty(), codex: empty(), gemini: empty(),
   }
   public sessionStartedAt = Date.now()
+  private storage?: UsageStorage    // 있으면 record() 마다 영속화 (debounce 200ms)
+  private saveTimer?: ReturnType<typeof setTimeout>
+
+  /** v0.1.39 — globalState 에서 직전 세션 복원. constructor 대신 별도 메서드로 분리해서 test 시 storage 없이도 동작. */
+  attachStorage(storage: UsageStorage): void {
+    this.storage = storage
+    const saved = storage.get<{ session: Record<Model, ModelUsage>; argue: Record<Model, ModelUsage>; sessionStartedAt: number }>(STORAGE_KEY)
+    if (saved && typeof saved === 'object') {
+      if (saved.session) this.session = saved.session
+      if (saved.argue) this.argue = saved.argue
+      if (typeof saved.sessionStartedAt === 'number') this.sessionStartedAt = saved.sessionStartedAt
+    }
+  }
+
+  private scheduleSave() {
+    if (!this.storage) return
+    if (this.saveTimer) clearTimeout(this.saveTimer)
+    this.saveTimer = setTimeout(() => {
+      this.storage?.update(STORAGE_KEY, {
+        session: this.session, argue: this.argue, sessionStartedAt: this.sessionStartedAt,
+      })
+    }, 200)
+  }
 
   record(model: Model, input: number, output: number, isArgue: boolean, extras?: RecordExtras) {
     // session/argue 는 built-in 3종만 키로 가짐. custom:<name> 들어오면 undefined.requests++ 로 throw →
@@ -101,6 +133,7 @@ export class UsageTracker {
       a.cacheCreationTokens = (a.cacheCreationTokens ?? 0) + (extras?.cacheCreationTokens ?? 0)
       a.cachedInputTokens = (a.cachedInputTokens ?? 0) + (extras?.cachedInputTokens ?? 0)
     }
+    this.scheduleSave()
   }
 
   getSession(): Record<Model, ModelUsage> {
@@ -113,11 +146,13 @@ export class UsageTracker {
 
   resetArgue() {
     this.argue = { claude: empty(), codex: empty(), gemini: empty() }
+    this.scheduleSave()
   }
 
   resetSession() {
     this.session = { claude: empty(), codex: empty(), gemini: empty() }
     this.sessionStartedAt = Date.now()
+    this.scheduleSave()
   }
 
   // 특정 모델의 총 세션 토큰 사용량을 반환합니다.

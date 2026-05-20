@@ -127,15 +127,29 @@ export async function callCodex(
 
   // Static/Dynamic 분리: staticPrompt 가 있으면 그것만 instructions 로 → OpenAI prompt cache prefix 안정.
   //   - instructions = staticPrompt 만 (collabHint, file ctx 빠짐 → argue 라운드 사이 동일)
-  //   - dynamicContext 는 input 첫 항목 앞에 <context> 래퍼 user msg 로 prepend
+  //   - dynamicContext 는 마지막 user msg 직전에 user role 로 삽입.
+  //     ⚠ v0.1.39 fix: 이전엔 input[0] 앞에 prepend 했는데, OpenAI cache 는 instructions+input[0] 부터 prefix hash 함.
+  //     dynamicContext 가 라운드마다 다르면 (collabHint 'first' vs 'reply') input[0] 부터 깨져서 cache 0%.
+  //     마지막 user 직전에 두면 앞쪽 history (사용자 원본 질문) 는 라운드 사이 동일 → prefix hit.
   // staticPrompt 없으면 옛 동작 그대로 (backward compat).
   const cacheStableInstructions = staticPrompt ?? systemPrompt ?? 'You are an expert coding assistant.'
-  const inputWithContext = dynamicContext
-    ? [
+  let inputWithContext: typeof transformedInput
+  if (dynamicContext && transformedInput.length > 0) {
+    // 마지막 항목이 user 면 그 직전에 dynamic 삽입. 아니면 끝에 append.
+    const lastIdx = transformedInput.length - 1
+    const last = transformedInput[lastIdx]
+    if (last.role === 'user') {
+      inputWithContext = [
+        ...transformedInput.slice(0, lastIdx),
         { role: 'user' as const, content: `<context>\n${dynamicContext}\n</context>` },
-        ...transformedInput,
+        last,
       ]
-    : transformedInput
+    } else {
+      inputWithContext = [...transformedInput, { role: 'user' as const, content: `<context>\n${dynamicContext}\n</context>` }]
+    }
+  } else {
+    inputWithContext = transformedInput
+  }
 
   // 한 모델로 fetch 시도 (429/5xx 지수 백오프 재시도 포함, 스트림 시작 전까지)
   async function tryFetch(model: string): Promise<{ res: Response | null; lastErr: { status: number; text: string } | null }> {

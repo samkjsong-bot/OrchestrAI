@@ -66,4 +66,11 @@ export interface ChatMessage {
   commitShort?: string        // 사용자 표시용 7자
   commitMessage?: string      // Haiku 가 생성한 의미 있는 commit subject (UX chip 노출용)
   verdict?: { score: number; reason: string }  // argue 모드에서 Haiku 가 매긴 점수 (rehydrate 보존용)
+  // v0.1.39: argue 마지막 assistant 메시지에 totals 박아서 rehydrate 후에도 종료 카드 복원.
+  //   타입은 webview 가 그대로 받아 showArgueTotalsCard 에 넘김.
+  argueTotalsCard?: {
+    totals: any
+    mode: string
+    outputCapKR: number
+  }
 }

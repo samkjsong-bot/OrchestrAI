@@ -6,6 +6,7 @@ dist/
 *.vsix
 *.mp4
 ffmpeg2pass-*.log*
+/orchestrai-*.png
 
 # VSCode workspace
 .vscode/

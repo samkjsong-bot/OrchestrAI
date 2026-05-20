@@ -1135,6 +1135,14 @@ class OrchestrAIViewProvider implements vscode.WebviewViewProvider, vscode.Dispo
   private _isSending = false
   private _argueStop = false
   private _inArgue = false
+  // v0.1.39: 직전 argue 세션의 컨텍스트 — "이어서 토론" 버튼이 클릭되면 이 값으로 새 라운드들 더 돌림.
+  private _lastArgueCtx?: {
+    userQuestion: string
+    summaries: import('./util/argueDebate').DebateTurnSummary[]
+    outputCapKR: number
+    mode: 'eco' | 'balanced' | 'deep' | 'full'
+    captainForSummarize: import('./util/captain').CaptainChoice
+  }
   private _permissionMode: PermissionMode = 'auto-edit'
   // 유저가 수동 override한 effort. null이면 inferEffort로 자동 결정
   private _effortOverride: Effort | null = null
@@ -1163,6 +1171,8 @@ class OrchestrAIViewProvider implements vscode.WebviewViewProvider, vscode.Dispo
     this._codexAuth = new CodexAuth(this._authStorage)
     this._geminiAuth = new GeminiAuth(this._authStorage)
     this._usage = new UsageTracker()
+    // v0.1.39: reload 해도 세션 토큰 사용량 유지. record() 시 자동 영속화 (debounce 200ms).
+    this._usage.attachStorage(_context.globalState)
     // 빈 chat 초기값 — resolveWebviewView 전에 _messages 접근해도 push 가 leak 안 되게.
     // resolveWebviewView 가 진짜 disk 로드 후 _chats 통째로 교체.
     {
@@ -2069,6 +2079,8 @@ ${hit.kind === 'cmd' ? 'When done, the AI! comment line itself can stay — user
           case 'rtfAttach':          await this._handleRtfAttach(msg.name, msg.text); break
           case 'odtAttach':          await this._handleOdtAttach(msg.name, msg.dataBase64); break
           case 'setOverride':   this._override = msg.mode; break
+          case 'argueContinue': await this._handleArgueContinue(); break
+          case 'saveScreenshot': await this._handleSaveScreenshot(msg.filename, msg.dataUrl); break
           case 'toggleContext': this._useFileContext = msg.enabled; break
           case 'clearChat':
             await this.clearChat()
@@ -2423,6 +2435,9 @@ ${hit.kind === 'cmd' ? 'When done, the AI! comment line itself can stay — user
     this._post({ type: 'effortOverrideState', effort: this._effortOverride })
     this._postTabs()
     this._post({ type: 'rehydrate', messages: this._messages })
+    // v0.1.39: reload 후에도 토큰 사용량 카드 즉시 복원 (영속화된 값 push).
+    // 이전엔 webview 가 명시적으로 requestUsage 보낼 때만 옴 → reload 시 빈 카드로 시작했음.
+    this._post({ type: 'usage', session: this._usage.getSession(), plans: PLAN_INFO, startedAt: this._usage.sessionStartedAt })
   }
 
   // ?? Auth ?????????????????????????????????????????????????????????
@@ -3410,6 +3425,65 @@ Be concise. Use conventional commit style if commits do.`
   }
 
   // @ commands — 입력창에 첨부 텍스트 삽입 후 사용자가 보내기 (Continue 스타일).
+  // v0.1.39: webview 가 만든 argue 스크린샷 PNG dataURL 받아서 native save dialog 띄우고 파일 저장.
+  private async _handleSaveScreenshot(filename: string, dataUrl: string): Promise<void> {
+    try {
+      // data:image/png;base64,XXXX
+      const m = /^data:image\/png;base64,(.+)$/.exec(dataUrl)
+      if (!m) {
+        this._post({ type: 'streamError', id: 'screenshot', error: '잘못된 스크린샷 데이터' })
+        return
+      }
+      const buf = Buffer.from(m[1], 'base64')
+      // default 위치: workspace root 또는 Downloads.
+      const wsRoot = getWorkspaceRoot()
+      const defaultDir = wsRoot ?? path.join(require('os').homedir(), 'Downloads')
+      const safeName = filename.replace(/[/\\?%*:|"<>]/g, '-')
+      const defaultUri = vscode.Uri.file(path.join(defaultDir, safeName))
+      const uri = await vscode.window.showSaveDialog({
+        defaultUri,
+        filters: { 'PNG Image': ['png'] },
+        saveLabel: 'OrchestrAI Argue 스크린샷 저장',
+      })
+      if (!uri) return  // 사용자 취소
+      await vscode.workspace.fs.writeFile(uri, buf)
+      vscode.window.showInformationMessage(`Argue 스크린샷 저장됨: ${path.basename(uri.fsPath)}`, '폴더 열기')
+        .then(choice => {
+          if (choice === '폴더 열기') {
+            vscode.commands.executeCommand('revealFileInOS', uri)
+          }
+        })
+    } catch (err) {
+      log.warn('screenshot', `save failed: ${err instanceof Error ? err.message : String(err)}`)
+      vscode.window.showErrorMessage(`스크린샷 저장 실패: ${err instanceof Error ? err.message : String(err)}`)
+    }
+  }
+
+  // v0.1.39: "이어서 토론" 버튼 클릭 → 직전 argue 의 summaries 들고 N 라운드 더.
+  //   _handleSend 의 argue 분기 그대로 재진입. resumeMode flag (decision.__resumeArgue) 가
+  //   for 루프 초기화를 직전 summaries 부터 + MAX_TURNS = continueRounds 로 바꿈.
+  private async _handleArgueContinue() {
+    if (!this._lastArgueCtx) {
+      this._post({ type: 'streamError', id: 'argue-continue', error: '이어서 토론할 직전 컨텍스트가 없습니다 (탭 전환 / reload 했나요?)' })
+      return
+    }
+    if (this._isSending) {
+      this._post({ type: 'blocked', reason: '현재 응답 진행 중 — 끝나면 다시 시도' })
+      return
+    }
+    // override 강제 argue + summaries 인계는 _handleSend 가 본 decision 객체에 박힌 flag 로.
+    this._override = 'argue'
+    // resumeArgue flag 박기 위해 사용자 메시지로 placeholder 발송 — 단 메시지 새로 push 하지 않게
+    // userText 를 직전 질문 그대로 (history 에 중복으로 박혀도 cache prefix 안정에 유리).
+    // _handleSend 내부 argue 분기에서 decision.__resumeArgue 를 검사.
+    const userText = this._lastArgueCtx.userQuestion
+    // 직접 argue 진입은 어렵고, 사용자 측에 노출되는 user msg 도 만들고 싶지 않으니
+    // _handleSend 호출 + decision flag 통과를 위해 사이드 채널 사용.
+    this._resumeArgueNext = true
+    await this._handleSend(`(이어서 토론 — ${this._cfg<number>('argueContinueRounds') ?? 3} 라운드 추가)`, [])
+  }
+  private _resumeArgueNext = false
+
   private async _handleMentionCommand(cmd: string) {
     const root = getWorkspaceRoot()
     let attachText: string | null = null
@@ -3770,9 +3844,16 @@ Be concise. Use conventional commit style if commits do.`
 
       this._argueStop = false
       this._inArgue = true
-      this._usage.resetArgue()
-      this._post({ type: 'argueStart', models: order })
-      const MAX_TURNS = 6
+      // v0.1.39: 이어서 토론이면 resetArgue 안 함 (직전 totals 유지)
+      const resumeMode = this._resumeArgueNext === true
+      this._resumeArgueNext = false
+      if (!resumeMode) this._usage.resetArgue()
+      this._post({ type: 'argueStart', models: order, resumeMode })
+      // v0.1.39: 사용자가 settings 로 변경 가능 (default 6, range 2~30).
+      // 이어서 토론이면 continueRounds 만큼 추가, 아니면 max.
+      const cfgRounds = Math.max(2, Math.min(30, this._cfg<number>('argueMaxRounds') ?? 6))
+      const cfgContinueRounds = Math.max(1, Math.min(12, this._cfg<number>('argueContinueRounds') ?? 3))
+      const MAX_TURNS = resumeMode ? cfgContinueRounds : cfgRounds
       const argueTurns: Array<{ model: Model; text: string; msgIndex: number }> = []
       const scoresByModel: Record<Model, { total: number; turns: number }> = {
         claude: { total: 0, turns: 0 },
@@ -3780,14 +3861,22 @@ Be concise. Use conventional commit style if commits do.`
         gemini: { total: 0, turns: 0 },
       }
       // Argue token 절약 (directive 후속 patch) — summaries 만 다음 라운드에 전달 + per-round token totals + output cap.
-      const debateSummaries: DebateTurnSummary[] = []
+      // 이어서 토론 모드면 직전 세션의 summaries 그대로 인계.
+      const debateSummaries: DebateTurnSummary[] = resumeMode && this._lastArgueCtx
+        ? [...this._lastArgueCtx.summaries]
+        : []
       const argueTotals = emptyArgueTotals()
       const argueMode = this._currentBundle?.mode ?? 'balanced'
       const outputCapKR = argueOutputCapKR(argueMode)
       const captainForSummarize = getCaptain(await this._authStorage.getStatus())
 
       const skippedModels = new Set<Model>()
-      for (let i = 0; i < MAX_TURNS; i++) {
+      // 이어서 토론이면 시작 인덱스를 직전 summaries 길이부터 — 모델 순환이 끊기지 않게.
+      const startRoundOffset = resumeMode && this._lastArgueCtx
+        ? this._lastArgueCtx.summaries.length
+        : 0
+      for (let raw = 0; raw < MAX_TURNS; raw++) {
+        const i = raw + startRoundOffset
         if (this._argueStop) break
         const model = order[i % order.length]
         // 한 번 실패한 모델은 이 argue 세션에서 스킵 (같은 safety 필터면 계속 막힐 가능성)
@@ -3877,6 +3966,24 @@ Be concise. Use conventional commit style if commits do.`
       }
 
       this._inArgue = false
+      // v0.1.39: "이어서 토론" 버튼을 위해 마지막 컨텍스트 보존.
+      this._lastArgueCtx = {
+        userQuestion: userText,
+        summaries: [...debateSummaries],
+        outputCapKR,
+        mode: argueMode,
+        captainForSummarize,
+      }
+      // v0.1.39: argue 종료 카드 영속화 — 마지막 assistant 메시지에 totals 박음 → rehydrate 시 복원.
+      const lastAssistantMsg = [...this._messages].reverse().find(m => m.role === 'assistant')
+      if (lastAssistantMsg) {
+        lastAssistantMsg.argueTotalsCard = {
+          totals: argueTotals,
+          mode: argueMode,
+          outputCapKR,
+        }
+        await this._persistMessages()
+      }
       this._post({
         type: 'argueEnd',
         scoreboard: scoresByModel,
@@ -4332,16 +4439,17 @@ ${result.failureSummary || result.output.slice(-3000)}
         const wsRoot = getWorkspaceRoot() ?? process.cwd()
         const last = history[history.length - 1]
         const prior = history.slice(0, -1)
-        const historyPrompt = (prior.length
+        // Static/Dynamic split: baseInstructions = staticPrompt 만 (stable hash).
+        // v0.1.39 fix: dynamicContext 는 마지막 user 직전 (= prior 끝, last 앞) 에 끼움.
+        //   이전엔 prompt 맨 앞 prepend 였는데, OpenAI cache prefix 가 prompt 첫 부분부터 hash 라
+        //   collabHint 등 라운드별 변동분이 prefix 깨뜨려서 cache 0%.
+        const baseInstructions = staticPrompt ?? systemPrompt
+        const dynamicBlock = dynamicContext ? `<context>\n${dynamicContext}\n</context>\n\n` : ''
+        // history 의 prior 부분 다음에 dynamicBlock + last user message 순서로.
+        const prompt = (prior.length
           ? prior.map(m => `${m.role === 'user' ? 'User' : 'Assistant'}: ${m.content}`).join('\n\n') + '\n\n---\n\n'
           : ''
-        ) + (last?.content ?? '')
-        // Static/Dynamic split: baseInstructions = staticPrompt 만 (stable hash).
-        // dynamicContext 는 prompt 첫 부분에 <context> 래퍼로 prepend.
-        const baseInstructions = staticPrompt ?? systemPrompt
-        const prompt = dynamicContext
-          ? `<context>\n${dynamicContext}\n</context>\n\n${historyPrompt}`
-          : historyPrompt
+        ) + dynamicBlock + (last?.content ?? '')
         try {
           const result = await client.run({
             prompt,
@@ -4364,6 +4472,8 @@ ${result.failureSummary || result.output.slice(-3000)}
     const agentHistory = [...history]
     let inputTokens = 0
     let outputTokens = 0
+    let cacheReadAccum = 0
+    let cacheCreationAccum = 0
 
     for (let turn = 0; turn < MAX_CODEX_TOOL_TURNS; turn++) {
       if (this._currentAbort?.signal.aborted) throw new Error('aborted')
@@ -4392,11 +4502,19 @@ ${result.failureSummary || result.output.slice(-3000)}
       )
       inputTokens += result.inputTokens
       outputTokens += result.outputTokens
+      // v0.1.39 fix: cacheRead/Creation 누적해야 _usage.record() 에 정확히 들어감. 이전엔 누락돼서 argue 패널 codex 캐시 항상 0.
+      cacheReadAccum += (result as any).cacheReadInputTokens ?? 0
+      cacheCreationAccum += (result as any).cacheCreationInputTokens ?? 0
 
       const toolCall = parseCodexToolCall(result.content)
       if (!toolCall) {
         // tool 호출 없음. 이미 chunk forward 끝남.
-        return { content: result.content, inputTokens, outputTokens, usedModel: (result as any).usedModel }
+        return {
+          content: result.content, inputTokens, outputTokens,
+          usedModel: (result as any).usedModel,
+          cacheReadInputTokens: cacheReadAccum,
+          cacheCreationInputTokens: cacheCreationAccum,
+        }
       }
 
       const label = formatCodexToolCall(toolCall)
@@ -4516,6 +4634,8 @@ ${result.failureSummary || result.output.slice(-3000)}
     const agentHistory = [...history]
     let inputTokens = 0
     let outputTokens = 0
+    let cacheReadAccum = 0
+    let cacheCreationAccum = 0
 
     for (let turn = 0; turn < MAX_CODEX_TOOL_TURNS; turn++) {
       if (this._currentAbort?.signal.aborted) throw new Error('aborted')
@@ -4539,10 +4659,17 @@ ${result.failureSummary || result.output.slice(-3000)}
       )
       inputTokens += result.inputTokens
       outputTokens += result.outputTokens
+      // v0.1.39 fix: callGemini 의 cache 토큰도 누적해야 OAuth 경로 (non-Context-Cache) 의 cache 표시가 정상.
+      cacheReadAccum += (result as any).cacheReadInputTokens ?? 0
+      cacheCreationAccum += (result as any).cacheCreationInputTokens ?? 0
 
       const toolCall = parseCodexToolCall(result.content)
       if (!toolCall) {
-        return { content: result.content, inputTokens, outputTokens, usedModel: (result as any).usedModel }
+        return {
+          content: result.content, inputTokens, outputTokens,
+          usedModel: (result as any).usedModel,
+          cachedInputTokens: cacheReadAccum,
+        }
       }
 
       const label = formatCodexToolCall(toolCall)
@@ -4660,9 +4787,13 @@ ${result.failureSummary || result.output.slice(-3000)}
       // ─── Static/Dynamic split for Gemini Context Cache ─────────────────────
       // staticPrompt: stable per (model, mode, mcpTools, teamRole) → SHA1 key 안정 → 90%+ cache hit
       const staticPrompt = buildStaticPrompt(currentModel, this._permissionMode, mcpTools ?? [], teamRole)
+      // v0.1.39 fix: argue 모드에선 fileCtx 제외 — 라운드마다 활성 파일 내용 변하면 (특히 출력 채널) prefix 깨져서 cache miss.
+      //   argue 는 채팅 토론이라 보통 파일 내용 안 봄. 사용자가 명시 첨부 (@file) 하면 history 에 들어가서 OK.
+      const effectiveFileCtx = argueCtx ? null : fileCtx
+      const effectiveProjection = argueCtx ? undefined : projection?.prompt
       // dynamicCtx: file ctx + argue hints — changes per turn → prepend to history messages
       const dynamicCtx = buildDynamicContext(
-        fileCtx, projection?.prompt, collabHint, argueCtx?.outputCapKR, currentModel, teamRole,
+        effectiveFileCtx, effectiveProjection, collabHint, argueCtx?.outputCapKR, currentModel, teamRole,
       )
       // RAG + active agent are also dynamic (per-turn)
       const ragCtx = (this as any)._ragContextForCurrentTurn

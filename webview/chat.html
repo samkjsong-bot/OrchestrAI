@@ -9,6 +9,7 @@
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/marked/12.0.0/marked.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 <style>
   @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600&family=Inter:wght@300;400;500&display=swap');
 
@@ -2404,6 +2405,13 @@
         <rect x="10" y="3" width="2" height="11" fill="currentColor"/>
       </svg>
     </button>
+    <button class="icon-btn" title="현재 대화 전체를 PNG 로 스크린샷" onclick="screenshotAllMessages(this)">
+      <svg viewBox="0 0 16 16" fill="none" width="12" height="12">
+        <rect x="1.5" y="4" width="13" height="9" rx="1.5" stroke="currentColor" stroke-width="1.2" fill="none"/>
+        <circle cx="8" cy="8.5" r="2" stroke="currentColor" stroke-width="1.2" fill="none"/>
+        <rect x="5.5" y="2.5" width="5" height="2" rx="0.5" fill="currentColor"/>
+      </svg>
+    </button>
     <button class="icon-btn" title="Clear chat" onclick="clearChat()">
       <svg viewBox="0 0 16 16" fill="none" width="12" height="12">
         <path d="M3 5h10M6 5V3h4v2M5 5l1 9h4l1-9" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/>
@@ -4640,6 +4648,61 @@
       }
       return lines.length ? `<div style="margin-top:4px;color:#4ade80">⚡ ${lines.join(' · ')}</div>` : ''
     })()
+    // v0.1.39: 절약 체감 카드 — 실제 비용 vs "캐시 없었다면 비용" 비교.
+    //   PRICING (renderUsagePanel 와 동일) 으로 추정. zero-billing 경로라 실청구 0 이지만 가치 환산.
+    const savingsCard = (() => {
+      const PRICING = {
+        claude: { in: 3, out: 15, cacheRead: 0.30, cacheWrite: 3.75 },
+        codex:  { in: 5, out: 20, cacheRead: 0.50, cacheWrite: 5 },
+        gemini: { in: 0.30, out: 2.5, cacheRead: 0.075, cacheWrite: 0.30 },
+      }
+      let actualUsd = 0, hypotheticalUsd = 0
+      for (const [m, t] of Object.entries(totals.byModel || {})) {
+        const p = PRICING[m]; if (!p) continue
+        const inTok = t.input || 0, outTok = t.output || 0
+        const cacheRead = t.cacheRead || 0, cacheCreate = t.cacheCreation || 0, cachedIn = t.cachedInput || 0
+        // 실제 비용: input 청구분만 (cacheRead 는 OpenAI 의 경우 inTok 안에 이미 포함됨 → 할인 적용)
+        //   Anthropic: input = new only (cacheRead 별도). OpenAI: input = total (cacheRead 별도 표시)
+        //   둘 다 cacheRead 토큰에 cacheRead 단가 적용하는 게 안전한 근사.
+        const actNew = (inTok - cacheRead - cachedIn) * p.in  // 진짜 new
+        const actRead = cacheRead * p.cacheRead
+        const actWrite = cacheCreate * p.cacheWrite
+        const actCached = cachedIn * p.cacheRead  // Gemini Context Cache (25%)
+        const actOut = outTok * p.out
+        actualUsd += (Math.max(0, actNew) + actRead + actWrite + actCached + actOut) / 1_000_000
+        // 가상 비용: 모든 input 을 full 가격 청구했다면
+        const hypTotalInput = inTok + cacheRead + cacheCreate + cachedIn
+        hypotheticalUsd += (hypTotalInput * p.in + outTok * p.out) / 1_000_000
+      }
+      if (hypotheticalUsd <= 0) return ''
+      const savedUsd = Math.max(0, hypotheticalUsd - actualUsd)
+      const savedPct = Math.round(savedUsd / hypotheticalUsd * 100)
+      // Claude 5h 한도 (~45 메시지 추정) 소화량 추정 — 라운드 수가 한도 차감의 1차 근사
+      const claudeRounds = totals.byModel?.claude?.rounds || 0
+      const codexRounds = totals.byModel?.codex?.rounds || 0
+      const limitNote = claudeRounds > 0
+        ? `<div style="color:var(--text-muted);font-size:10px;margin-top:4px">Claude Pro ~45 msg/5h 중 약 ${claudeRounds}개 사용 (cache 덕에 한도 ${claudeRounds === 0 ? 0 : Math.round(100 * (1 - (claudeRounds / 45)))}% 보존)</div>`
+        : ''
+      return `<div style="margin-top:8px;padding:8px 10px;background:rgba(74,222,128,0.07);border-left:3px solid #4ade80;border-radius:4px">
+        <div style="color:#4ade80;font-weight:600">💰 ${escapeHtml(window.I18N_LOCALE === 'ko' ? '절약 효과' : 'Savings')}</div>
+        <div style="margin-top:4px;font-size:12px">
+          $${actualUsd.toFixed(4)} <span style="color:var(--text-muted)">vs</span> $${hypotheticalUsd.toFixed(4)}
+          <span style="color:#4ade80;font-weight:600;margin-left:6px">(-${savedPct}%)</span>
+        </div>
+        ${limitNote}
+      </div>`
+    })()
+    // v0.1.39: 이어서 토론 + 스크린샷 버튼
+    const continueBtn = `<div style="margin-top:10px;text-align:center;display:flex;gap:8px;justify-content:center">
+      <button class="continue-argue-btn" style="padding:6px 14px;background:rgba(167,139,250,0.15);border:1px solid #a78bfa;color:#a78bfa;border-radius:4px;cursor:pointer;font-size:12px;font-weight:600"
+        onclick="continueArgue()">
+        ➕ ${escapeHtml(window.I18N_LOCALE === 'ko' ? '이어서 토론' : 'Continue debate')}
+      </button>
+      <button class="screenshot-argue-btn" style="padding:6px 14px;background:rgba(56,189,248,0.15);border:1px solid #38bdf8;color:#38bdf8;border-radius:4px;cursor:pointer;font-size:12px;font-weight:600"
+        onclick="screenshotArgue(this)" title="${escapeHtml(window.I18N_LOCALE === 'ko' ? '사용자 질문 + 모든 라운드 + 요약 카드를 PNG 로 저장' : 'Save user question + all rounds + summary card as PNG')}">
+        📸 ${escapeHtml(window.I18N_LOCALE === 'ko' ? '스크린샷' : 'Screenshot')}
+      </button>
+    </div>`
     const cacheHeader = showCacheCols ? `<span class="argue-total-cell" title="cache_read + cached_input">${escapeHtml(T('argue_cache_header'))}</span>` : ''
     const capLabel = (window.I18N_LOCALE === 'ko') ? `cap ${outputCapKR ?? '?'}자` : `cap ${outputCapKR ?? '?'} chars`
     el.innerHTML = `<div class="bubble" style="background:rgba(167,139,250,0.06);border:1px solid rgba(167,139,250,0.25)">
@@ -4661,10 +4724,186 @@
           </div>
           ${byModelRows}
         </div>
+        ${savingsCard}
+        ${continueBtn}
       </div>
     </div>`
     messages.appendChild(el)
     scrollIfNearBottom(messages)
+  }
+
+  // v0.1.39: 이어서 토론 — 직전 argue 가 남긴 summaries 들고 N 라운드 더.
+  //   확장에 'argueContinue' 메시지 보냄. extension 측이 lastDebateSummaries 들고 새 라운드만 돌림.
+  function continueArgue() {
+    vscode.postMessage({ type: 'argueContinue' })
+    // 버튼 즉시 비활성화 (중복 클릭 방지)
+    document.querySelectorAll('.continue-argue-btn').forEach(b => {
+      b.disabled = true
+      b.style.opacity = '0.5'
+      b.style.cursor = 'wait'
+    })
+  }
+
+  // v0.1.39: 공용 스크린샷 — DOM 노드 배열을 받아 캡쳐 → PNG → extension 으로 dataURL 전달 (save dialog).
+  //   wrapTitle: 스크린샷 상단 헤더 (예: 'Argue Result', 'Chat Snapshot')
+  async function captureNodesToPng(nodes, wrapTitle, btn) {
+    if (typeof html2canvas !== 'function') {
+      alert('html2canvas 라이브러리 로드 안 됨 (네트워크 확인)')
+      return
+    }
+    const wrap = document.createElement('div')
+    wrap.style.cssText = 'position:absolute;top:-99999px;left:0;width:760px;background:var(--bg);padding:20px 20px 40px;color:var(--text);font-family:Inter,sans-serif;box-sizing:border-box'
+    const head = document.createElement('div')
+    head.style.cssText = 'margin-bottom:16px;padding-bottom:12px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;color:var(--text-muted);font-size:11px'
+    const now = new Date()
+    const dateStr = now.toISOString().slice(0, 10) + ' ' + now.toTimeString().slice(0, 5)
+    head.innerHTML = `<span style="font-weight:600;color:#a78bfa">🎼 OrchestrAI · ${escapeHtml(wrapTitle)}</span><span>${dateStr}</span>`
+    wrap.appendChild(head)
+    for (const node of nodes) {
+      const clone = node.cloneNode(true)
+      clone.querySelectorAll('.continue-argue-btn, .screenshot-argue-btn, .copy-btn, .fork-btn, .rollback-btn, .msg-actions, button').forEach(el => el.remove())
+      // user msg 는 position:sticky 라 html2canvas 가 잘 못 잡음 → static 으로 강제
+      if (clone.classList?.contains('msg-user')) {
+        clone.style.position = 'static'
+        clone.style.background = 'transparent'
+        clone.style.backdropFilter = 'none'
+      }
+      wrap.appendChild(clone)
+    }
+    document.body.appendChild(wrap)
+    const origText = btn ? btn.innerHTML : ''
+    if (btn) { btn.disabled = true; btn.innerHTML = '⏳' }
+    try {
+      await new Promise(r => setTimeout(r, 80))
+      const actualHeight = wrap.scrollHeight
+      const canvas = await html2canvas(wrap, {
+        backgroundColor: getComputedStyle(document.body).getPropertyValue('--bg') || '#1e1e1e',
+        scale: 2,
+        logging: false,
+        useCORS: true,
+        height: actualHeight,
+        windowHeight: actualHeight + 200,
+      })
+      const dataUrl = canvas.toDataURL('image/png')
+      const slug = wrapTitle.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'snapshot'
+      const filename = `orchestrai-${slug}-${now.toISOString().replace(/[:.]/g, '-').slice(0, 19)}.png`
+      vscode.postMessage({ type: 'saveScreenshot', filename, dataUrl })
+      if (btn) {
+        btn.innerHTML = '✅'
+        setTimeout(() => { btn.innerHTML = origText; btn.disabled = false }, 1500)
+      }
+    } catch (err) {
+      console.error('screenshot failed', err)
+      if (btn) { btn.innerHTML = '❌'; setTimeout(() => { btn.innerHTML = origText; btn.disabled = false }, 1500) }
+    } finally {
+      wrap.remove()
+    }
+  }
+
+  // v0.1.39: 전역 스크린샷 — 현재 보이는 메시지 영역 통째 캡쳐.
+  async function screenshotAllMessages(btn) {
+    const messages = document.getElementById('messages')
+    if (!messages) return
+    const nodes = Array.from(messages.children).filter(n => n.classList?.contains('msg'))
+    if (nodes.length === 0) { alert('캡쳐할 메시지가 없습니다'); return }
+    await captureNodesToPng(nodes, 'Chat', btn)
+  }
+
+  // v0.1.39: 메시지별 스크린샷 — 개별 .msg 만 캡쳐 (메시지의 📸 버튼).
+  async function screenshotSingleMessage(msgId, btn) {
+    const el = document.getElementById(`msg-${msgId}`)
+    if (!el) return
+    await captureNodesToPng([el], 'Message', btn)
+  }
+
+  // v0.1.39: argue 스크린샷 — 사용자 질문 + 모든 라운드 + 종료 카드 캡쳐 → PNG 다운로드.
+  //   html2canvas 로 DOM 통째 → canvas → toBlob → download. 모든 작업 webview 내부, 외부 호출 0.
+  async function screenshotArgue(btn) {
+    if (typeof html2canvas !== 'function') {
+      alert('html2canvas 라이브러리 로드 안 됨 (네트워크 확인)')
+      return
+    }
+    const summaryCard = btn.closest('.msg')
+    if (!summaryCard) return
+    // 캡쳐 대상: argue 세션의 "최초 user 질문" 부터 summary 카드까지.
+    //   "이어서 토론" 으로 placeholder user msg 가 생긴 경우도 모두 포함하려면, 위로 거슬러
+    //   올라가다 assistant 가 아닌 .msg-user 를 만나면 그 user 의 직전 또 다른 user 까지 (or 처음까지).
+    //   가장 간단: 연속된 assistant 들 위쪽의 첫 user 1개만 잡는 게 아니라, 그 위에 또 user 가 있으면
+    //   계속 거슬러서 "user 사이에 assistant 없이 연속된 user 블록" 의 맨 처음.
+    const messages = document.getElementById('messages')
+    if (!messages) return
+    const all = Array.from(messages.children)
+    const endIdx = all.indexOf(summaryCard)
+    // 거꾸로 훑으며 첫 user 만난 위치 기록 + 그 위에 또 user 있으면 계속 위로.
+    let firstUserIdx = -1
+    for (let i = endIdx - 1; i >= 0; i--) {
+      if (all[i].classList?.contains('msg-user')) {
+        firstUserIdx = i
+      } else if (firstUserIdx !== -1 && all[i].classList?.contains('msg-ai')) {
+        // user 만난 적 있는데 위로 더 가다 ai 만나면 그 위 더 봐서 또 user 있나 확인.
+        // ai 가 직전 라운드 답이면 그 위쪽 user 까지 잡아야 = 원래 질문. 5단계 위까지만 봄.
+        let prevUserIdx = -1
+        for (let j = i - 1; j >= Math.max(0, i - 8); j--) {
+          if (all[j].classList?.contains('msg-user')) { prevUserIdx = j; break }
+          if (all[j].classList?.contains('msg-ai')) continue
+        }
+        if (prevUserIdx === -1) break  // 더 위에 user 없으면 현재 user 가 진짜 시작
+        firstUserIdx = prevUserIdx
+        i = prevUserIdx  // 거기서 다시 거꾸로
+      }
+    }
+    let startIdx = firstUserIdx === -1 ? Math.max(0, endIdx - 13) : firstUserIdx
+    // 캡쳐용 임시 컨테이너 — 원본 DOM 안 건드리고 cloneNode 로 복사 → 화면 밖에서 렌더.
+    //   하단 padding 넉넉히 (32px) 줘서 마지막 카드 잘림 방지.
+    const wrap = document.createElement('div')
+    wrap.style.cssText = 'position:absolute;top:-99999px;left:0;width:760px;background:var(--bg);padding:20px 20px 40px;color:var(--text);font-family:Inter,sans-serif;box-sizing:border-box'
+    // 헤더 — 브랜딩 + 일자
+    const head = document.createElement('div')
+    head.style.cssText = 'margin-bottom:16px;padding-bottom:12px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;color:var(--text-muted);font-size:11px'
+    const now = new Date()
+    const dateStr = now.toISOString().slice(0, 10) + ' ' + now.toTimeString().slice(0, 5)
+    head.innerHTML = `<span style="font-weight:600;color:#a78bfa">🎼 OrchestrAI · Argue</span><span>${dateStr}</span>`
+    wrap.appendChild(head)
+    for (let i = startIdx; i <= endIdx; i++) {
+      const clone = all[i].cloneNode(true)
+      // 캡쳐에서 빼야 할 요소들 (rollback 버튼, copy/fork 버튼, 이어서/스크린샷 버튼)
+      clone.querySelectorAll('.continue-argue-btn, .screenshot-argue-btn, .copy-btn, .fork-btn, .rollback-btn, .msg-actions, button').forEach(el => el.remove())
+      // user msg 는 position:sticky 라 html2canvas 가 잘 못 잡음 → static 으로 강제
+      if (clone.classList?.contains('msg-user')) {
+        clone.style.position = 'static'
+        clone.style.background = 'transparent'
+        clone.style.backdropFilter = 'none'
+      }
+      wrap.appendChild(clone)
+    }
+    document.body.appendChild(wrap)
+    btn.disabled = true; const origText = btn.innerHTML
+    btn.innerHTML = '⏳ ' + (window.I18N_LOCALE === 'ko' ? '캡쳐 중...' : 'Capturing...')
+    try {
+      // layout 안정 대기 + 실제 높이 측정 (html2canvas 가 windowHeight 안 잡아 자르는 케이스 방지)
+      await new Promise(r => setTimeout(r, 80))
+      const actualHeight = wrap.scrollHeight
+      const canvas = await html2canvas(wrap, {
+        backgroundColor: getComputedStyle(document.body).getPropertyValue('--bg') || '#1e1e1e',
+        scale: 2,  // retina 화질
+        logging: false,
+        useCORS: true,
+        height: actualHeight,
+        windowHeight: actualHeight + 200,
+      })
+      // VSCode webview 는 <a download> 막혀있음 → dataURL 보내서 extension 이 native save dialog 띄움.
+      const dataUrl = canvas.toDataURL('image/png')
+      const filename = `orchestrai-argue-${now.toISOString().replace(/[:.]/g, '-').slice(0, 19)}.png`
+      vscode.postMessage({ type: 'saveScreenshot', filename, dataUrl })
+      btn.innerHTML = '✅ ' + (window.I18N_LOCALE === 'ko' ? '저장 대기' : 'Save dialog')
+      setTimeout(() => { btn.innerHTML = origText; btn.disabled = false }, 2000)
+    } catch (err) {
+      console.error('screenshot failed', err)
+      btn.innerHTML = '❌ ' + (window.I18N_LOCALE === 'ko' ? '실패' : 'Failed')
+      setTimeout(() => { btn.innerHTML = origText; btn.disabled = false }, 2000)
+    } finally {
+      wrap.remove()
+    }
   }
 
   function appendVerdictUnderMessage(msgId, verdict) {
@@ -4845,6 +5084,12 @@
     }
     const latestChanged = [...messages].reverse().find(m => m.role === 'assistant' && m.changeSummary && m.changeSummary.files > 0)
     updateReviewBar(latestChanged?.changeSummary || null)
+    // v0.1.39: argue 종료 카드 복원 — 영속화된 argueTotalsCard 가 박혀있으면 종료 카드 다시 그림.
+    for (const m of messages) {
+      if (m.role === 'assistant' && m.argueTotalsCard) {
+        try { showArgueTotalsCard(m.argueTotalsCard.totals, m.argueTotalsCard.mode, m.argueTotalsCard.outputCapKR) } catch (e) { console.error('[orchestrai] argue card rehydrate failed', e) }
+      }
+    }
     applyModelFilter()
     // rehydrate 직후엔 무조건 끝으로 스크롤 (reload 후 최상단에 위치하던 버그 fix).
     // requestAnimationFrame x2 — innerHTML 채운 직후 layout 아직 안 끝나서 scrollHeight 0 인 timing 회피.
