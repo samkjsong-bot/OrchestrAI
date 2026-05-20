@@ -2081,6 +2081,13 @@ ${hit.kind === 'cmd' ? 'When done, the AI! comment line itself can stay — user
           case 'setOverride':   this._override = msg.mode; break
           case 'argueContinue': await this._handleArgueContinue(); break
           case 'saveScreenshot': await this._handleSaveScreenshot(msg.filename, msg.dataUrl); break
+          case 'checkUpdate': await this._handleCheckUpdate(true); break
+          case 'openMarketplace': {
+            // VSCode 내장 extension.open 으로 마켓플레이스 페이지 (Extensions 사이드바) 열기.
+            // ID 는 publisher.extensionId — 우리는 samkj.orchestrai.
+            vscode.commands.executeCommand('extension.open', 'samkj.orchestrai')
+            break
+          }
           case 'toggleContext': this._useFileContext = msg.enabled; break
           case 'clearChat':
             await this.clearChat()
@@ -2438,6 +2445,8 @@ ${hit.kind === 'cmd' ? 'When done, the AI! comment line itself can stay — user
     // v0.1.39: reload 후에도 토큰 사용량 카드 즉시 복원 (영속화된 값 push).
     // 이전엔 webview 가 명시적으로 requestUsage 보낼 때만 옴 → reload 시 빈 카드로 시작했음.
     this._post({ type: 'usage', session: this._usage.getSession(), plans: PLAN_INFO, startedAt: this._usage.sessionStartedAt })
+    // v0.1.40: 캐시된 업데이트 정보가 있으면 reload 직후 즉시 배지 복원 (network fetch 기다리지 않고).
+    void this._handleCheckUpdate(false).catch(() => {})
   }
 
   // ?? Auth ?????????????????????????????????????????????????????????
@@ -3425,6 +3434,18 @@ Be concise. Use conventional commit style if commits do.`
   }
 
   // @ commands — 입력창에 첨부 텍스트 삽입 후 사용자가 보내기 (Continue 스타일).
+  // v0.1.40: marketplace 업데이트 정보를 webview 로 push — 헤더 배지 표시용.
+  postUpdateInfo(info: { hasUpdate: boolean; current: string; latest: string | null; releaseUrl: string | null }) {
+    this._post({ type: 'updateInfo', ...info })
+  }
+
+  // v0.1.40: 사용자가 명시적으로 "업데이트 확인" 명령 시 (force fetch).
+  private async _handleCheckUpdate(force: boolean): Promise<void> {
+    const { checkForUpdate } = await import('./util/updateChecker')
+    const info = await checkForUpdate(this._context, force)
+    this.postUpdateInfo(info)
+  }
+
   // v0.1.39: webview 가 만든 argue 스크린샷 PNG dataURL 받아서 native save dialog 띄우고 파일 저장.
   private async _handleSaveScreenshot(filename: string, dataUrl: string): Promise<void> {
     try {
@@ -5782,6 +5803,15 @@ Be concise. Korean if reviews are Korean.`
 // ── 익스텐션 활성화 ─────────────────────────────────────────
 export function activate(context: vscode.ExtensionContext) {
   const provider = new OrchestrAIViewProvider(context.extensionUri, context)
+
+  // v0.1.40: marketplace 업데이트 자동 감지 — activate 5s 후 + 24h interval.
+  //   사용자가 새 버전 마지노선 한 번 클릭으로 marketplace 페이지 열림.
+  import('./util/updateChecker').then(({ startUpdateChecker }) => {
+    const disp = startUpdateChecker(context, (info) => {
+      provider.postUpdateInfo(info)
+    })
+    context.subscriptions.push(disp)
+  }).catch(err => log.warn('update', `init failed: ${err instanceof Error ? err.message : String(err)}`))
 
   let chatParticipant: vscode.ChatParticipant | undefined
   try {

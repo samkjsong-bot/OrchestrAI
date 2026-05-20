@@ -89,6 +89,26 @@
     color: var(--claude);
   }
 
+  /* v0.1.40: 업데이트 배지 — marketplace 새 버전 감지 시 헤더에 표시 */
+  .update-badge {
+    display: inline-flex; align-items: center;
+    margin-left: 8px; padding: 2px 8px;
+    background: rgba(74,222,128,0.12);
+    border: 1px solid #4ade80;
+    color: #4ade80;
+    border-radius: 10px;
+    font-size: 10px; font-weight: 600;
+    cursor: pointer;
+    font-family: 'JetBrains Mono', monospace;
+    transition: background 0.15s;
+    animation: update-pulse 2s ease-in-out 0s 3;
+  }
+  .update-badge:hover { background: rgba(74,222,128,0.22); }
+  @keyframes update-pulse {
+    0%,100% { box-shadow: 0 0 0 0 rgba(74,222,128,0); }
+    50% { box-shadow: 0 0 0 4px rgba(74,222,128,0.18); }
+  }
+
   .header-right {
     display: flex;
     align-items: center;
@@ -2389,6 +2409,10 @@
       </svg>
     </div>
     <span class="logo-text">Orchestr<span>AI</span></span>
+    <!-- v0.1.40: 마켓플레이스 업데이트 배지 — has-update 클래스 붙으면 display 됨 -->
+    <button id="update-badge" class="update-badge" style="display:none" onclick="openUpdateMarketplace()" title="새 버전 사용 가능 — 마켓플레이스 페이지 열기">
+      <span style="margin-right:3px">↑</span><span id="update-badge-text">업데이트</span>
+    </button>
   </div>
   <div class="header-right">
     <div class="status-dot"></div>
@@ -3502,6 +3526,9 @@
         break
       case 'usage':
         renderUsagePanel(msg)
+        break
+      case 'updateInfo':
+        renderUpdateBadge(msg)
         break
       case 'compactionStart':
         showCompactionNotice(`Compacting ${msg.messageCount} messages...`)
@@ -4742,6 +4769,26 @@
       b.style.opacity = '0.5'
       b.style.cursor = 'wait'
     })
+  }
+
+  // v0.1.40: marketplace 업데이트 배지 — extension 이 GitHub releases latest 폴링 후 push.
+  //   hasUpdate=true 면 배지 표시, false 면 숨김. tooltip 에 'v현재 → v최신' 표기.
+  function renderUpdateBadge(info) {
+    const badge = document.getElementById('update-badge')
+    const text = document.getElementById('update-badge-text')
+    if (!badge) return
+    if (info?.hasUpdate && info.latest) {
+      badge.style.display = ''
+      if (text) text.textContent = (window.I18N_LOCALE === 'ko' ? 'v' : 'v') + info.latest
+      badge.title = (window.I18N_LOCALE === 'ko'
+        ? `새 버전 사용 가능 — v${info.current} → v${info.latest} (클릭하면 마켓플레이스 페이지가 열려요)`
+        : `Update available — v${info.current} → v${info.latest} (click to open marketplace)`)
+    } else {
+      badge.style.display = 'none'
+    }
+  }
+  function openUpdateMarketplace() {
+    vscode.postMessage({ type: 'openMarketplace' })
   }
 
   // v0.1.39: 공용 스크린샷 — DOM 노드 배열을 받아 캡쳐 → PNG → extension 으로 dataURL 전달 (save dialog).

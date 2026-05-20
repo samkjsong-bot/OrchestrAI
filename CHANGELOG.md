@@ -1,5 +1,16 @@
 # Changelog
 
+## v0.1.40 — 2026-05-21 (marketplace 업데이트 배지)
+
+새 marketplace 버전이 publish 되면 헤더의 OrchestrAI 옆에 초록색 `↑ v0.1.41` 같은 배지가 자동으로 뜸. 클릭하면 마켓플레이스 페이지가 열려서 1클릭으로 업데이트 가능.
+
+- **폴링:** activate 5s 후 1회 + 24h interval. GitHub releases latest API 사용 (인증 없음, rate limit 충분).
+- **캐시:** `globalState` 에 결과 저장 → 오프라인 시 직전 값 사용 + reload 즉시 배지 복원 (network fetch 안 기다림).
+- **클릭 동작:** VSCode 내장 `extension.open samkj.orchestrai` → 사용자가 Update 버튼 명시 클릭. 자동 install 강제 안 함 (권한 안전).
+- 신규 파일: `src/util/updateChecker.ts` + 8 회귀 tests.
+
+Tests: 228 → 236 (+8).
+
 ## v0.1.39 — 2026-05-20 (Codex cache 진짜로 잡힘 + Usage 영속화 + 절약 체감 + 토론 연장)
 
 ### Codex prompt cache 본격 작동 (v0.1.37 버그 fix)
