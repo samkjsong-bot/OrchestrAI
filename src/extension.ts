@@ -4451,6 +4451,8 @@ ${result.failureSummary || result.output.slice(-3000)}
     // v0.1.37+: Static/Dynamic 분리로 OpenAI 자동 prompt cache 활용.
     staticPrompt?: string,     // baseInstructions / instructions 자리 — argue 라운드 사이 동일
     dynamicContext?: string,   // prompt 첫 부분에 prepend (또는 input[0] 앞)
+    // v0.1.41: OpenAI Responses API 의 prompt_cache_key — backend routing 안정 (cache hit 율 ↑).
+    promptCacheKey?: string,
   ): Promise<{ content: string; inputTokens: number; outputTokens: number; usedModel?: string; cacheReadInputTokens?: number; cacheCreationInputTokens?: number }> {
     // native engine: codex.exe mcp-server 통해 호출. tool/path/auth 다 codex가 처리.
     const engine = this._cfg<string>('codexEngine') ?? 'native'
@@ -4520,6 +4522,7 @@ ${result.failureSummary || result.output.slice(-3000)}
         this._currentAbort?.signal,
         staticPrompt,
         dynamicContext,
+        promptCacheKey,
       )
       inputTokens += result.inputTokens
       outputTokens += result.outputTokens
@@ -5053,10 +5056,13 @@ PATH RULES: paths are relative to workspace root. Don't prefix with "${gWsBase}/
             return false
           }
           const accountId = await this._codexAuth.getAccountId()
+          // v0.1.41: chat tab 별 stable promptCacheKey — 같은 대화에서 backend 머신 routing 안정 → cache hit ↑.
+          //   tab id 자체가 충분히 unique + 영속적이라 그대로 사용. 너무 많은 chat 동시 사용 시 rate limit 우려 있지만 일반 사용엔 안전.
+          const promptCacheKey = `orchestrai-${this._activeChatId}`
           result = await this._runCodexAgent(
             history, effectiveDecision.effort, codexToken, accountId ?? undefined,
             systemPrompt, onChunk, assistantMsgId, turnId,
-            staticPrompt, fullDynamic,
+            staticPrompt, fullDynamic, promptCacheKey,
           )
         } else if (currentModel === 'gemini') {
           if (!(await this._geminiAuth.isLoggedIn())) {

@@ -1,5 +1,22 @@
 # Changelog
 
+## v0.1.41 — 2026-05-21 (Codex prompt_cache_key — backend routing 안정)
+
+v0.1.39 의 Static/Dynamic 분리만으론 codex cache 가 들쭉날쭉했던 진짜 원인:
+
+> **OpenAI Responses API 는 load-balanced.** 같은 prefix 라도 매 요청 다른 머신 가면 cache miss. `prompt_cache_key` 가 routing affinity 제공하는 게 정식 해결책 ([OpenAI docs](https://developers.openai.com/api/docs/guides/prompt-caching)).
+
+이전엔 첫 codex 호출은 운 좋게 cache 잡혔는데 (같은 머신 routing), 두 번째는 다른 머신 가서 0 인 케이스 발생. 이제 `prompt_cache_key = orchestrai-<tabid>` 로 일관 routing.
+
+- `callCodex(promptCacheKey?: string)` 인자 추가 + body 에 `prompt_cache_key` 박음
+- `_runCodexAgent` 도 인자 전달
+- 메인 dispatch 가 chat tab id 를 키로 자동 주입
+- 검증: argue 6 라운드 R5 codex 호출에서 `cached_tokens: 1792` 확인 (입력 2,916 중 60%)
+
+알려진 한계: **native MCP 경로 (`codexEngine: native`)** 는 codex-mcp-server v0.131.0-alpha.9 가 cache 메타 자체를 노출 X. 표시 0 으로 보이는 건 실제 cache miss 가 아니라 메타 누락. MCP 서버 업그레이드 대기.
+
+Tests: 236 passing.
+
 ## v0.1.40 — 2026-05-21 (marketplace 업데이트 배지)
 
 새 marketplace 버전이 publish 되면 헤더의 OrchestrAI 옆에 초록색 `↑ v0.1.41` 같은 배지가 자동으로 뜸. 클릭하면 마켓플레이스 페이지가 열려서 1클릭으로 업데이트 가능.

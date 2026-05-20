@@ -85,6 +85,10 @@ export async function callCodex(
   // → 라운드마다 systemPrompt 의 collabHint 변경이 cache miss 안 만듦.
   staticPrompt?: string,
   dynamicContext?: string,
+  // v0.1.41: OpenAI Responses API 의 prompt_cache_key — backend 머신 routing 안정화.
+  //   안 보내면 매 요청 load-balanced 라 같은 prefix 라도 다른 머신 가서 cache miss.
+  //   chat tab 별로 stable 한 키 권장 (rate limit ~15rpm per key 안전선).
+  promptCacheKey?: string,
 ): Promise<{ content: string; inputTokens: number; outputTokens: number; usedModel: string; cacheReadInputTokens?: number; cacheCreationInputTokens?: number }> {
   if (!accountId) {
     throw new Error('Codex 계정 ID가 없습니다. 다시 로그인해주세요.')
@@ -153,13 +157,17 @@ export async function callCodex(
 
   // 한 모델로 fetch 시도 (429/5xx 지수 백오프 재시도 포함, 스트림 시작 전까지)
   async function tryFetch(model: string): Promise<{ res: Response | null; lastErr: { status: number; text: string } | null }> {
-    const body = {
+    // v0.1.41: promptCacheKey 가 들어오면 body 에 포함 → backend routing 안정. 없으면 옛 동작.
+    const body: Record<string, unknown> = {
       model,
       instructions: cacheStableInstructions,
       input: inputWithContext,
       stream: true,
       store: false,
       reasoning: { effort },
+    }
+    if (promptCacheKey) {
+      body.prompt_cache_key = promptCacheKey
     }
     const MAX_ATTEMPTS = 3
     let lastErr: { status: number; text: string } | null = null
