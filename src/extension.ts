@@ -2080,6 +2080,12 @@ ${hit.kind === 'cmd' ? 'When done, the AI! comment line itself can stay — user
           case 'odtAttach':          await this._handleOdtAttach(msg.name, msg.dataBase64); break
           case 'setOverride':   this._override = msg.mode; break
           case 'argueContinue': await this._handleArgueContinue(); break
+          case 'setArgueDepth': {
+            // v0.1.42: webview chip 토글 → 설정 영속화 + 즉시 반영
+            const depth = msg.depth === 'deep' ? 'deep' : 'fast'
+            await vscode.workspace.getConfiguration('orchestrai').update('argueDepth', depth, true)
+            break
+          }
           case 'saveScreenshot': await this._handleSaveScreenshot(msg.filename, msg.dataUrl); break
           case 'checkUpdate': await this._handleCheckUpdate(true); break
           case 'openMarketplace': {
@@ -2440,6 +2446,8 @@ ${hit.kind === 'cmd' ? 'When done, the AI! comment line itself can stay — user
     this._postContextGauge()
     this._post({ type: 'permissionModeState', mode: this._permissionMode })
     this._post({ type: 'effortOverrideState', effort: this._effortOverride })
+    // v0.1.42: argue depth chip 초기 상태 복원
+    this._post({ type: 'argueDepthState', depth: this._cfg<string>('argueDepth') ?? 'fast' })
     this._postTabs()
     this._post({ type: 'rehydrate', messages: this._messages })
     // v0.1.39: reload 후에도 토큰 사용량 카드 즉시 복원 (영속화된 값 push).
@@ -3890,6 +3898,14 @@ Be concise. Use conventional commit style if commits do.`
       const argueMode = this._currentBundle?.mode ?? 'balanced'
       const outputCapKR = argueOutputCapKR(argueMode)
       const captainForSummarize = getCaptain(await this._authStorage.getStatus())
+      // v0.1.42: argueDepth 설정 반영. fast = effort low 강제 (gpt-5.4-mini + Sonnet + Flash, cache 다 hit).
+      //   deep = inferredEffort 그대로 (gpt-5.5 + Pro, 깊이 우선).
+      //   사용자가 명시적으로 _effortOverride 박았다면 그건 존중 (강제 안 함).
+      const argueDepth = this._cfg<string>('argueDepth') ?? 'fast'
+      const effectiveArgueEffort: Effort = (argueDepth === 'fast' && !this._effortOverride)
+        ? 'low'
+        : inferredEffort
+      log.info('argue', `depth=${argueDepth} → effort=${effectiveArgueEffort} (inferred=${inferredEffort}, override=${this._effortOverride ?? 'none'})`)
 
       const skippedModels = new Set<Model>()
       // 이어서 토론이면 시작 인덱스를 직전 summaries 길이부터 — 모델 순환이 끊기지 않게.
@@ -3903,7 +3919,7 @@ Be concise. Use conventional commit style if commits do.`
         // 한 번 실패한 모델은 이 argue 세션에서 스킵 (같은 safety 필터면 계속 막힐 가능성)
         if (skippedModels.has(model)) continue
         const decision: RoutingDecision = {
-          model, effort: inferredEffort, confidence: 1.0,
+          model, effort: effectiveArgueEffort, confidence: 1.0,
           reason: i === 0 ? 'argue-open' : 'argue-reply',
         }
         this._postRoutingDecision(decision)

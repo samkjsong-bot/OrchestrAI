@@ -1,5 +1,23 @@
 # Changelog
 
+## v0.1.42 — 2026-05-21 (Argue 속도·깊이 토글 + Codex effort 400 에러 fix)
+
+### Codex 400 에러 fix
+OpenAI 가 `reasoning.effort` enum 을 `'none'|'minimal'|'low'|'medium'|'high'|'xhigh'` 만 받게 굳힘. 우리 내부 `'extra-high'` 가 그대로 들어가서 400. `callCodex` 안에서 명시 매핑 (`extra-high → xhigh`).
+
+### ⚡ fast / 🔍 deep — Argue Mode 속도·깊이 토글
+Argue 가 느렸던 이유 진단:
+- effort=high → `gpt-5.5` (OpenAI 가 **cache 미지원 명시** — [공식 문서](https://developers.openai.com/api/docs/guides/prompt-caching)) + Gemini Pro (prefix 4096 tok 요구, 우리 staticPrompt 2507 tok 라 skip)
+- Claude `first_chunk` 14~16초 (thinking 켜져있을 때)
+
+새 설정 `orchestrai.argueDepth`:
+- **fast (default)** — effort=low 강제 → gpt-5.4-mini + Sonnet + Flash. 응답 2~3배 빨라지고 cache 모두 hit
+- **deep** — inferEffort 그대로. 답변 풍부하지만 느리고 일부 cache 미작동
+
+채팅 헤더의 `⚡ argue` 버튼 옆 chip 으로 즉시 토글. 사용자가 `/effort high` 명시했으면 그건 존중.
+
+Tests: 236 passing.
+
 ## v0.1.41 — 2026-05-21 (Codex prompt_cache_key — backend routing 안정)
 
 v0.1.39 의 Static/Dynamic 분리만으론 codex cache 가 들쭉날쭉했던 진짜 원인:

@@ -2,7 +2,7 @@
   "name": "orchestrai",
   "displayName": "OrchestrAI",
   "description": "Multi-model AI in one VSCode sidebar — Claude + Codex + Gemini. Auto-routing, model debate, team delegation, until-it-works loop, codebase RAG, multi-model code review, Telegram phone bridge. Zero API billing (uses your existing subscriptions).",
-  "version": "0.1.41",
+  "version": "0.1.42",
   "publisher": "samkj",
   "license": "MIT",
   "icon": "resources/icon.png",
@@ -188,6 +188,16 @@
           "minimum": 2,
           "maximum": 30,
           "description": "Argue 모드 한 세션 최대 라운드 수 (Claude→Codex→Gemini 순환). default 6 = 2 round/model. 늘리면 더 깊은 토론 + 더 많은 토큰. 줄이면 빠른 의견 교환."
+        },
+        "orchestrai.argueDepth": {
+          "type": "string",
+          "enum": ["fast", "deep"],
+          "default": "fast",
+          "enumDescriptions": [
+            "⚡ Fast — effort=low 강제 (gpt-5.4-mini + Sonnet + Flash). 답변 빠르고 prompt cache 다 잡힘 (~2-3배 빠름). 토론 깊이 약간 떨어짐.",
+            "🔍 Deep — inferEffort 결과 그대로 사용. effort=high 면 gpt-5.5 + Pro 모델 → 답변 풍부하지만 응답 ~15-20초, gpt-5.5 의 cache 미지원 + Gemini Pro 의 prefix 4096 tok 요구로 cache 일부 미작동."
+          ],
+          "description": "Argue 모드 속도/품질 트레이드오프. 채팅창 ⚡ argue 옆 chip 으로도 즉시 토글 가능."
         },
         "orchestrai.argueContinueRounds": {
           "type": "number",

@@ -157,6 +157,16 @@ export async function callCodex(
 
   // 한 모델로 fetch 시도 (429/5xx 지수 백오프 재시도 포함, 스트림 시작 전까지)
   async function tryFetch(model: string): Promise<{ res: Response | null; lastErr: { status: number; text: string } | null }> {
+    // v0.1.42 fix: OpenAI reasoning.effort 는 'none|minimal|low|medium|high|xhigh' 만 받음.
+    //   우리 내부 'extra-high' 같은 값은 400 에러 → 명시적 매핑 필요.
+    //   ('high' 도 별도 enum 으로 받지만 OpenAI 측에서 'high' 가 미들 → 'xhigh' 가 진짜 최상위.)
+    const apiEffort = (
+      effort === 'extra-high' ? 'xhigh' :
+      effort === 'high'       ? 'high' :
+      effort === 'medium'     ? 'medium' :
+      effort === 'low'        ? 'low' :
+      'low'
+    ) as 'low' | 'medium' | 'high' | 'xhigh'
     // v0.1.41: promptCacheKey 가 들어오면 body 에 포함 → backend routing 안정. 없으면 옛 동작.
     const body: Record<string, unknown> = {
       model,
@@ -164,7 +174,7 @@ export async function callCodex(
       input: inputWithContext,
       stream: true,
       store: false,
-      reasoning: { effort },
+      reasoning: { effort: apiEffort },
     }
     if (promptCacheKey) {
       body.prompt_cache_key = promptCacheKey

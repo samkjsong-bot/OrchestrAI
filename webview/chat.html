@@ -888,6 +888,26 @@
   }
 
   .override-btn:hover { color: var(--text-dim); border-color: var(--border-bright); }
+  /* v0.1.42: argue depth chip — argue 옆에 살짝 작은 sibling */
+  .argue-depth-chip {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 8px;
+    padding: 2px 6px;
+    margin-left: -4px;
+    border-radius: 4px;
+    border: 1px solid var(--border);
+    background: rgba(167,139,250,0.06);
+    color: var(--text-muted);
+    cursor: pointer;
+    transition: all 0.15s;
+    height: 22px;
+    line-height: 1;
+    display: inline-flex;
+    align-items: center;
+    letter-spacing: 0.05em;
+  }
+  .argue-depth-chip:hover { border-color: #a78bfa; color: #a78bfa; }
+  .argue-depth-chip.deep { color: #fb923c; border-color: #fb923c; background: rgba(251,146,60,0.08); }
   .override-btn.active-claude { color: var(--claude); border-color: var(--claude-glow); background: var(--claude-dim); }
   .override-btn.active-codex { color: var(--codex); border-color: var(--codex-glow); background: var(--codex-dim); }
   .override-btn.active-gemini { color: var(--gemini); border-color: var(--gemini-glow); background: var(--gemini-dim); }
@@ -2901,6 +2921,10 @@
       </div>
     </div>
     <button class="override-btn" onclick="setOverride(this,'argue')" data-i18n-title="mode_argue_tooltip" title="셋이 토론 — 각자 자기 카드에 답하고 Haiku가 0~10점 채점 (최대 6턴)">⚡ argue</button>
+    <!-- v0.1.42: argue depth 토글 — fast(low, 캐시 잡힘, 빠름) / deep(inferEffort, 느리지만 깊은 답변) -->
+    <button class="argue-depth-chip" id="argue-depth-chip" onclick="toggleArgueDepth(this)" title="Argue 모드 속도/품질 트레이드오프 — fast: 빠르고 캐시 잘 잡힘 / deep: 깊지만 느리고 캐시 일부 미작동(gpt-5.5)">
+      <span id="argue-depth-label">⚡ fast</span>
+    </button>
     <button class="override-btn" onclick="setOverride(this,'team')" data-i18n-title="mode_team_tooltip" title="코드 위임 — Claude(설계) → Codex(구현) → Gemini(리뷰). 토론 X, 코드 작업 O">👥 team</button>
     <button class="override-btn" onclick="setOverride(this,'loop')" data-i18n-title="mode_loop_tooltip" title="될 때까지 반복 (Ralph Wiggum) — 모델이 결과 검증 후 부족하면 자동 다음 iteration. max 5회">🔁 loop</button>
     <button class="override-btn" onclick="setOverride(this,'boomerang')" data-i18n-title="mode_boomerang_tooltip" title="큰 작업 자동 분할 → 여러 모델 병렬 위임 → 결과 종합">🪃 boom</button>
@@ -3529,6 +3553,10 @@
         break
       case 'updateInfo':
         renderUpdateBadge(msg)
+        break
+      case 'argueDepthState':
+        currentArgueDepth = msg.depth === 'deep' ? 'deep' : 'fast'
+        updateArgueDepthUI()
         break
       case 'compactionStart':
         showCompactionNotice(`Compacting ${msg.messageCount} messages...`)
@@ -4216,6 +4244,28 @@
   // ── Mode / Effort 팝업 ─────────────────────────────────
   let currentPermissionMode = 'auto-edit'
   let currentEffortOverride = null
+  // v0.1.42: argue depth — 'fast'(effort=low 강제, 캐시 잘 잡힘) / 'deep'(inferEffort 그대로, 느리지만 깊음)
+  let currentArgueDepth = 'fast'
+
+  function toggleArgueDepth(btn) {
+    currentArgueDepth = currentArgueDepth === 'fast' ? 'deep' : 'fast'
+    updateArgueDepthUI()
+    vscode.postMessage({ type: 'setArgueDepth', depth: currentArgueDepth })
+  }
+  function updateArgueDepthUI() {
+    const chip = document.getElementById('argue-depth-chip')
+    const label = document.getElementById('argue-depth-label')
+    if (!chip || !label) return
+    if (currentArgueDepth === 'deep') {
+      label.textContent = '🔍 deep'
+      chip.classList.add('deep')
+      chip.title = 'Argue 깊은 모드 — inferEffort 그대로 사용. gpt-5.5 + Pro 모델 → 답변 풍부하지만 느리고 일부 cache 미작동. 클릭하면 fast 로'
+    } else {
+      label.textContent = '⚡ fast'
+      chip.classList.remove('deep')
+      chip.title = 'Argue 빠른 모드 — effort=low 강제. gpt-5.4-mini + Sonnet + Flash → 빠르고 cache 모두 hit. 클릭하면 deep 로'
+    }
+  }
 
   const MODE_META = {
     'ask':        { label: 'Ask before edits',  icon: '?',  cssClass: 'ask' },
