@@ -2,7 +2,7 @@
   "name": "orchestrai",
   "displayName": "OrchestrAI",
   "description": "Multi-model AI in one VSCode sidebar — Claude + Codex + Gemini. Auto-routing, model debate, team delegation, until-it-works loop, codebase RAG, multi-model code review, Telegram phone bridge. Zero API billing (uses your existing subscriptions).",
-  "version": "0.1.42",
+  "version": "0.1.43",
   "publisher": "samkj",
   "license": "MIT",
   "icon": "resources/icon.png",
@@ -191,7 +191,10 @@
         },
         "orchestrai.argueDepth": {
           "type": "string",
-          "enum": ["fast", "deep"],
+          "enum": [
+            "fast",
+            "deep"
+          ],
           "default": "fast",
           "enumDescriptions": [
             "⚡ Fast — effort=low 강제 (gpt-5.4-mini + Sonnet + Flash). 답변 빠르고 prompt cache 다 잡힘 (~2-3배 빠름). 토론 깊이 약간 떨어짐.",
@@ -256,12 +259,24 @@
         "orchestrai.captain": {
           "type": "string",
           "default": "auto",
-          "examples": ["auto", "claude", "codex", "gemini", "none", "custom:qwen", "custom:llama"],
+          "examples": [
+            "auto",
+            "claude",
+            "codex",
+            "gemini",
+            "none",
+            "custom:qwen",
+            "custom:llama"
+          ],
           "markdownDescription": "대장 모델 — boomerang planner / argue judge / smart commit / synthesis 담당.\n\n값 종류:\n- `auto`: 활성 중 Claude > Codex > Gemini 우선 (권장)\n- `claude` / `codex` / `gemini`: 강제\n- `none`: collab 모드 비활성, smart commit fallback\n- `custom:<name>`: customProviders 에 등록한 OpenAI compatible (Ollama / LM Studio / OpenRouter)\n\n사이드바 ⚙ → 환경설정에서 dropdown 으로 선택 가능."
         },
         "orchestrai.activeProviders": {
           "type": "array",
-          "default": ["claude", "codex", "gemini"],
+          "default": [
+            "claude",
+            "codex",
+            "gemini"
+          ],
           "items": {
             "type": "string"
           },
@@ -270,7 +285,12 @@
         "orchestrai.claudeModel": {
           "type": "string",
           "default": "auto",
-          "enum": ["auto", "claude-sonnet-4-6", "claude-opus-4-7", "claude-haiku-4-5"],
+          "enum": [
+            "auto",
+            "claude-sonnet-4-6",
+            "claude-opus-4-7",
+            "claude-haiku-4-5"
+          ],
           "enumDescriptions": [
             "Auto: effort 따라 자동 (sonnet 기본, extra-high 면 opus). 권장.",
             "Sonnet 4.6: 빠르고 정확. 코딩 작업 default 권장.",
@@ -282,7 +302,12 @@
         "orchestrai.codexModel": {
           "type": "string",
           "default": "auto",
-          "enum": ["auto", "gpt-5.4-mini", "gpt-5.4", "gpt-5.5"],
+          "enum": [
+            "auto",
+            "gpt-5.4-mini",
+            "gpt-5.4",
+            "gpt-5.5"
+          ],
           "enumDescriptions": [
             "Auto: effort 따라 자동 (5.4 기본, low면 mini, high면 5.5). 권장.",
             "GPT-5.4-mini: 빠르고 가벼운 작업. low effort 와 동일.",
@@ -294,7 +319,12 @@
         "orchestrai.geminiModel": {
           "type": "string",
           "default": "auto",
-          "enum": ["auto", "gemini-2.5-flash", "gemini-2.5-pro", "gemini-2.0-flash"],
+          "enum": [
+            "auto",
+            "gemini-2.5-flash",
+            "gemini-2.5-pro",
+            "gemini-2.0-flash"
+          ],
           "enumDescriptions": [
             "Auto: effort 따라 자동 (flash 기본, high 면 pro). 권장.",
             "Gemini 2.5 Flash: 빠름·무료 tier 한도 큼.",
@@ -306,7 +336,12 @@
         "orchestrai.thinkingMode": {
           "type": "string",
           "default": "auto",
-          "enum": ["auto", "off", "on", "extra"],
+          "enum": [
+            "auto",
+            "off",
+            "on",
+            "extra"
+          ],
           "enumDescriptions": [
             "Auto: effort 따라 thinking budget 자동 (low=off, medium=5k, high=16k, extra-high=64k). 권장.",
             "Off: thinking 완전 비활성. 응답 속도 최대치.",
@@ -472,7 +507,7 @@
     "vitest": "^1.6.1"
   },
   "dependencies": {
-    "@anthropic-ai/claude-agent-sdk": "^0.1.0",
+    "@anthropic-ai/claude-agent-sdk": "^0.3.146",
     "@modelcontextprotocol/sdk": "^1.29.0",
     "ai": "^6.0.168",
     "ai-sdk-provider-gemini-cli": "^2.0.1",

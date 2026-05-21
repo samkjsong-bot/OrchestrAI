@@ -5053,10 +5053,12 @@ PATH RULES: paths are relative to workspace root. Don't prefix with "${gWsBase}/
           const steeringStream = new ControllableUserStream(promptForStream)
           this._activeSteering = steeringStream
           try {
+            // v0.1.43: argue 모드는 tools/mcp/thinking 없는 lightweight 호출 (첫 chunk latency 14s → ~3s 기대)
             result = await callClaude(
               history, effectiveDecision.effort, claudeToken, onChunk,
               systemPrompt, this._permissionMode, extraMcp,
               this._currentAbort?.signal, undefined, steeringStream,
+              this._inArgue,  // ← lightweight
             )
           } finally {
             try { steeringStream.close() } catch {}
@@ -5834,6 +5836,23 @@ export function activate(context: vscode.ExtensionContext) {
     })
     context.subscriptions.push(disp)
   }).catch(err => log.warn('update', `init failed: ${err instanceof Error ? err.message : String(err)}`))
+
+  // v0.1.43: Claude SDK subprocess prewarm — startup() 으로 cli.js subprocess 한 번 띄웠다 닫음.
+  //   OS-level Node compile cache + 파일 캐시 데워져서 다음 spawn 빨라짐. 첫 Claude 호출 latency ↓ 기대.
+  //   activate 3s 후 (다른 init 안 방해) 비동기. 실패해도 무시.
+  setTimeout(() => {
+    void (async () => {
+      try {
+        const { startup } = await import('@anthropic-ai/claude-agent-sdk')
+        const t = Date.now()
+        const warm = await startup({ initializeTimeoutMs: 15000 })
+        warm.close()
+        log.info('claude', `prewarm done in ${Date.now() - t}ms`)
+      } catch (err) {
+        log.info('claude', `prewarm skip: ${err instanceof Error ? err.message : String(err)}`)
+      }
+    })()
+  }, 3000)
 
   let chatParticipant: vscode.ChatParticipant | undefined
   try {

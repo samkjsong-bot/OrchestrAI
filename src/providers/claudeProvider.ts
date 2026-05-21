@@ -232,6 +232,9 @@ export async function callClaude(
   abortSignal?: AbortSignal,
   modelOverride?: string,  // 내부 폴백용 — extra-high opus 쿼터 파산 시 sonnet으로 재시도
   steeringStream?: ControllableUserStream,  // 외부 push 가능한 streaming input (mid-stream steering)
+  // v0.1.43: lightweight 모드 — argue/judge 같은 채팅 토론용. tools preset, mcp servers, thinking 다 비활성.
+  //   첫 chunk latency 14s → ~3s 기대.
+  lightweight?: boolean,
 ): Promise<{ content: string; inputTokens: number; outputTokens: number; usedModel: string; cacheReadInputTokens: number; cacheCreationInputTokens: number }> {
   // 마지막 user 메시지에서 attachments 추출 — multimodal 처리용
   let lastAttachments: ExtractedAttachment[] = []
@@ -267,18 +270,24 @@ export async function callClaude(
       model: activeModel,
       systemPrompt: systemPrompt ?? 'You are an expert coding assistant. Be concise and practical.',
       includePartialMessages: true,
-      // 기본 Claude Code 툴셋 활성 — Read/Edit/Write/Bash/Grep/Glob 등 워크스페이스 조작 가능
-      tools: { type: 'preset', preset: 'claude_code' },
+      // v0.1.43: lightweight = argue/judge 용. tools preset 비우고 thinking 끔.
+      //   기존: claude_code preset → 모든 tool 정의 (~3-5k tok) system prompt 자동 주입 → 첫 chunk 14s
+      //   light: tools=[] → tool 검토 phase 생략 → 첫 chunk ~3s 기대.
+      ...(lightweight
+        ? { tools: [] as any, maxThinkingTokens: 0 as any }
+        : {
+            tools: { type: 'preset' as const, preset: 'claude_code' as const },
+            maxThinkingTokens: thinkingBudgetFor(effort, activeModel),
+          }),
       permissionMode: sdkPermissionMode(permissionMode),
       // bypassPermissions 쓰려면 반드시 true여야 함 (SDK 안전장치)
       allowDangerouslySkipPermissions: true,
-      // team 모드면 동료 호출 툴 추가 주입
-      ...(extraMcpServers ? { mcpServers: extraMcpServers } : {}),
+      // team 모드면 동료 호출 툴 추가 주입 (lightweight 면 mcp 도 비활성)
+      ...(extraMcpServers && !lightweight ? { mcpServers: extraMcpServers } : {}),
       // 외부에서 abort 가능 (kill switch)
       ...(abortSignal ? { abortSignal } : {}),
-      maxTurns: 100,         // 사실상 무제한 — 무한 루프 방지용 상한만
+      maxTurns: lightweight ? 1 : 100,  // light = 단발 응답. tool loop 안 돌게 1턴 cap
       persistSession: false,
-      maxThinkingTokens: thinkingBudgetFor(effort, activeModel),
       cwd: vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? process.cwd(),
       env: subscriptionEnv(),
       // SDK type 정의에 maxTokens 가 빠져있지만 cli.js 가 실제로 받음 (typedef outdated).

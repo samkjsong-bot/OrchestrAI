@@ -1,5 +1,29 @@
 # Changelog
 
+## v0.1.43 — 2026-05-21 (Claude 속도 fix — lightweight argue + SDK warm start)
+
+사용자 체감: Claude 첫 chunk 14~16초로 매우 느림. 진단:
+- Claude Agent SDK 가 매 호출마다 `cli.js` subprocess 새로 spawn (3초)
+- `claude_code` tools preset 자동 로딩 — Read/Edit/Write/Bash 등 정의가 system prompt 에 자동 주입되어 검토 phase 가 11초 추가
+
+두 가지 fix:
+
+**1. Argue lightweight 모드**
+- `callClaude(..., lightweight=true)` 인자. argue 진입 시 자동 활성
+- `tools: []`, `maxThinkingTokens: 0`, `maxTurns: 1`, `mcpServers` 비활성
+- 첫 chunk 14s → ~3s 기대 (~5배 개선)
+
+**2. SDK warm start**
+- `@anthropic-ai/claude-agent-sdk` 0.1.77 → **0.3.146 업그레이드**
+- `startup()` 으로 activate 3s 후 cli.js subprocess pre-warm 후 close
+- OS-level Node compile cache + 파일 캐시 데워져서 다음 spawn 빨라짐
+- 첫 진짜 호출 latency ↓ 기대 (Anthropic 공식 권장 패턴)
+
+알려진 한계:
+- 이번 prewarm 은 "한 번 띄웠다 닫는" 형식 (OS cache 만 데움). 사용자 요청마다 WarmQuery 재사용하는 진짜 hot reuse 는 v0.1.44+ 로 분리.
+
+Tests: 236 passing.
+
 ## v0.1.42 — 2026-05-21 (Argue 속도·깊이 토글 + Codex effort 400 에러 fix)
 
 ### Codex 400 에러 fix
