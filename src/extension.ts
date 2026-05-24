@@ -1569,9 +1569,15 @@ ${hit.kind === 'cmd' ? 'When done, the AI! comment line itself can stay — user
   }
 
   // 사이드바 탭 바에 현재 모든 chat 메타 (id/title/count/active) 전송.
+  // v0.1.44+: orderIndex 우선 (사용자가 drag 으로 박은 순서), 없으면 createdAt 순.
+  // 이전엔 updatedAt desc 라 클릭할 때마다 활성 탭이 맨 앞으로 점프 → 위치 자꾸 바뀜.
   private _postTabs() {
     const tabs = Object.values(this._chats)
-      .sort((a, b) => b.updatedAt - a.updatedAt)
+      .sort((a, b) => {
+        const ao = a.orderIndex ?? a.createdAt
+        const bo = b.orderIndex ?? b.createdAt
+        return ao - bo
+      })
       .map(c => ({
         id: c.id,
         title: c.title,
@@ -1817,7 +1823,7 @@ ${hit.kind === 'cmd' ? 'When done, the AI! comment line itself can stay — user
         this._compaction = parsed.compaction
       }
       saveChatStorage(this._context, { version: 2, activeChatId: this._activeChatId, chats: this._chats })
-      this._post({ type: 'rehydrate', messages: this._messages })
+      this._post({ type: 'rehydrate', messages: this._messages, force: true })
       this._postTabs()
       vscode.window.showInformationMessage(`✓ 복원됨 (${this._messages.length} msg)`)
     } catch (err) {
@@ -2152,17 +2158,32 @@ ${hit.kind === 'cmd' ? 'When done, the AI! comment line itself can stay — user
               this._post({ type: 'generationEnd' })
             }
             await this._persistMessages()
-            this._post({ type: 'rehydrate', messages: this._messages })
+            this._post({ type: 'rehydrate', messages: this._messages, force: true })
             this._postContextGauge()
             this._postTabs()
             break
           }
           case 'newChat': {
             const c = makeEmptyChat(String(msg.title ?? '새 탭'))
+            // 새 탭은 항상 마지막 위치에 추가 (기존 탭 순서 보존).
+            const maxOrder = Object.values(this._chats)
+              .map(t => t.orderIndex ?? t.createdAt)
+              .reduce((mx, n) => Math.max(mx, n), 0)
+            c.orderIndex = maxOrder + 1
             this._chats[c.id] = c
             this._activeChatId = c.id
             await this._persistMessages()
-            this._post({ type: 'rehydrate', messages: [] })
+            this._post({ type: 'rehydrate', messages: [], force: true })
+            this._postTabs()
+            break
+          }
+          case 'reorderTabs': {
+            // v0.1.44: webview 가 drag-drop 끝낸 후 ids 순서 통째로 보냄. orderIndex 재할당.
+            const ids = Array.isArray(msg.ids) ? (msg.ids as unknown[]).map(String) : []
+            ids.forEach((id, idx) => {
+              if (this._chats[id]) this._chats[id].orderIndex = idx
+            })
+            await this._persistMessages()
             this._postTabs()
             break
           }
@@ -2178,7 +2199,7 @@ ${hit.kind === 'cmd' ? 'When done, the AI! comment line itself can stay — user
             // 활성 탭이 닫혔으면 가장 최근 updatedAt 으로 fallback.
             if (this._activeChatId === id) {
               this._activeChatId = Object.values(this._chats).sort((a, b) => b.updatedAt - a.updatedAt)[0].id
-              this._post({ type: 'rehydrate', messages: this._messages })
+              this._post({ type: 'rehydrate', messages: this._messages, force: true })
               this._postContextGauge()
             }
             await this._persistMessages()
@@ -2216,7 +2237,7 @@ ${hit.kind === 'cmd' ? 'When done, the AI! comment line itself can stay — user
             this._chats[fork.id] = fork
             this._activeChatId = fork.id
             await this._persistMessages()
-            this._post({ type: 'rehydrate', messages: this._messages })
+            this._post({ type: 'rehydrate', messages: this._messages, force: true })
             this._postContextGauge()
             this._postTabs()
             this._post({ type: 'toast', message: t('tab_fork_toast', { name: titleHint, n: sliced.length }) })
@@ -2780,7 +2801,7 @@ ${hit.kind === 'cmd' ? 'When done, the AI! comment line itself can stay — user
     for (const id of turnIds) this._fileSnapshotsByTurn.delete(id)
     this._messages = this._messages.slice(0, startIndex)
     await this._persistMessages()
-    this._post({ type: 'rehydrate', messages: this._messages })
+    this._post({ type: 'rehydrate', messages: this._messages, force: true })
     this._post({ type: 'rollbackResult', ok: true, message: `${restored}개 파일 변경을 되돌렸어요.` })
   }
 
@@ -4323,7 +4344,7 @@ ${result.failureSummary || result.output.slice(-3000)}
       anthropicApiKey: claudeToken ?? '',
       openaiApiKey: '',
       metaModel: this._cfg('metaModel') ?? 'claude-haiku-4-5',
-      confidenceThreshold: this._cfg<number>('confidenceThreshold') ?? 0.8,
+      confidenceThreshold: this._cfg<number>('confidenceThreshold') ?? 0.92,
     })
     const routingInput = fileCtx ? `[file: ${fileCtx.fileName}] ${userText}` : userText
     const mentionedModels = this._override === 'auto' ? parseAllMentions(userText) : []
@@ -5782,7 +5803,7 @@ Be concise. Korean if reviews are Korean.`
       anthropicApiKey: claudeToken ?? '',
       openaiApiKey: '',
       metaModel: this._cfg('metaModel') ?? 'claude-haiku-4-5',
-      confidenceThreshold: this._cfg<number>('confidenceThreshold') ?? 0.8,
+      confidenceThreshold: this._cfg<number>('confidenceThreshold') ?? 0.92,
     })
     const decision = await orchestrator.route(userText, this._override === 'argue' || this._override === 'team' ? 'auto' : this._override)
     const actualName = actualModelName(decision.model, decision.effort)

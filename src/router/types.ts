@@ -38,6 +38,9 @@ export interface ChatTab {
   branchedFrom?: { parentChatId: string; atMessageId: string }
   createdAt: number
   updatedAt: number
+  // v0.1.44+: 사용자 지정 탭 순서. drag-and-drop 으로 박힘.
+  // undefined 면 createdAt 순으로 fallback (마이그레이션 호환).
+  orderIndex?: number
 }
 
 export interface ChatWorkspaceStorage {

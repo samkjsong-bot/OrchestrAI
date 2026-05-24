@@ -160,7 +160,9 @@
   .messages {
     flex: 1;
     overflow-y: auto;
-    padding: 16px 0 8px;
+    /* padding-top 0 — sticky 된 user msg 가 모델 필터 바로 아래 딱 붙도록.
+       이전 16px 가 user msg 를 16px 아래로 밀어내는 문제 해결. */
+    padding: 0 0 8px;
     display: flex;
     flex-direction: column;
     gap: 2px;
@@ -311,16 +313,27 @@
     to { opacity: 1; transform: translateY(0); }
   }
 
-  /* user 메시지는 sticky — 스크롤 내려도 viewport 상단에 고정.
-     여러 user message 가 있으면 각자 자기 차례에 stick → 다음 user message 가 오면 밀려남. */
+  /* user 메시지 — 마지막 user msg 만 viewport 상단에 sticky.
+     이전 user msg 들은 일반 flow → 두 user msg 가 동시에 stuck 되어 겹쳐 보이는 문제 해결.
+     :has(~ .msg-user) = 뒤에 다른 .msg-user sibling 있으면 sticky 해제. */
   .msg-user {
+    position: static;
+    padding: 0;
+  }
+  /* 마지막 user msg 만 sticky 활성 (뒤에 .msg-user 형제 없음).
+     - padding-top 8px: 모델 필터에서 살짝 띄움
+     - padding-bottom 18px: 아래 그라데이션 fade 영역
+     - background: 위 단단 var(--bg) → 아래로 갈수록 fade.
+       딱 끊기지 않고 다음 컨텐츠가 자연스럽게 비침. */
+  .msg-user:not(:has(~ .msg-user)) {
     position: sticky;
     top: 0;
     z-index: 5;
-    /* viewport 상단에 sticky 됐을 때 뒷 내용 비치지 않도록 단단한 배경 + 미세한 blur */
-    background: linear-gradient(180deg, var(--bg) 88%, transparent);
-    padding: 6px 0 8px;
-    backdrop-filter: blur(4px);
+    padding: 8px 0 18px;
+    background: linear-gradient(180deg,
+      var(--bg) 0%,
+      var(--bg) 75%,
+      rgba(0,0,0,0) 100%);
   }
   .msg-user .bubble {
     /* 더 가벼운 강조 — 짙은 보라 → subtle accent line + neutral bg */
@@ -334,7 +347,6 @@
     line-height: 1.55;
     font-size: 13px;
   }
-  /* sticky 일 때 (= scrollY > offsetTop) 별도 styling 은 :stuck 가 표준이 아니라서 일단 위 스타일로 통일 */
 
   .attachments {
     display: flex;
@@ -1016,6 +1028,9 @@
     color: var(--text);
     font-weight: 600;
   }
+  /* v0.1.44+ drag-and-drop */
+  .chat-tab.dragging { opacity: 0.4; }
+  .chat-tab.drag-over { border-left: 3px solid var(--accent); }
   .chat-tab .chat-tab-count {
     font-size: 9px;
     color: var(--text-dim);
@@ -3546,7 +3561,7 @@
         showArgueSummarizingHint(msg.round, msg.model)
         break
       case 'rehydrate':
-        rehydrateMessages(msg.messages)
+        rehydrateMessages(msg.messages, !!msg.force)
         break
       case 'usage':
         renderUsagePanel(msg)
@@ -3872,7 +3887,10 @@
         ? `<span class="chat-tab-close" onclick="event.stopPropagation();closeChatTab('${escapeAttr(t.id)}')" title="${T('tab_close_tooltip')}">×</span>`
         : ''
       const branchTag = t.branchedFrom ? ` · ${T('fork_icon_tooltip')}` : ''
+      // v0.1.44+: draggable + data-tab-id 로 drag-and-drop 가능. 순서 박힘 → reorderTabs.
       return `<button class="chat-tab${isActive ? ' active' : ''}"
+        draggable="true"
+        data-tab-id="${escapeAttr(t.id)}"
         onclick="switchChatTab('${escapeAttr(t.id)}')"
         oncontextmenu="event.preventDefault();openChatTabMenu(event, '${escapeAttr(t.id)}')"
         title="${escapeAttr(t.title)} · ${t.count}msg${branchTag}">
@@ -3881,6 +3899,52 @@
         ${closeBtn}
       </button>`
     }).join('')
+    attachTabDragHandlers(list)
+  }
+
+  // v0.1.44+: 탭 drag-and-drop. mousedown 으로 잡고 swap 위치 확정되면 reorderTabs 전송.
+  // sort 가 orderIndex 기준이라 사용자 박은 순서 영속됨.
+  let _draggingTabId = null
+  function attachTabDragHandlers(list) {
+    list.querySelectorAll('.chat-tab').forEach(btn => {
+      btn.addEventListener('dragstart', e => {
+        _draggingTabId = btn.dataset.tabId
+        btn.classList.add('dragging')
+        if (e.dataTransfer) {
+          e.dataTransfer.effectAllowed = 'move'
+          // Firefox 호환 — dataTransfer 에 뭐든 박아야 drag 시작됨
+          try { e.dataTransfer.setData('text/plain', _draggingTabId) } catch {}
+        }
+      })
+      btn.addEventListener('dragend', () => {
+        btn.classList.remove('dragging')
+        _draggingTabId = null
+        list.querySelectorAll('.chat-tab.drag-over').forEach(el => el.classList.remove('drag-over'))
+      })
+      btn.addEventListener('dragover', e => {
+        if (!_draggingTabId || btn.dataset.tabId === _draggingTabId) return
+        e.preventDefault()
+        if (e.dataTransfer) e.dataTransfer.dropEffect = 'move'
+        btn.classList.add('drag-over')
+      })
+      btn.addEventListener('dragleave', () => {
+        btn.classList.remove('drag-over')
+      })
+      btn.addEventListener('drop', e => {
+        e.preventDefault()
+        btn.classList.remove('drag-over')
+        if (!_draggingTabId || btn.dataset.tabId === _draggingTabId) return
+        const targetId = btn.dataset.tabId
+        const ids = _currentTabs.map(t => t.id)
+        const fromIdx = ids.indexOf(_draggingTabId)
+        const toIdx = ids.indexOf(targetId)
+        if (fromIdx < 0 || toIdx < 0) return
+        // dragged 를 빼고 target 위치에 삽입
+        const [moved] = ids.splice(fromIdx, 1)
+        ids.splice(toIdx, 0, moved)
+        postToExtension({ type: 'reorderTabs', ids })
+      })
+    })
   }
   function switchChatTab(id) {
     if (id === _activeTabId) return
@@ -5094,17 +5158,18 @@
 
   // 빈 rehydrate 가 한 번 와도 disk 엔 살아있을 수 있음 — 첫 빈 응답엔 host 에 1회만 다시 요청
   let rehydrateRequested = false
-  function rehydrateMessages(messages) {
-    console.log('[orchestrai] rehydrate received:', messages?.length, 'messages')
+  function rehydrateMessages(messages, force) {
+    console.log('[orchestrai] rehydrate received:', messages?.length, 'messages', force ? '(forced)' : '')
     const container = document.getElementById('messages')
     if (!container) {
       console.warn('[orchestrai] messages container not found!')
-      setTimeout(() => rehydrateMessages(messages), 100)
+      setTimeout(() => rehydrateMessages(messages, force), 100)
       return
     }
-    // 메시지가 들어왔는데 우리쪽엔 이미 그려진 게 있으면 덮어쓰기 전에 비교 — 빈 push 가 살아있는 화면을 지우지 않게
+    // 빈 push 가 살아있는 화면을 지우지 않게 — spurious 빈 rehydrate 방어.
+    // 단 force=true (newChat/switchChat/closeChat/forkChat 등 사용자 명시 행동) 면 우회.
     const existingMsgs = container.querySelectorAll('.msg').length
-    if ((!messages || messages.length === 0) && existingMsgs > 0) {
+    if (!force && (!messages || messages.length === 0) && existingMsgs > 0) {
       console.log('[orchestrai] empty rehydrate but view already has', existingMsgs, '— ignoring')
       return
     }

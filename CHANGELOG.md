@@ -1,5 +1,28 @@
 # Changelog
 
+## v0.1.44 — 2026-05-24 (탭 hotfix + drag-and-drop + user msg sticky 다듬기)
+
+**🐛 결정적 fix — 새 탭이 기존 탭 내용 그대로 보이던 버그**
+- webview `rehydrateMessages` safety net 이 "빈 messages + 화면 채워져 있음" 시 무시하던 거 → 새 탭의 빈 messages 도 같이 무시됨
+- `rehydrate` 메시지에 `force: true` 플래그 추가. 사용자 명시 행동 (newChat / switchChat / closeChat / forkChat / archive 복원 / rollback) 6곳에 박음
+- webview ready 시 자동 push 만 force 없음 (spurious 빈 push 방어 유지)
+
+**✨ 탭 drag-and-drop + 위치 안 바뀜**
+- 이전엔 탭 클릭 → `updatedAt` 갱신 → sort 결과 맨 앞으로 점프 → 위치 자꾸 바뀜
+- `ChatTab.orderIndex` 추가. sort 가 orderIndex 기준 (fallback createdAt)
+- 새 탭은 항상 끝에 추가 (`orderIndex = max + 1`)
+- HTML5 drag-and-drop — 탭 끌어서 순서 박음 → `reorderTabs` → orderIndex 재할당 + persist
+- CSS: dragging 시 opacity 0.4, drag-over 위치엔 보라 border-left
+
+**🎨 user msg sticky 다듬기**
+- 이전: 두 user msg 가 동시에 sticky 되어 겹쳐 보이고, 위·아래에 다른 컨텐츠 비침
+- `:has(~ .msg-user)` selector — 마지막 user msg 만 sticky 활성 (이전 user msg 는 일반 flow)
+- `.messages` padding-top 16 → 0 — 모델 필터 바로 아래 딱 붙음
+- padding-top 8px 살짝 띄움 + 아래 18px 그라데이션 fade — 딱 끊기지 않고 자연스럽게 다음 컨텐츠로 전환
+
+**기타**
+- cosmetic: `confidenceThreshold` 코드 default `0.8` → `0.92` (package.json 과 통일)
+
 ## v0.1.43 — 2026-05-21 (Claude 속도 fix — lightweight argue + SDK warm start)
 
 사용자 체감: Claude 첫 chunk 14~16초로 매우 느림. 진단:
