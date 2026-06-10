@@ -25,6 +25,7 @@ import { GeminiAuth } from './auth/geminiAuth'
 import { UsageTracker, PLAN_INFO } from './util/usage'
 import { judgeTurn } from './router/judge'
 import { log } from './util/log'
+import { formatOrchestraiFingerprint } from './util/fingerprint'
 import { buildTaggedHistory, setContextWindowPreset } from './util/history'
 import { buildIndex, loadIndex, reindexFile, type CodebaseIndex } from './util/codebaseIndex'
 import { retrieve } from './util/retriever'
@@ -5900,6 +5901,7 @@ Be concise. Korean if reviews are Korean.`
 
 // ── 익스텐션 활성화 ─────────────────────────────────────────
 export function activate(context: vscode.ExtensionContext) {
+  log.info('provenance', formatOrchestraiFingerprint())
   const provider = new OrchestrAIViewProvider(context.extensionUri, context)
 
   // v0.1.40: marketplace 업데이트 자동 감지 — activate 5s 후 + 24h interval.
@@ -5972,4 +5974,3 @@ export function activate(context: vscode.ExtensionContext) {
 }
 
 export function deactivate() {}
-
