@@ -80,17 +80,17 @@ describe('modelOverride get* 함수', () => {
   it('명시적 값 우선', async () => {
     ;(vscodeMock as any).workspace.getConfiguration = () => ({
       get: (k: string) => ({
-        claudeModel: 'claude-opus-4-7',
-        codexModel: 'gpt-5.5',
-        geminiModel: 'gemini-2.5-pro',
+        claudeModel: 'claude-opus-4-8',
+        codexModel: 'gpt-5.4-nano',
+        geminiModel: 'gemini-3.1-flash-lite',
         thinkingMode: 'extra',
       } as any)[k],
     })
     const { getClaudeModelOverride, getCodexModelOverride, getGeminiModelOverride, getThinkingMode } =
       await import('../src/util/modelOverride')
-    expect(getClaudeModelOverride()).toBe('claude-opus-4-7')
-    expect(getCodexModelOverride()).toBe('gpt-5.5')
-    expect(getGeminiModelOverride()).toBe('gemini-2.5-pro')
+    expect(getClaudeModelOverride()).toBe('claude-opus-4-8')
+    expect(getCodexModelOverride()).toBe('gpt-5.4-nano')
+    expect(getGeminiModelOverride()).toBe('gemini-3.1-flash-lite')
     expect(getThinkingMode()).toBe('extra')
   })
 })

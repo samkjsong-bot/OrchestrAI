@@ -653,7 +653,7 @@ export function actualModelName(model: Model, effort: Effort): string {
   if (model === 'claude') {
     const override = cfg.get<string>('claudeModel')
     if (override && override !== 'auto') return override
-    if (effort === 'extra-high') return 'claude-opus-4-7'
+    if (effort === 'extra-high') return 'claude-opus-4-8'
     return 'claude-sonnet-4-6'
   }
   if (model === 'codex') {
@@ -667,6 +667,7 @@ export function actualModelName(model: Model, effort: Effort): string {
   const override = cfg.get<string>('geminiModel')
   if (override && override !== 'auto') return override
   if (effort === 'high' || effort === 'extra-high') return 'gemini-3.1-pro-preview'
+  if (effort === 'low') return 'gemini-3.1-flash-lite'
   return 'gemini-3.5-flash'
 }
 
@@ -4677,7 +4678,9 @@ ${result.failureSummary || result.output.slice(-3000)}
     const override = this._cfg<string>('geminiModel')
     const model = override && override !== 'auto'
       ? override
-      : (effort === 'high' || effort === 'extra-high') ? 'gemini-3.1-pro-preview' : 'gemini-3.5-flash'
+      : (effort === 'high' || effort === 'extra-high') ? 'gemini-3.1-pro-preview'
+        : effort === 'low' ? 'gemini-3.1-flash-lite'
+        : 'gemini-3.5-flash'
     // staticPrompt 있으면 그것만 캐시 — hash 안에 dynamic file ctx 가 빠져 hit rate 급등.
     // 없으면 기존처럼 전체 systemPrompt 캐시 (backward compat for consult calls).
     const cacheInstruction = staticPrompt ?? systemPrompt

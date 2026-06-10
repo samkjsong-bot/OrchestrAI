@@ -9,18 +9,19 @@ import { getGeminiModelOverride } from '../util/modelOverride'
 
 // 무료 티어: Pro는 5 RPM·100 RPD로 빡빡, Flash는 10 RPM·500 RPD로 여유.
 // v0.1.45+ 3.x 시리즈 업그레이드:
-//   low/medium: gemini-3.5-flash — flagship 수준 intelligence + flash 속도. agentic/coding 강화.
+//   low: gemini-3.1-flash-lite — 빠른 lightweight 작업.
+//   medium: gemini-3.5-flash — flagship 수준 intelligence + flash 속도. agentic/coding 강화.
 //   high/extra-high: gemini-3.1-pro-preview — reasoning-first, 1M context, 복잡한 agentic workflow.
 //   FALLBACK: 3.5-flash (primary quota 시).
-//   STABLE_FALLBACK: 2.5-flash-lite (3.x 다 막혔을 때 정식 stable. 2.0 은 2026-06-01 shutdown 예정).
+//   STABLE_FALLBACK: 3.1-flash-lite (3.x stable lightweight fallback).
 const MODEL_BY_EFFORT: Record<Effort, string> = {
-  low: 'gemini-3.5-flash',
+  low: 'gemini-3.1-flash-lite',
   medium: 'gemini-3.5-flash',
   high: 'gemini-3.1-pro-preview',
   'extra-high': 'gemini-3.1-pro-preview',
 }
 const FALLBACK_MODEL = 'gemini-3.5-flash'
-const STABLE_FALLBACK_MODEL = 'gemini-2.5-flash-lite'
+const STABLE_FALLBACK_MODEL = 'gemini-3.1-flash-lite'
 const IMAGE_RE = /<image name="([^"]*)" mime="([^"]*)">(data:[^<]+)<\/image>/g
 
 // esbuild는 static import / 분석가능한 dynamic import를 require()로 치환함.
@@ -237,12 +238,12 @@ export async function callGemini(
     if (!res.error && res.content) usedModel = FALLBACK_MODEL
   }
 
-  // 2.5-flash 까지 RESOURCE_EXHAUSTED / 빈 응답이면 1.5-flash 로 최후 시도 (1.5 가 capacity 더 안정적)
+  // 3.x primary/fallback 까지 RESOURCE_EXHAUSTED / 빈 응답이면 lightweight stable 로 최후 시도
   const stillFailing = res.error || !res.content
   if (stillFailing) {
     if (abortSignal?.aborted) throw new Error('aborted')
-    log.warn('gemini', `2.5 series exhausted, last-resort fallback to ${STABLE_FALLBACK_MODEL}`)
-    _fallbackNotifier?.(FALLBACK_MODEL, STABLE_FALLBACK_MODEL, '2.5 capacity exhausted, trying 1.5')
+    log.warn('gemini', `Gemini primary/fallback exhausted, last-resort fallback to ${STABLE_FALLBACK_MODEL}`)
+    _fallbackNotifier?.(FALLBACK_MODEL, STABLE_FALLBACK_MODEL, 'Gemini fallback exhausted, trying lightweight stable')
     res = await runOnce(STABLE_FALLBACK_MODEL, messages, onChunk, systemPrompt, abortSignal)
     if (!res.error && res.content) usedModel = STABLE_FALLBACK_MODEL
   }

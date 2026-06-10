@@ -87,9 +87,9 @@ By default OrchestrAI auto-picks the model variant for each provider based on ef
 
 | Setting | Choices |
 |---|---|
-| `orchestrai.claudeModel` | `auto` · `claude-sonnet-4-6` · `claude-opus-4-7` · `claude-haiku-4-5` |
-| `orchestrai.codexModel` | `auto` · `gpt-5.4-mini` · `gpt-5.4` · `gpt-5.5` |
-| `orchestrai.geminiModel` | `auto` · `gemini-3.5-flash` · `gemini-3.1-pro-preview` · `gemini-2.5-flash-lite` |
+| `orchestrai.claudeModel` | `auto` · `claude-fable-5` · `claude-opus-4-8` · `claude-sonnet-4-6` · `claude-haiku-4-5` |
+| `orchestrai.codexModel` | `auto` · `gpt-5.5` · `gpt-5.4` · `gpt-5.4-mini` · `gpt-5.4-nano` |
+| `orchestrai.geminiModel` | `auto` · `gemini-3.5-flash` · `gemini-3.1-pro-preview` · `gemini-3.1-flash-lite` · `gemini-3-flash-preview` |
 | `orchestrai.thinkingMode` | `auto` · `off` · `on` · `extra` (Claude / Gemini Pro only) |
 
 `auto` keeps the effort→model mapping (default behavior). Any other value forces that variant regardless of effort. `thinkingMode=extra` uses the model's full thinking budget (Sonnet 32k / Opus 64k tokens).

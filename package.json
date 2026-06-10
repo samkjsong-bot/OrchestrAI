@@ -2,7 +2,7 @@
   "name": "orchestrai",
   "displayName": "OrchestrAI",
   "description": "Multi-model AI in one VSCode sidebar — Claude + Codex + Gemini. Auto-routing, model debate, team delegation, until-it-works loop, codebase RAG, multi-model code review, Telegram phone bridge. Zero API billing (uses your existing subscriptions).",
-  "version": "0.1.44",
+  "version": "0.1.45",
   "publisher": "samkj",
   "license": "MIT",
   "icon": "resources/icon.png",
@@ -287,14 +287,16 @@
           "default": "auto",
           "enum": [
             "auto",
+            "claude-fable-5",
+            "claude-opus-4-8",
             "claude-sonnet-4-6",
-            "claude-opus-4-7",
             "claude-haiku-4-5"
           ],
           "enumDescriptions": [
-            "Auto: effort 따라 자동 (sonnet 기본, extra-high 면 opus). 권장.",
+            "Auto: effort 따라 자동 (Sonnet 기본, extra-high 면 Opus). 권장.",
+            "Fable 5: 최고 capability. 가장 어려운 작업용 수동 override.",
+            "Opus 4.8: 강한 reasoning·큰 그림·아키텍처용.",
             "Sonnet 4.6: 빠르고 정확. 코딩 작업 default 권장.",
-            "Opus 4.7: 풀스케일 reasoning. 큰 그림·아키텍처용 (느리고 quota 큼).",
             "Haiku 4.5: 가장 빠름·저렴. 메타 라우팅·짧은 답변용."
           ],
           "description": "Claude 모델 강제 — auto 면 effort 따라 자동 선택. Max 구독 쿼터 사용."
@@ -304,15 +306,17 @@
           "default": "auto",
           "enum": [
             "auto",
-            "gpt-5.4-mini",
+            "gpt-5.5",
             "gpt-5.4",
-            "gpt-5.5"
+            "gpt-5.4-mini",
+            "gpt-5.4-nano"
           ],
           "enumDescriptions": [
             "Auto: effort 따라 자동 (5.4 기본, low면 mini, high면 5.5). 권장.",
-            "GPT-5.4-mini: 빠르고 가벼운 작업. low effort 와 동일.",
+            "GPT-5.5: flagship reasoning 모델.",
             "GPT-5.4: 표준. medium effort 와 동일.",
-            "GPT-5.5: 최고 reasoning (Pro 플랜 한도)."
+            "GPT-5.4-mini: 빠르고 가벼운 작업. low effort 와 동일.",
+            "GPT-5.4-nano: 가장 작고 지연시간이 낮은 옵션."
           ],
           "description": "Codex (ChatGPT) 모델 강제 — auto 면 effort 따라 자동. ChatGPT Pro 구독 쿼터 사용."
         },
@@ -323,13 +327,15 @@
             "auto",
             "gemini-3.5-flash",
             "gemini-3.1-pro-preview",
-            "gemini-2.5-flash-lite"
+            "gemini-3.1-flash-lite",
+            "gemini-3-flash-preview"
           ],
           "enumDescriptions": [
-            "Auto: effort 따라 자동 (flash 기본, high 면 pro). 권장.",
+            "Auto: effort 따라 자동 (low=Flash-Lite, medium=Flash, high=Pro). 권장.",
             "Gemini 3.5 Flash: 빠름·agentic/coding 강화.",
             "Gemini 3.1 Pro Preview: 강한 reasoning·긴 컨텍스트.",
-            "Gemini 2.5 Flash Lite: 3.x 한도 초과 시 안정적 fallback."
+            "Gemini 3.1 Flash-Lite: 빠른 lightweight stable fallback.",
+            "Gemini 3 Flash Preview: preview Flash 옵션."
           ],
           "description": "Gemini 모델 강제 — auto 면 effort 따라 자동. Google 무료 OAuth 사용."
         },

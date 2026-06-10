@@ -13,7 +13,7 @@ const MODEL_BY_EFFORT: Record<Effort, string> = {
   low: 'claude-sonnet-4-6',
   medium: 'claude-sonnet-4-6',
   high: 'claude-sonnet-4-6',         // high도 Sonnet — 코드 작업엔 Opus보다 빠르고 동등
-  'extra-high': 'claude-opus-4-7',   // 풀스케일 프로젝트만 Opus (큰 그림 + 위임)
+  'extra-high': 'claude-opus-4-8',   // 풀스케일 프로젝트만 Opus (큰 그림 + 위임)
 }
 
 // thinking budget — 사용자가 thinkingMode override 안 했을 때만 effort 기반 default 사용
@@ -21,7 +21,7 @@ const THINKING_BUDGET: Record<Effort, number | undefined> = {
   low: undefined,                    // thinking 없음
   medium: 5000,
   high: 16000,
-  'extra-high': 64000,               // Opus 4.7 thinking 한도
+  'extra-high': 64000,               // Opus thinking 한도
 }
 
 function modelForEffort(effort: Effort | string): string {
@@ -32,7 +32,7 @@ function modelForEffort(effort: Effort | string): string {
 }
 function thinkingBudgetFor(effort: Effort | string, model: string): number | undefined {
   // 모델별 thinking budget 한도 (Sonnet 32k, Opus 64k, Haiku 미지원)
-  if (model.includes('haiku')) return undefined
+  if (model.includes('haiku') || model.includes('fable')) return undefined
   const maxBudget = model.includes('opus') ? 64000 : 32000
   return resolveThinkingBudget(effort as Effort, THINKING_BUDGET, maxBudget)
 }
@@ -50,10 +50,10 @@ const MAX_OUTPUT: Record<Effort, number> = {
   low: 64000,
   medium: 64000,
   high: 64000,
-  'extra-high': 32000,  // Opus 한도
+  'extra-high': 128000,  // Opus/Fable 한도
 }
 function maxOutputFor(effort: Effort | string): number {
-  return MAX_OUTPUT[effort as Effort] ?? 32000
+  return MAX_OUTPUT[effort as Effort] ?? 64000
 }
 
 // OrchestrAI의 permission mode → Claude Agent SDK의 permissionMode로 매핑

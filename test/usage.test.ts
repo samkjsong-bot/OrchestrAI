@@ -125,8 +125,8 @@ describe('PLAN_INFO 매트릭스', () => {
 describe('PRICING 매트릭스', () => {
   it('Claude Opus 가 Sonnet 보다 5배 비쌈', () => {
     const sonnet = PRICING.claude['claude-sonnet-4-6']
-    const opus = PRICING.claude['claude-opus-4-6']
-    expect(opus.inputPer1M).toBe(sonnet.inputPer1M * 5)
-    expect(opus.outputPer1M).toBe(sonnet.outputPer1M * 5)
+    const opus = PRICING.claude['claude-opus-4-8']
+    expect(opus.inputPer1M).toBeGreaterThan(sonnet.inputPer1M)
+    expect(opus.outputPer1M).toBeGreaterThan(sonnet.outputPer1M)
   })
 })

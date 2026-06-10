@@ -41,20 +41,26 @@ export interface ModelPricing {
 }
 export const PRICING: Record<Model, Record<string, ModelPricing>> = {
   claude: {
+    'claude-fable-5':    { inputPer1M: 10, outputPer1M: 50 },
+    'claude-opus-4-8':   { inputPer1M: 5, outputPer1M: 25 },
     'claude-sonnet-4-6': { inputPer1M: 3, outputPer1M: 15 },
+    'claude-opus-4-7':   { inputPer1M: 5, outputPer1M: 25 },
     'claude-opus-4-6':   { inputPer1M: 15, outputPer1M: 75 },
     'claude-haiku-4-5':  { inputPer1M: 0.8, outputPer1M: 4 },
     default:             { inputPer1M: 3, outputPer1M: 15 },
   },
   codex: {
-    'gpt-5.5':       { inputPer1M: 10, outputPer1M: 40 },  // 추정 (Pro tier)
-    'gpt-5.4':       { inputPer1M: 5, outputPer1M: 20 },
-    'gpt-5.4-mini':  { inputPer1M: 1, outputPer1M: 4 },
-    default:         { inputPer1M: 5, outputPer1M: 20 },
+    'gpt-5.5':       { inputPer1M: 5, outputPer1M: 30 },
+    'gpt-5.4':       { inputPer1M: 2.5, outputPer1M: 15 },
+    'gpt-5.4-mini':  { inputPer1M: 0.75, outputPer1M: 4.5 },
+    'gpt-5.4-nano':  { inputPer1M: 0.20, outputPer1M: 1.25 },
+    default:         { inputPer1M: 2.5, outputPer1M: 15 },
   },
   gemini: {
-    'gemini-3.1-pro-preview': { inputPer1M: 1.25, outputPer1M: 10 },
-    'gemini-3.5-flash':       { inputPer1M: 0.30, outputPer1M: 2.5 },
+    'gemini-3.1-pro-preview': { inputPer1M: 2.00, outputPer1M: 12.00 },
+    'gemini-3.5-flash':       { inputPer1M: 1.50, outputPer1M: 9.00 },
+    'gemini-3.1-flash-lite':  { inputPer1M: 0.25, outputPer1M: 1.50 },
+    'gemini-3-flash-preview': { inputPer1M: 0.50, outputPer1M: 3.00 },
     'gemini-2.5-flash-lite':  { inputPer1M: 0.10, outputPer1M: 0.40 },
     'gemini-2.5-pro':    { inputPer1M: 1.25, outputPer1M: 10 },
     'gemini-2.5-flash':  { inputPer1M: 0.30, outputPer1M: 2.5 },
