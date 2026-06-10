@@ -4,6 +4,8 @@
 
 import * as vscode from 'vscode'
 import { execFile } from 'child_process'
+import { existsSync } from 'fs'
+import { delimiter, join } from 'path'
 import { promisify } from 'util'
 import { AuthStorage } from './storage'
 
@@ -17,20 +19,75 @@ interface ClaudeCliStatus {
   subscriptionType?: string
 }
 
-function authStatusCommand(): { file: string; args: string[] } {
-  if (process.platform === 'win32') {
-    return {
-      file: process.env.ComSpec || 'cmd.exe',
-      args: ['/d', '/s', '/c', 'claude.cmd auth status'],
-    }
+interface ClaudeCliCommand {
+  file: string
+  prefixArgs: string[]
+  terminalLoginCommand: string
+}
+
+function quoteCmdPath(file: string): string {
+  return `"${file.replace(/"/g, '""')}"`
+}
+
+function firstExisting(paths: string[]): string | undefined {
+  return paths.find(p => p && existsSync(p))
+}
+
+function findOnPath(names: string[]): string | undefined {
+  const dirs = (process.env.PATH || '').split(delimiter).filter(Boolean)
+  for (const dir of dirs) {
+    const hit = firstExisting(names.map(name => join(dir, name)))
+    if (hit) return hit
   }
-  return { file: 'claude', args: ['auth', 'status'] }
+  return undefined
+}
+
+function resolveClaudeCli(): ClaudeCliCommand {
+  if (process.platform === 'win32') {
+    const npmDir = process.env.APPDATA
+      ? join(process.env.APPDATA, 'npm')
+      : process.env.USERPROFILE
+        ? join(process.env.USERPROFILE, 'AppData', 'Roaming', 'npm')
+        : ''
+    const exe = firstExisting([
+      npmDir ? join(npmDir, 'node_modules', '@anthropic-ai', 'claude-code', 'bin', 'claude.exe') : '',
+      findOnPath(['claude.exe']) || '',
+    ])
+    if (exe) {
+      const quoted = quoteCmdPath(exe)
+      return {
+        file: exe,
+        prefixArgs: [],
+        terminalLoginCommand: `cmd.exe /d /c "${quoted} auth login --claudeai"`,
+      }
+    }
+
+    const cmd = firstExisting([
+      npmDir ? join(npmDir, 'claude.cmd') : '',
+      findOnPath(['claude.cmd']) || '',
+    ])
+    if (cmd) {
+      const quoted = quoteCmdPath(cmd)
+      return {
+        file: process.env.ComSpec || 'cmd.exe',
+        prefixArgs: ['/d', '/c', quoted],
+        terminalLoginCommand: `cmd.exe /d /c "${quoted} auth login --claudeai"`,
+      }
+    }
+
+    throw new Error('Claude CLI를 찾지 못했습니다. 터미널에서 `npm install -g @anthropic-ai/claude-code` 후 다시 시도해주세요.')
+  }
+  return { file: 'claude', prefixArgs: [], terminalLoginCommand: 'claude auth login --claudeai' }
 }
 
 function loginCommandHint(): string {
-  return process.platform === 'win32'
-    ? 'claude.cmd auth login --claudeai'
-    : 'claude auth login --claudeai'
+  try {
+    return resolveClaudeCli().terminalLoginCommand
+  } catch {
+    return process.platform === 'win32'
+      ? 'claude.cmd auth login --claudeai'
+      : 'claude auth login --claudeai'
+  }
 }
 
 function parseStatusJson(text: string): ClaudeCliStatus {
@@ -43,9 +100,9 @@ function parseStatusJson(text: string): ClaudeCliStatus {
 }
 
 async function readClaudeCliStatus(): Promise<ClaudeCliStatus> {
-  const { file, args } = authStatusCommand()
+  const { file, prefixArgs } = resolveClaudeCli()
   try {
-    const { stdout, stderr } = await execFileAsync(file, args, {
+    const { stdout, stderr } = await execFileAsync(file, [...prefixArgs, 'auth', 'status'], {
       cwd: vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? process.cwd(),
       encoding: 'utf8',
       maxBuffer: 1024 * 1024,
@@ -55,6 +112,9 @@ async function readClaudeCliStatus(): Promise<ClaudeCliStatus> {
     return parseStatusJson(`${stdout}\n${stderr}`.trim())
   } catch (err: any) {
     const output = String(err?.stderr || err?.stdout || err?.message || err).trim()
+    if (/not recognized|is not recognized|ENOENT|not found/i.test(output)) {
+      throw new Error(`Claude CLI를 실행하지 못했습니다. 터미널에서 "${loginCommandHint()}"를 확인해주세요.`)
+    }
     throw new Error(output || 'Claude CLI 실행 실패')
   }
 }
