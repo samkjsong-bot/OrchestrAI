@@ -126,7 +126,7 @@ export class ClaudeAuth {
     if (status.apiProvider && status.apiProvider !== 'firstParty') {
       const choice = await vscode.window.showWarningMessage(
         `Claude CLI가 구독 계정이 아닌 ${status.apiProvider} 인증으로 설정되어 있습니다. API 과금 경로일 수 있어요.\n` +
-        `구독(Max/Pro) 쿼터로 쓰려면 "${loginCommandHint()}"로 다시 로그인해주세요.`,
+        `구독(Pro/Max) 쿼터로 쓰려면 "${loginCommandHint()}"로 다시 로그인해주세요.`,
         '그래도 계속',
       )
       if (choice !== '그래도 계속') return false

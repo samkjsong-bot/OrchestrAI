@@ -16,7 +16,7 @@ describe('isQuotaError — 표준 quota 에러', () => {
   })
 })
 
-describe('isQuotaError — Claude Max 안내문', () => {
+describe('isQuotaError — Claude Pro/Max 안내문', () => {
   it.each([
     [new Error('Claude usage_limit_exceeded')],
     [new Error('Your usage limit will reset soon')],

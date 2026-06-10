@@ -29,7 +29,7 @@ export function isQuotaError(err: unknown): boolean {
     blob.includes('quotaexceeded') ||
     blob.includes('overloaded') ||
     blob.includes('quota') ||
-    // Claude Max — SDK가 result.is_error=true subtype='usage_limit_exceeded' 또는 텍스트로 안내문 보냄
+    // Claude Pro/Max — SDK가 result.is_error=true subtype='usage_limit_exceeded' 또는 텍스트로 안내문 보냄
     blob.includes('usage_limit_exceeded') ||
     blob.includes('usage limit') ||
     blob.includes('5-hour limit') ||

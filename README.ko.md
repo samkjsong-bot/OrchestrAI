@@ -274,7 +274,7 @@ OrchestrAI 자체엔 API 키 0개 필요. 각 모델별 인증만:
 
 | 모델 | 필요한 것 | 무료? |
 |---|---|---|
-| Claude | 로컬 `claude` CLI 로그인 | Max 구독 필요 |
+| Claude | 로컬 `claude` CLI 로그인 | Claude Pro/Max 필요 |
 | Codex | OrchestrAI 안에서 ChatGPT OAuth | ChatGPT Pro 구독 필요 |
 | Gemini | 로컬 `gemini` CLI 로그인 | ✅ Google 무료 |
 | 이미지 생성 (옵션) | Gemini API 키 | △ |

@@ -1,5 +1,5 @@
 // src/providers/claudeProvider.ts
-// Claude Agent SDK를 통해 로컬 Claude Code CLI 인증을 재사용 — Max 구독 쿼터.
+// Claude Agent SDK를 통해 로컬 Claude Code CLI 인증을 재사용 — Claude Pro/Max 구독 쿼터.
 // Claude도 Read/Edit/Write/Bash/Grep/Glob 툴 활성 → Codex·Gemini와 동일하게 코드 수정 가능.
 
 import * as vscode from 'vscode'
@@ -378,7 +378,7 @@ export async function callClaude(
     }
   }
 
-  // Claude Max 5-hour limit 도달 시 SDK가 정상 result로 끝내면서 텍스트로 안내문 줌.
+  // Claude Pro/Max limit 도달 시 SDK가 정상 result로 끝내면서 텍스트로 안내문 줌.
   // is_error=false 이지만 실제로는 quota 파산 → throw해서 폴백 트리거
   const QUOTA_PATTERNS = [
     /usage limit reached/i,

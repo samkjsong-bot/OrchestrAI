@@ -278,7 +278,7 @@ OrchestrAI itself requires zero API keys. Authentication is per model:
 
 | Model | Requirement | Free? |
 |---|---|---|
-| Claude | Local `claude` CLI login | Requires Max subscription |
+| Claude | Local `claude` CLI login | Requires Claude Pro/Max |
 | Codex | ChatGPT OAuth (inside OrchestrAI) | Requires ChatGPT Pro |
 | Gemini | Local `gemini` CLI login | ✅ Google free tier |
 | Image generation (optional) | Gemini API key | △ |

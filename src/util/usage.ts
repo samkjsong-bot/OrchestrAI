@@ -27,7 +27,7 @@ export interface PlanInfo {
 }
 
 export const PLAN_INFO: Record<Model, PlanInfo> = {
-  claude: { label: 'Claude Max', limitHint: '5시간 단위 롤링 한도 (`claude /status`로 정확히 확인)' },
+  claude: { label: 'Claude Pro/Max', limitHint: '5시간 단위 롤링 한도 (`claude /status`로 정확히 확인)' },
   codex:  { label: 'ChatGPT Pro', limitHint: 'gpt-5.5/5.4 사용량 주간 한도' },
   gemini: { label: 'Google 무료 티어', limitHint: '60 req/min · 1000 req/day' },
 }
@@ -184,7 +184,7 @@ export class UsageTracker {
     (Object.keys(this.session) as Model[]).forEach(model => {
       const totalTokens = this.getTotalSessionTokens(model);
       if (totalTokens > 0) { // 사용량이 0이 아닌 모델만 표시
-        // PLAN_INFO의 라벨에서 첫 단어의 첫 글자를 가져옵니다. (Claude Max -> C)
+        // PLAN_INFO의 라벨에서 첫 단어의 첫 글자를 가져옵니다. (Claude Pro/Max -> C)
         const labelInitial = PLAN_INFO[model].label.split(' ')[0].charAt(0);
         usageParts.push(`${labelInitial}: ${this.formatTokens(totalTokens)}`);
       }

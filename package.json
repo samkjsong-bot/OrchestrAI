@@ -2,7 +2,7 @@
   "name": "orchestrai",
   "displayName": "OrchestrAI",
   "description": "Multi-model AI in one VSCode sidebar — Claude + Codex + Gemini. Auto-routing, model debate, team delegation, until-it-works loop, codebase RAG, multi-model code review, Telegram phone bridge. Zero API billing (uses your existing subscriptions).",
-  "version": "0.1.46",
+  "version": "0.1.47",
   "publisher": "samkj",
   "license": "MIT",
   "icon": "resources/icon.png",
@@ -299,7 +299,7 @@
             "Sonnet 4.6: 빠르고 정확. 코딩 작업 default 권장.",
             "Haiku 4.5: 가장 빠름·저렴. 메타 라우팅·짧은 답변용."
           ],
-          "description": "Claude 모델 강제 — auto 면 effort 따라 자동 선택. Max 구독 쿼터 사용."
+          "description": "Claude 모델 강제 — auto 면 effort 따라 자동 선택. Claude Pro/Max 구독 쿼터 사용."
         },
         "orchestrai.codexModel": {
           "type": "string",
