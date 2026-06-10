@@ -1,6 +1,7 @@
 // src/auth/geminiAuth.ts
 // Gemini CLI의 OAuth 세션을 재사용. 유저는 'gemini' 명령어로 Google 로그인만 해두면 됨.
 
+import { randomUUID } from 'crypto'
 import * as vscode from 'vscode'
 import { AuthStorage } from './storage'
 
@@ -9,39 +10,71 @@ const CLI_DETECTED_MARKER = '__cli_detected__'
 // esbuild의 require() 치환 회피용 진짜 dynamic import
 const esmImport = new Function('s', 'return import(s)') as (s: string) => Promise<any>
 
+function makeGeminiOAuthConfig(authType: any): any {
+  const sessionId = randomUUID()
+  const baseConfig: Record<string, any> = {
+    getModel: () => 'gemini-3.5-flash',
+    getProxy: () => process.env.HTTP_PROXY || process.env.HTTPS_PROXY || undefined,
+    getUsageStatisticsEnabled: () => false,
+    getContentGeneratorConfig: () => ({
+      authType,
+      model: 'gemini-3.5-flash',
+      proxy: process.env.HTTP_PROXY || process.env.HTTPS_PROXY || undefined,
+    }),
+    getSessionId: () => sessionId,
+    getDebugMode: () => false,
+    getTelemetryEnabled: () => false,
+    getTargetDir: () => vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? process.cwd(),
+    getFullContext: () => false,
+    getIdeMode: () => false,
+    getCoreTools: () => [],
+    getExcludeTools: () => [],
+    getMaxSessionTurns: () => 100,
+    getFileFilteringRespectGitIgnore: () => true,
+    isBrowserLaunchSuppressed: () => false,
+    getContextManager: () => undefined,
+    getGlobalMemory: () => '',
+    getEnvironmentMemory: () => '',
+    getHookSystem: () => undefined,
+    getModelAvailabilityService: () => undefined,
+    getShellToolInactivityTimeout: () => 120000,
+    getExperimentsAsync: () => Promise.resolve(undefined),
+  }
+
+  return new Proxy(baseConfig, {
+    get(target, prop) {
+      if (prop in target) return target[prop as string]
+      if (typeof prop !== 'string') return undefined
+      if (prop.startsWith('is') || prop.startsWith('has')) return () => false
+      if (!prop.startsWith('get')) return undefined
+      if (prop.includes('Enabled') || prop.includes('Mode')) return () => false
+      if (prop.includes('Memory')) return () => ''
+      if (prop.includes('Tools')) return () => []
+      if (prop.includes('Timeout')) return () => 120000
+      if (prop.includes('Config')) return () => ({})
+      return () => undefined
+    },
+  })
+}
+
 export class GeminiAuth {
   constructor(private storage: AuthStorage) {}
 
   async login(): Promise<boolean> {
     try {
-      const [aiMod, geminiMod] = await Promise.all([
-        esmImport('ai'),
-        esmImport('ai-sdk-provider-gemini-cli'),
-      ])
-      const provider = geminiMod.createGeminiProvider({ authType: 'oauth-personal' })
-      const result = aiMod.streamText({
-        model: provider('gemini-3.5-flash'),
-        prompt: 'ok',
-      })
-
-      let got = false
-      for await (const chunk of result.textStream) {
-        if (chunk) { got = true; break }
-      }
-
-      if (!got) {
-        vscode.window.showErrorMessage('Gemini 응답 없음. "gemini" 명령어 설치·로그인 상태를 확인하세요.')
-        return false
-      }
+      const core = await esmImport('@google/gemini-cli-core')
+      const authType = core.AuthType.LOGIN_WITH_GOOGLE
+      vscode.window.showInformationMessage('Gemini Google 로그인을 브라우저에서 완료해주세요.')
+      await core.getOauthClient(authType, makeGeminiOAuthConfig(authType))
 
       await this.storage.setGeminiTokens({ type: 'oauth', accessToken: CLI_DETECTED_MARKER })
-      vscode.window.showInformationMessage('✅ Gemini CLI 연결 완료!')
+      vscode.window.showInformationMessage('✅ Gemini OAuth 연결 완료!')
       return true
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
       vscode.window.showErrorMessage(
         `Gemini 연결 실패: ${msg}\n` +
-        `터미널에서 "npm install -g @google/gemini-cli" 후 "gemini" 실행해서 구글 로그인 완료해주세요.`,
+        `브라우저 로그인이 막히면 터미널에서 "npx @google/gemini-cli" 실행 후 Login with Google을 완료해주세요.`,
       )
       return false
     }
