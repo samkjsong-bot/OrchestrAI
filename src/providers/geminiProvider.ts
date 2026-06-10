@@ -10,17 +10,17 @@ import { getGeminiModelOverride } from '../util/modelOverride'
 // 무료 티어: Pro는 5 RPM·100 RPD로 빡빡, Flash는 10 RPM·500 RPD로 여유.
 // v0.1.45+ 3.x 시리즈 업그레이드:
 //   low: gemini-3.1-flash-lite — 빠른 lightweight 작업.
-//   medium: gemini-3.5-flash — flagship 수준 intelligence + flash 속도. agentic/coding 강화.
+//   medium: gemini-3-flash-preview — OAuth 경로에서 검증된 Flash 모델.
 //   high/extra-high: gemini-3.1-pro-preview — reasoning-first, 1M context, 복잡한 agentic workflow.
-//   FALLBACK: 3.5-flash (primary quota 시).
+//   FALLBACK: 3-flash-preview (primary quota 시).
 //   STABLE_FALLBACK: 3.1-flash-lite (3.x stable lightweight fallback).
 const MODEL_BY_EFFORT: Record<Effort, string> = {
   low: 'gemini-3.1-flash-lite',
-  medium: 'gemini-3.5-flash',
+  medium: 'gemini-3-flash-preview',
   high: 'gemini-3.1-pro-preview',
   'extra-high': 'gemini-3.1-pro-preview',
 }
-const FALLBACK_MODEL = 'gemini-3.5-flash'
+const FALLBACK_MODEL = 'gemini-3-flash-preview'
 const STABLE_FALLBACK_MODEL = 'gemini-3.1-flash-lite'
 const IMAGE_RE = /<image name="([^"]*)" mime="([^"]*)">(data:[^<]+)<\/image>/g
 

@@ -7,7 +7,7 @@ import type { Effort } from '../router/types'
 
 export type ClaudeModelChoice = 'auto' | 'claude-fable-5' | 'claude-opus-4-8' | 'claude-sonnet-4-6' | 'claude-haiku-4-5'
 export type CodexModelChoice = 'auto' | 'gpt-5.5' | 'gpt-5.4' | 'gpt-5.4-mini' | 'gpt-5.4-nano'
-export type GeminiModelChoice = 'auto' | 'gemini-3.5-flash' | 'gemini-3.1-pro-preview' | 'gemini-3.1-flash-lite' | 'gemini-3-flash-preview'
+export type GeminiModelChoice = 'auto' | 'gemini-3.1-pro-preview' | 'gemini-3-flash-preview' | 'gemini-3.1-flash-lite'
 export type ThinkingChoice = 'auto' | 'off' | 'on' | 'extra'
 
 function read<T extends string>(key: string, fallback: T): T {

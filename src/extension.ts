@@ -668,7 +668,7 @@ export function actualModelName(model: Model, effort: Effort): string {
   if (override && override !== 'auto') return override
   if (effort === 'high' || effort === 'extra-high') return 'gemini-3.1-pro-preview'
   if (effort === 'low') return 'gemini-3.1-flash-lite'
-  return 'gemini-3.5-flash'
+  return 'gemini-3-flash-preview'
 }
 
 // ventriloquism 후처리 — 라인 시작뿐 아니라 inline 도 잡음.
@@ -4680,7 +4680,7 @@ ${result.failureSummary || result.output.slice(-3000)}
       ? override
       : (effort === 'high' || effort === 'extra-high') ? 'gemini-3.1-pro-preview'
         : effort === 'low' ? 'gemini-3.1-flash-lite'
-        : 'gemini-3.5-flash'
+        : 'gemini-3-flash-preview'
     // staticPrompt 있으면 그것만 캐시 — hash 안에 dynamic file ctx 가 빠져 hit rate 급등.
     // 없으면 기존처럼 전체 systemPrompt 캐시 (backward compat for consult calls).
     const cacheInstruction = staticPrompt ?? systemPrompt

@@ -13,12 +13,12 @@ const esmImport = new Function('s', 'return import(s)') as (s: string) => Promis
 function makeGeminiOAuthConfig(authType: any): any {
   const sessionId = randomUUID()
   const baseConfig: Record<string, any> = {
-    getModel: () => 'gemini-3.5-flash',
+    getModel: () => 'gemini-3.1-flash-lite',
     getProxy: () => process.env.HTTP_PROXY || process.env.HTTPS_PROXY || undefined,
     getUsageStatisticsEnabled: () => false,
     getContentGeneratorConfig: () => ({
       authType,
-      model: 'gemini-3.5-flash',
+      model: 'gemini-3.1-flash-lite',
       proxy: process.env.HTTP_PROXY || process.env.HTTPS_PROXY || undefined,
     }),
     getSessionId: () => sessionId,

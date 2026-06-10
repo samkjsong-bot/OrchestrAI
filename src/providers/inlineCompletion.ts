@@ -6,7 +6,7 @@ import * as vscode from 'vscode'
 import { log } from '../util/log'
 
 const ENDPOINT_BASE = 'https://generativelanguage.googleapis.com/v1beta/models'
-const MODEL = 'gemini-3.5-flash'
+const MODEL = 'gemini-3.1-flash-lite'
 const DEBOUNCE_MS = 350
 const MAX_CONTEXT_LINES = 60
 const MAX_CACHE = 50

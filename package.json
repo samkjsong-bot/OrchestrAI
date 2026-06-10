@@ -2,7 +2,7 @@
   "name": "orchestrai",
   "displayName": "OrchestrAI",
   "description": "Multi-model AI in one VSCode sidebar — Claude + Codex + Gemini. Auto-routing, model debate, team delegation, until-it-works loop, codebase RAG, multi-model code review, Telegram phone bridge. Zero API billing (uses your existing subscriptions).",
-  "version": "0.1.45",
+  "version": "0.1.46",
   "publisher": "samkj",
   "license": "MIT",
   "icon": "resources/icon.png",
@@ -325,17 +325,15 @@
           "default": "auto",
           "enum": [
             "auto",
-            "gemini-3.5-flash",
             "gemini-3.1-pro-preview",
-            "gemini-3.1-flash-lite",
-            "gemini-3-flash-preview"
+            "gemini-3-flash-preview",
+            "gemini-3.1-flash-lite"
           ],
           "enumDescriptions": [
-            "Auto: effort 따라 자동 (low=Flash-Lite, medium=Flash, high=Pro). 권장.",
-            "Gemini 3.5 Flash: 빠름·agentic/coding 강화.",
+            "Auto: effort 따라 자동 (low=Flash-Lite, medium=3 Flash Preview, high=Pro). 권장.",
             "Gemini 3.1 Pro Preview: 강한 reasoning·긴 컨텍스트.",
-            "Gemini 3.1 Flash-Lite: 빠른 lightweight stable fallback.",
-            "Gemini 3 Flash Preview: preview Flash 옵션."
+            "Gemini 3 Flash Preview: OAuth 경로에서 검증된 Flash 옵션.",
+            "Gemini 3.1 Flash-Lite: OAuth 경로에서 검증된 빠른 stable fallback."
           ],
           "description": "Gemini 모델 강제 — auto 면 effort 따라 자동. Google 무료 OAuth 사용."
         },
