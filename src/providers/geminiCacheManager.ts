@@ -13,14 +13,14 @@ import { log } from '../util/log'
 const API_BASE = 'https://generativelanguage.googleapis.com/v1beta'
 const DEFAULT_TTL_SEC = 600          // 10 분 — argue 라운드 + follow-up 충분
 const REFRESH_BUFFER_SEC = 30        // 만료 30초 전이면 재생성
-const MIN_CACHEABLE_TOKENS_FLASH = 1024  // Gemini 2.5 Flash 최소
-const MIN_CACHEABLE_TOKENS_PRO   = 4096  // Gemini 2.5 Pro 최소
+const MIN_CACHEABLE_TOKENS_FLASH = 1024  // Gemini Flash 계열 최소
+const MIN_CACHEABLE_TOKENS_PRO   = 4096  // Gemini Pro 계열 최소
 const MAX_CACHE_ENTRIES = 8          // 메모리 leak 방지 — LRU 식 유지
 
 export interface CacheEntry {
   name: string         // 'cachedContents/...'
   hash: string         // 16-hex sha1 of (model + systemInstruction)
-  model: string        // 'gemini-2.5-flash' (no 'models/' prefix)
+  model: string        // e.g. 'gemini-3.5-flash' (no 'models/' prefix)
   inputTokens: number  // 캐시된 시스템 instruction 토큰
   createdAt: number    // ms
   expiresAt: number    // ms

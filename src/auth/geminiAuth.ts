@@ -20,7 +20,7 @@ export class GeminiAuth {
       ])
       const provider = geminiMod.createGeminiProvider({ authType: 'oauth-personal' })
       const result = aiMod.streamText({
-        model: provider('gemini-2.5-flash'),
+        model: provider('gemini-3.5-flash'),
         prompt: 'ok',
       })
 

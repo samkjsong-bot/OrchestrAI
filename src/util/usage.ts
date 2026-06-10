@@ -53,6 +53,9 @@ export const PRICING: Record<Model, Record<string, ModelPricing>> = {
     default:         { inputPer1M: 5, outputPer1M: 20 },
   },
   gemini: {
+    'gemini-3.1-pro-preview': { inputPer1M: 1.25, outputPer1M: 10 },
+    'gemini-3.5-flash':       { inputPer1M: 0.30, outputPer1M: 2.5 },
+    'gemini-2.5-flash-lite':  { inputPer1M: 0.10, outputPer1M: 0.40 },
     'gemini-2.5-pro':    { inputPer1M: 1.25, outputPer1M: 10 },
     'gemini-2.5-flash':  { inputPer1M: 0.30, outputPer1M: 2.5 },
     'gemini-2.0-flash':  { inputPer1M: 0.10, outputPer1M: 0.40 },

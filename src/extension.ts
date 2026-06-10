@@ -662,11 +662,11 @@ export function actualModelName(model: Model, effort: Effort): string {
     if (effort === 'high' || effort === 'extra-high') return 'gpt-5.5'
     return 'gpt-5.4'
   }
-  // gemini
+  // gemini — v0.1.45+ 3.x 시리즈로 업그레이드 (geminiProvider.ts MODEL_BY_EFFORT 와 일치)
   const override = cfg.get<string>('geminiModel')
   if (override && override !== 'auto') return override
-  if (effort === 'high' || effort === 'extra-high') return 'gemini-2.5-pro'
-  return 'gemini-2.5-flash'
+  if (effort === 'high' || effort === 'extra-high') return 'gemini-3.1-pro-preview'
+  return 'gemini-3.5-flash'
 }
 
 // ventriloquism 후처리 — 라인 시작뿐 아니라 inline 도 잡음.
@@ -805,11 +805,15 @@ Output style — STRICT:
   const geminiTightening = (argueOutputCapKR && model === 'gemini')
     ? `\n\n[Gemini-specific] You tend to be verbose. For this Argue turn: ONE focused paragraph only. Skip the "정리:" / "결론:" headers. State your stance, give one reason, stop.`
     : ''
+  // v0.1.45+: Codex 가 줄바꿈 거의 안 박아서 한 덩어리 wall-of-text. 읽기 힘듦.
+  const codexFormatting = (model === 'codex')
+    ? `\n\n[Codex-specific] FORMATTING — Break your response into short paragraphs separated by blank lines (\\n\\n). Each paragraph = one idea. Avoid wall-of-text. Even a 2-sentence response should be split if the sentences cover different points.`
+    : ''
   const argueBlock = !teamRole && (
     collabHint === 'reply'
-      ? `\n\nARGUE MODE — a peer just answered above. Add your own angle naturally: agree, disagree, build on it, whatever feels right. Keep it conversational and tight.${argueCapText}${geminiTightening}`
+      ? `\n\nARGUE MODE — a peer just answered above. Add your own angle naturally: agree, disagree, build on it, whatever feels right. Keep it conversational and tight.${argueCapText}${geminiTightening}${codexFormatting}`
       : collabHint === 'first'
-      ? `\n\nARGUE MODE — your peers (${peerNames}) will reply after you. Give your take, they'll respond.${argueCapText}${geminiTightening}`
+      ? `\n\nARGUE MODE — your peers (${peerNames}) will reply after you. Give your take, they'll respond.${argueCapText}${geminiTightening}${codexFormatting}`
       : ''
   )
 
@@ -1065,9 +1069,13 @@ function buildDynamicContext(
     const geminiTightening = (argueOutputCapKR && model === 'gemini')
       ? `\n\n[Gemini-specific] You tend to be verbose. For this Argue turn: ONE focused paragraph only. Skip the "정리:" / "결론:" headers. State your stance, give one reason, stop.`
       : ''
+    // v0.1.45+: Codex paragraph break 강제 — 한 덩어리 wall-of-text 방지.
+    const codexFormatting = (model === 'codex')
+      ? `\n\n[Codex-specific] FORMATTING — Break your response into short paragraphs separated by blank lines (\\n\\n). Each paragraph = one idea.`
+      : ''
     parts.push(collabHint === 'reply'
-      ? `ARGUE MODE — a peer just answered above. Add your own angle naturally: agree, disagree, build on it, whatever feels right. Keep it conversational and tight.${argueCapText}${geminiTightening}`
-      : `ARGUE MODE — your peers (${peerNames}) will reply after you. Give your take, they'll respond.${argueCapText}${geminiTightening}`)
+      ? `ARGUE MODE — a peer just answered above. Add your own angle naturally: agree, disagree, build on it, whatever feels right. Keep it conversational and tight.${argueCapText}${geminiTightening}${codexFormatting}`
+      : `ARGUE MODE — your peers (${peerNames}) will reply after you. Give your take, they'll respond.${argueCapText}${geminiTightening}${codexFormatting}`)
   }
 
   // File context (projected or full)
@@ -3933,6 +3941,14 @@ Be concise. Use conventional commit style if commits do.`
       const startRoundOffset = resumeMode && this._lastArgueCtx
         ? this._lastArgueCtx.summaries.length
         : 0
+      // v0.1.45+: Haiku 호출 (summary + judge) 을 다음 라운드 답변과 병렬 처리.
+      //   pendingSummary  — 직전 라운드 summary 의 진행 중 Promise. 다음 라운드 답변 끝나면 await + push.
+      //   pendingRaw      — 직전 라운드 raw 답변. summary 완성 전까지 history 에 임시 포함.
+      //   pendingJudges   — 모든 라운드의 judge Promise. argue 종료 시 allSettled 로 정리.
+      // 효과: 매 라운드 6~10s (summary + judge) 직렬 대기 → 답변 시간에 흡수. argue 전체 약 36~60s 절약.
+      let pendingSummary: Promise<DebateTurnSummary> | null = null
+      let pendingRaw: { model: Model; text: string; round: number } | null = null
+      const pendingJudges: Promise<unknown>[] = []
       for (let raw = 0; raw < MAX_TURNS; raw++) {
         const i = raw + startRoundOffset
         if (this._argueStop) break
@@ -3945,10 +3961,10 @@ Be concise. Use conventional commit style if commits do.`
         }
         this._postRoutingDecision(decision)
         const prevLen = this._messages.length
-        // 다음 라운드 history = userMsg + 이전 라운드들의 summary (raw 응답 X).
+        // history = userMsg + 완성된 summaries + (선택) 직전 라운드 raw (summary 진행 중).
         // round 1 (i=0) 는 빈 summary 배열 → history = [userMsg] 만.
         const historyOverride = buildArgueHistoryOverride({
-          userQuestion: userText, summaries: debateSummaries,
+          userQuestion: userText, summaries: debateSummaries, pendingRaw,
         })
         const argueRunCtx = { historyOverride, outputCapKR }
         // argue 는 모델 분담이 의미 — fallback 으로 다른 모델이 답하면 hallucination 유발 → noFallback
@@ -3995,32 +4011,69 @@ Be concise. Use conventional commit style if commits do.`
             totals: { ...argueTotals },
           })
 
-          // ── compact summary 생성 (다음 라운드 input 토큰 절약). Haiku 1회 호출 — 빠르고 저렴.
+          // v0.1.45+ ──────────────────────────────────────────────
+          //   직전 라운드 summary 가 진행 중이면 await + push. 답변 시간 동안 거의 끝나있을 거.
+          if (pendingSummary) {
+            try {
+              const s = await pendingSummary
+              debateSummaries.push(s)
+            } catch (err) {
+              log.warn('argue', `prev round summary failed: ${err instanceof Error ? err.message : String(err)}`)
+            }
+            pendingSummary = null
+            pendingRaw = null
+          }
+
+          // ── 이번 라운드 summary fire-and-forget. 다음 라운드 답변과 병렬로 돔.
           this._post({ type: 'argueSummarizing', round: i + 1, model })
-          const summary = await summarizeDebateTurn({
+          const summaryPromise = summarizeDebateTurn({
             round: i + 1, model: model as Model, text: lastMsg.content, captain: captainForSummarize,
           })
-          debateSummaries.push(summary)
+          pendingSummary = summaryPromise
+          pendingRaw = { model: model as Model, text: lastMsg.content, round: i + 1 }
 
-          // ── 판정 호출 — captain 모델이 점수 매김. captain='none' 이면 점수 X (verdict=null).
-          // judge 한테 보내는 prior 도 summary 만 (raw 응답 X). judge 자체도 token 폭주 차단.
-          const priorForJudge = debateSummaries.slice(0, -1).map(s => ({ model: s.model, text: s.text }))
+          // ── judge 도 fire-and-forget. summary 끝나는 즉시 진행. UI 만 갱신 (다음 라운드 무관).
+          //   prior snapshot 을 closure 로 capture — 이후 debateSummaries 변경에 영향 없게.
+          const judgePriorSnapshot = debateSummaries.map(s => ({ model: s.model, text: s.text }))
+          const capturedLastMsg = lastMsg
+          const capturedModel = model
           this._post({ type: 'argueJudging', model })
-          const verdict = await judgeTurn(userText, model, summary.text, priorForJudge, captainForSummarize)
-          if (verdict) {
-            scoresByModel[model].total += verdict.score
-            scoresByModel[model].turns += 1
-            // verdict 을 메시지에 attach — rehydrate / 다음 turn 으로 시점 이동해도 보존
-            lastMsg.verdict = { score: verdict.score, reason: verdict.reason }
-            await this._persistMessages()
-            this._post({
-              type: 'argueScore',
-              msgId: lastMsg.id,
-              verdict,
-              scoreboard: scoresByModel,
-            })
-          }
+          const judgePromise = (async () => {
+            try {
+              const s = await summaryPromise
+              const verdict = await judgeTurn(userText, capturedModel, s.text, judgePriorSnapshot, captainForSummarize)
+              if (verdict) {
+                scoresByModel[capturedModel].total += verdict.score
+                scoresByModel[capturedModel].turns += 1
+                capturedLastMsg.verdict = { score: verdict.score, reason: verdict.reason }
+                await this._persistMessages()
+                this._post({
+                  type: 'argueScore',
+                  msgId: capturedLastMsg.id,
+                  verdict,
+                  scoreboard: scoresByModel,
+                })
+              }
+            } catch (err) {
+              log.warn('argue', `judge failed for round ${i + 1}: ${err instanceof Error ? err.message : String(err)}`)
+            }
+          })()
+          pendingJudges.push(judgePromise)
         }
+      }
+
+      // v0.1.45+: 마지막 라운드의 summary 와 모든 judge 마무리.
+      if (pendingSummary) {
+        try {
+          const s = await pendingSummary
+          debateSummaries.push(s)
+        } catch (err) {
+          log.warn('argue', `final pending summary failed: ${err instanceof Error ? err.message : String(err)}`)
+        }
+      }
+      // 모든 judge UI 갱신 완료까지 대기 — argue 종료 시점에 점수 다 표시되도록.
+      if (pendingJudges.length > 0) {
+        await Promise.allSettled(pendingJudges)
       }
 
       this._inArgue = false
@@ -4623,7 +4676,7 @@ ${result.failureSummary || result.output.slice(-3000)}
     const override = this._cfg<string>('geminiModel')
     const model = override && override !== 'auto'
       ? override
-      : (effort === 'high' || effort === 'extra-high') ? 'gemini-2.5-pro' : 'gemini-2.5-flash'
+      : (effort === 'high' || effort === 'extra-high') ? 'gemini-3.1-pro-preview' : 'gemini-3.5-flash'
     // staticPrompt 있으면 그것만 캐시 — hash 안에 dynamic file ctx 가 빠져 hit rate 급등.
     // 없으면 기존처럼 전체 systemPrompt 캐시 (backward compat for consult calls).
     const cacheInstruction = staticPrompt ?? systemPrompt

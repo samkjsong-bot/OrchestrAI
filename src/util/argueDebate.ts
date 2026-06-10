@@ -69,8 +69,11 @@ export async function summarizeDebateTurn(
 export function buildArgueHistoryOverride(args: {
   userQuestion: string
   summaries: DebateTurnSummary[]
+  // v0.1.45+: 직전 라운드의 summary 가 백그라운드에서 아직 진행 중이면 raw 답변을 임시 포함.
+  // 다음 라운드가 summary 완성을 기다리지 않고 즉시 시작할 수 있게 — 답변과 Haiku 가 병렬로 돔.
+  pendingRaw?: { model: Model; text: string; round: number } | null
 }): Array<{ role: 'user' | 'assistant'; content: string }> {
-  const { userQuestion, summaries } = args
+  const { userQuestion, summaries, pendingRaw } = args
   const out: Array<{ role: 'user' | 'assistant'; content: string }> = []
   out.push({ role: 'user', content: userQuestion })
   for (const s of summaries) {
@@ -78,6 +81,12 @@ export function buildArgueHistoryOverride(args: {
     out.push({
       role: 'assistant',
       content: `<prior_turn from="${s.model}" round="${s.round}">\n${s.text}\n</prior_turn>`,
+    })
+  }
+  if (pendingRaw) {
+    out.push({
+      role: 'assistant',
+      content: `<prior_turn from="${pendingRaw.model}" round="${pendingRaw.round}">\n${pendingRaw.text}\n</prior_turn>`,
     })
   }
   return out

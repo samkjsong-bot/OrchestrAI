@@ -312,6 +312,7 @@ export async function callCodex(
           inputTokens = usage.input_tokens ?? 0
           outputTokens = usage.output_tokens ?? 0
           // OpenAI Responses API 의 prompt cache hit — gpt-5 류 자동 동작.
+          // 단 prompt_cache_key 박혀도 best-effort routing — 라운드마다 다른 머신 가면 cache 0 가능.
           cacheReadInputTokens = usage.input_tokens_details?.cached_tokens ?? 0
           cacheCreationInputTokens = usage.cache_creation_input_tokens ?? 0
         }

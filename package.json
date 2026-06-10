@@ -234,7 +234,7 @@
         "orchestrai.inlineCompletion": {
           "type": "boolean",
           "default": false,
-          "description": "에디터 inline ghost text 자동완성 (Cursor/Copilot 스타일). Gemini 2.5 Flash 사용. 무료 티어 RPM 빨리 소진될 수 있어 default false. 활성 시 Gemini API 키 필요."
+          "description": "에디터 inline ghost text 자동완성 (Cursor/Copilot 스타일). Gemini Flash 사용. 무료 티어 RPM 빨리 소진될 수 있어 default false. 활성 시 Gemini API 키 필요."
         },
         "orchestrai.codebaseRag.enabled": {
           "type": "boolean",
@@ -321,15 +321,15 @@
           "default": "auto",
           "enum": [
             "auto",
-            "gemini-2.5-flash",
-            "gemini-2.5-pro",
-            "gemini-2.0-flash"
+            "gemini-3.5-flash",
+            "gemini-3.1-pro-preview",
+            "gemini-2.5-flash-lite"
           ],
           "enumDescriptions": [
             "Auto: effort 따라 자동 (flash 기본, high 면 pro). 권장.",
-            "Gemini 2.5 Flash: 빠름·무료 tier 한도 큼.",
-            "Gemini 2.5 Pro: 강한 reasoning. 무료 tier RPM 작음.",
-            "Gemini 2.0 Flash: 안정적 fallback (1.5-flash 후속)."
+            "Gemini 3.5 Flash: 빠름·agentic/coding 강화.",
+            "Gemini 3.1 Pro Preview: 강한 reasoning·긴 컨텍스트.",
+            "Gemini 2.5 Flash Lite: 3.x 한도 초과 시 안정적 fallback."
           ],
           "description": "Gemini 모델 강제 — auto 면 effort 따라 자동. Google 무료 OAuth 사용."
         },

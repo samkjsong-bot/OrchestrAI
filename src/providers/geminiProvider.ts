@@ -8,17 +8,19 @@ import { isQuotaError } from '../util/quota'
 import { getGeminiModelOverride } from '../util/modelOverride'
 
 // 무료 티어: Pro는 5 RPM·100 RPD로 빡빡, Flash는 10 RPM·500 RPD로 여유.
-// medium은 Flash로 두고 Pro는 high에서만. 429 뜨면 자동 Flash 폴백.
-// 2.5-flash 가 RESOURCE_EXHAUSTED 시 1.5-flash 로 한 번 더 시도 (1.5 가 capacity 더 안정적).
+// v0.1.45+ 3.x 시리즈 업그레이드:
+//   low/medium: gemini-3.5-flash — flagship 수준 intelligence + flash 속도. agentic/coding 강화.
+//   high/extra-high: gemini-3.1-pro-preview — reasoning-first, 1M context, 복잡한 agentic workflow.
+//   FALLBACK: 3.5-flash (primary quota 시).
+//   STABLE_FALLBACK: 2.5-flash-lite (3.x 다 막혔을 때 정식 stable. 2.0 은 2026-06-01 shutdown 예정).
 const MODEL_BY_EFFORT: Record<Effort, string> = {
-  low: 'gemini-2.5-flash',
-  medium: 'gemini-2.5-flash',
-  high: 'gemini-2.5-pro',
-  'extra-high': 'gemini-2.5-pro',
+  low: 'gemini-3.5-flash',
+  medium: 'gemini-3.5-flash',
+  high: 'gemini-3.1-pro-preview',
+  'extra-high': 'gemini-3.1-pro-preview',
 }
-const FALLBACK_MODEL = 'gemini-2.5-flash'
-// 2.5 둘 다 막혔을 때 최후의 보루 — gemini-1.5-flash 는 v1beta 에서 NOT_FOUND, 2.0-flash 가 안정.
-const STABLE_FALLBACK_MODEL = 'gemini-2.0-flash'
+const FALLBACK_MODEL = 'gemini-3.5-flash'
+const STABLE_FALLBACK_MODEL = 'gemini-2.5-flash-lite'
 const IMAGE_RE = /<image name="([^"]*)" mime="([^"]*)">(data:[^<]+)<\/image>/g
 
 // esbuild는 static import / 분석가능한 dynamic import를 require()로 치환함.
@@ -98,7 +100,7 @@ async function runOnce(
     system: systemPrompt ?? 'You are an expert coding assistant.',
     messages: messages.map(toGeminiMessage),
     abortSignal,
-    maxOutputTokens: 65536,  // Gemini 2.5 한도까지 — 한 턴에 큰 프로그램도
+    maxOutputTokens: 65536,  // Gemini 장문 출력 한도까지 — 한 턴에 큰 프로그램도
     // safetySettings 강제 주입 시도 — ai-sdk-provider-gemini-cli 가 노출 안 하지만 underlying 까지 떠넘겨봄.
     // 작동하면 평범한 query 도 빈 응답 안 됨 / 작동 안 해도 부작용 없음.
     providerOptions: {
@@ -258,4 +260,3 @@ export async function callGemini(
   log.info('gemini', `done: usedModel=${usedModel}, contentChars=${res.content.length}, in=${res.inputTokens}, out=${res.outputTokens}`)
   return { content: res.content, inputTokens: res.inputTokens, outputTokens: res.outputTokens, usedModel }
 }
-

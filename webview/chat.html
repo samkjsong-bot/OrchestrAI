@@ -4761,8 +4761,14 @@
       .map(([m, t]) => {
         const tot = (t && typeof t === 'object') ? t : { input: 0, output: 0, rounds: 0, cacheRead: 0, cachedInput: 0 }
         const hot = m === totals.maxOutputModel ? ' style="color:#fb923c"' : ''
+        // v0.1.45+: codex 는 OpenAI best-effort routing 한계 — cache 라운드마다 다를 수 있음.
+        //   cache cell 옆에 작은 ⓘ + tooltip 으로 안내.
+        const isCodex = m === 'codex'
+        const codexHint = isCodex
+          ? ` <span style="color:var(--text-muted);font-size:9px;cursor:help" title="OpenAI Responses API 의 prompt_cache_key 는 best-effort routing — 라운드마다 다른 백엔드 머신 가면 cache 0. 우리 코드 fix 불가 (OpenAI 정책).">ⓘ</span>`
+          : ''
         const cacheCol = showCacheCols
-          ? `<span class="argue-total-cell" title="Claude prompt cache hit + Gemini cached input">⚡ ${((tot.cacheRead || 0) + (tot.cachedInput || 0)).toLocaleString()}</span>`
+          ? `<span class="argue-total-cell" title="Claude prompt cache hit + Gemini cached input + Codex (best-effort)">⚡ ${((tot.cacheRead || 0) + (tot.cachedInput || 0)).toLocaleString()}${codexHint}</span>`
           : ''
         return `<div class="argue-total-row${showCacheCols ? ' with-cache' : ''}"${hot}>
           <span class="argue-total-model">${escapeHtml(m)}</span>
@@ -5229,6 +5235,12 @@
             <div class="msg-content md" id="content-${m.id}">${renderMarkdown(m.content)}</div>
           </div>${verdictHtml}`
           container.appendChild(el)
+          // v0.1.45+: argue 종료 카드가 박힌 메시지면 그 직후에 카드 그림 (메시지 흐름 따라).
+          //   이전엔 별도 loop 에서 호출 → 모든 카드가 messages 끝에 쌓이는 버그.
+          if (m.argueTotalsCard) {
+            try { showArgueTotalsCard(m.argueTotalsCard.totals, m.argueTotalsCard.mode, m.argueTotalsCard.outputCapKR) }
+            catch (e) { console.error('[orchestrai] argue card rehydrate failed', e) }
+          }
           drawnCount++
         }
       } catch (err) {
@@ -5246,12 +5258,7 @@
     }
     const latestChanged = [...messages].reverse().find(m => m.role === 'assistant' && m.changeSummary && m.changeSummary.files > 0)
     updateReviewBar(latestChanged?.changeSummary || null)
-    // v0.1.39: argue 종료 카드 복원 — 영속화된 argueTotalsCard 가 박혀있으면 종료 카드 다시 그림.
-    for (const m of messages) {
-      if (m.role === 'assistant' && m.argueTotalsCard) {
-        try { showArgueTotalsCard(m.argueTotalsCard.totals, m.argueTotalsCard.mode, m.argueTotalsCard.outputCapKR) } catch (e) { console.error('[orchestrai] argue card rehydrate failed', e) }
-      }
-    }
+    // (argue 종료 카드 복원은 위 메시지 loop 안으로 통합됨 — 카드가 그 메시지 직후에 그려져야 위치 정확함)
     applyModelFilter()
     // rehydrate 직후엔 무조건 끝으로 스크롤 (reload 후 최상단에 위치하던 버그 fix).
     // requestAnimationFrame x2 — innerHTML 채운 직후 layout 아직 안 끝나서 scrollHeight 0 인 timing 회피.

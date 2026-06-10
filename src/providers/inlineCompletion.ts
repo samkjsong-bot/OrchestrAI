@@ -1,12 +1,12 @@
 // src/providers/inlineCompletion.ts
 // Cursor/Copilot 스타일 ghost text 인라인 자동완성.
-// Gemini 2.5 Flash 사용 (빠른 latency, 무료 티어). debounce + cache.
+// Gemini 3.5 Flash 사용 (빠른 latency, 무료 티어). debounce + cache.
 
 import * as vscode from 'vscode'
 import { log } from '../util/log'
 
 const ENDPOINT_BASE = 'https://generativelanguage.googleapis.com/v1beta/models'
-const MODEL = 'gemini-2.5-flash'
+const MODEL = 'gemini-3.5-flash'
 const DEBOUNCE_MS = 350
 const MAX_CONTEXT_LINES = 60
 const MAX_CACHE = 50

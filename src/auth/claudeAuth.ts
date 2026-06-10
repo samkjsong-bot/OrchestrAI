@@ -3,72 +3,116 @@
 // 더 이상 sk-ant-oat01- 토큰 입력 안 받음 (Anthropic이 3rd-party에 차단함).
 
 import * as vscode from 'vscode'
-import { query } from '@anthropic-ai/claude-agent-sdk'
+import { execFile } from 'child_process'
+import { promisify } from 'util'
 import { AuthStorage } from './storage'
 
 const CLI_DETECTED_MARKER = '__cli_detected__'
+const execFileAsync = promisify(execFile)
 
-function subscriptionEnv(): Record<string, string | undefined> {
-  const env: Record<string, string | undefined> = { ...process.env }
-  delete env.ANTHROPIC_API_KEY
-  return env
+interface ClaudeCliStatus {
+  loggedIn?: boolean
+  authMethod?: string
+  apiProvider?: string
+  subscriptionType?: string
+}
+
+function authStatusCommand(): { file: string; args: string[] } {
+  if (process.platform === 'win32') {
+    return {
+      file: process.env.ComSpec || 'cmd.exe',
+      args: ['/d', '/s', '/c', 'claude.cmd auth status'],
+    }
+  }
+  return { file: 'claude', args: ['auth', 'status'] }
+}
+
+function loginCommandHint(): string {
+  return process.platform === 'win32'
+    ? 'claude.cmd auth login --claudeai'
+    : 'claude auth login --claudeai'
+}
+
+function parseStatusJson(text: string): ClaudeCliStatus {
+  const start = text.indexOf('{')
+  const end = text.lastIndexOf('}')
+  if (start < 0 || end < start) {
+    throw new Error(`Claude auth status 응답을 JSON으로 읽지 못했습니다: ${text.slice(0, 200)}`)
+  }
+  return JSON.parse(text.slice(start, end + 1)) as ClaudeCliStatus
+}
+
+async function readClaudeCliStatus(): Promise<ClaudeCliStatus> {
+  const { file, args } = authStatusCommand()
+  try {
+    const { stdout, stderr } = await execFileAsync(file, args, {
+      cwd: vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? process.cwd(),
+      encoding: 'utf8',
+      maxBuffer: 1024 * 1024,
+      timeout: 15000,
+      windowsHide: true,
+    })
+    return parseStatusJson(`${stdout}\n${stderr}`.trim())
+  } catch (err: any) {
+    const output = String(err?.stderr || err?.stdout || err?.message || err).trim()
+    throw new Error(output || 'Claude CLI 실행 실패')
+  }
 }
 
 export class ClaudeAuth {
   constructor(private storage: AuthStorage) {}
 
-  // CLI가 설치·로그인되어 있는지 가벼운 system init 메시지로 확인
+  private async completeCliConnection(status: ClaudeCliStatus): Promise<boolean> {
+    if (status.apiProvider && status.apiProvider !== 'firstParty') {
+      const choice = await vscode.window.showWarningMessage(
+        `Claude CLI가 구독 계정이 아닌 ${status.apiProvider} 인증으로 설정되어 있습니다. API 과금 경로일 수 있어요.\n` +
+        `구독(Max/Pro) 쿼터로 쓰려면 "${loginCommandHint()}"로 다시 로그인해주세요.`,
+        '그래도 계속',
+      )
+      if (choice !== '그래도 계속') return false
+    }
+
+    await this.storage.setClaudeTokens({ type: 'oauth', accessToken: CLI_DETECTED_MARKER })
+    const plan = status.subscriptionType ? ` (${status.subscriptionType})` : ''
+    vscode.window.showInformationMessage(`✅ Claude Code CLI 연결 완료!${plan}`)
+    return true
+  }
+
+  private async startBrowserLogin(): Promise<boolean> {
+    const terminal = vscode.window.createTerminal({ name: 'Claude Login' })
+    terminal.show()
+    terminal.sendText(loginCommandHint(), true)
+
+    const done = await vscode.window.showInformationMessage(
+      'Claude 브라우저 로그인을 완료한 뒤 "연결 확인"을 눌러주세요.',
+      { modal: true },
+      '연결 확인',
+    )
+    if (done !== '연결 확인') return false
+
+    const status = await readClaudeCliStatus()
+    if (!status.loggedIn) {
+      vscode.window.showErrorMessage('Claude 로그인이 아직 완료되지 않았습니다. 브라우저 로그인 완료 후 다시 시도해주세요.')
+      return false
+    }
+    return this.completeCliConnection(status)
+  }
+
+  // CLI가 설치·로그인되어 있는지 실제 모델 호출 없이 확인.
   async login(): Promise<boolean> {
     try {
-      const q = query({
-        prompt: 'ok',
-        options: {
-          model: 'claude-haiku-4-5',
-          tools: [],
-          maxTurns: 1,
-          persistSession: false,
-          cwd: vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? process.cwd(),
-          env: subscriptionEnv(),
-        },
-      })
+      const status = await readClaudeCliStatus()
 
-      let apiKeySource: string | undefined
-      let completed = false
-      for await (const msg of q) {
-        if (msg.type === 'system' && msg.subtype === 'init') {
-          apiKeySource = msg.apiKeySource
-        }
-        if (msg.type === 'result') {
-          completed = true
-          if (msg.is_error) {
-            throw new Error(`CLI 에러: ${msg.subtype}`)
-          }
-          break
-        }
+      if (!status.loggedIn) {
+        return this.startBrowserLogin()
       }
 
-      if (!completed) {
-        vscode.window.showErrorMessage('Claude Code CLI 응답 없음. 설치·로그인 상태 확인하세요.')
-        return false
-      }
-
-      if (apiKeySource === 'env') {
-        const choice = await vscode.window.showWarningMessage(
-          'ANTHROPIC_API_KEY 환경변수가 감지됐어요. 이 상태로는 API 과금이 발생합니다.\n' +
-          '구독(Max/Pro) 쿼터로 쓰려면 환경변수 제거 후 다시 시도해주세요.',
-          '그래도 계속(API 과금 감수)',
-        )
-        if (choice !== '그래도 계속(API 과금 감수)') return false
-      }
-
-      await this.storage.setClaudeTokens({ type: 'oauth', accessToken: CLI_DETECTED_MARKER })
-      vscode.window.showInformationMessage('✅ Claude Code CLI 연결 완료!')
-      return true
+      return this.completeCliConnection(status)
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
       vscode.window.showErrorMessage(
         `Claude 연결 실패: ${msg}\n` +
-        `터미널에서 "claude" 명령어가 있는지, "claude /login" 되어있는지 확인해주세요.`,
+        `터미널에서 "claude.cmd --version" 및 "${loginCommandHint()}"를 확인해주세요.`,
       )
       return false
     }

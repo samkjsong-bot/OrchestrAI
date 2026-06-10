@@ -87,7 +87,7 @@ https://github.com/user-attachments/assets/359f9cc2-cc80-4ea6-a6d6-377fbf594fd3
 |---|---|
 | `orchestrai.claudeModel` | `auto` · `claude-sonnet-4-6` · `claude-opus-4-7` · `claude-haiku-4-5` |
 | `orchestrai.codexModel` | `auto` · `gpt-5.4-mini` · `gpt-5.4` · `gpt-5.5` |
-| `orchestrai.geminiModel` | `auto` · `gemini-2.5-flash` · `gemini-2.5-pro` · `gemini-2.0-flash` |
+| `orchestrai.geminiModel` | `auto` · `gemini-3.5-flash` · `gemini-3.1-pro-preview` · `gemini-2.5-flash-lite` |
 | `orchestrai.thinkingMode` | `auto` · `off` · `on` · `extra` (Claude / Gemini Pro 만) |
 
 `auto` 면 effort→model 매핑 유지(기본). 그 외 값이면 effort 무시하고 강제. `thinkingMode=extra` 면 모델 한도 풀(Sonnet 32k / Opus 64k tokens).
