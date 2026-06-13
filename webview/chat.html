@@ -2733,13 +2733,6 @@
           </div>
         </div>
         <div class="prefs-row">
-          <label class="prefs-label" data-i18n="prefs_label_codexEngine">Codex 엔진</label>
-          <div class="prefs-segmented" id="pref-codexEngine">
-            <button data-val="native" onclick="savePrefSeg('codexEngine', this)" data-i18n-title="codexEngine_native_tooltip" title="OpenAI 공식 codex.exe MCP (권장)">native</button>
-            <button data-val="legacy" onclick="savePrefSeg('codexEngine', this)" data-i18n-title="codexEngine_legacy_tooltip" title="자체 fetch chatgpt.com 백엔드">legacy</button>
-          </div>
-        </div>
-        <div class="prefs-row">
           <label class="prefs-label" data-i18n="prefs_label_confidence">라우터 신뢰도</label>
           <div style="display:flex; align-items:center; gap:8px; flex:1;">
             <input type="range" min="0.5" max="1" step="0.01" id="pref-confidenceThreshold" oninput="onConfidenceSlide(this)" onchange="savePref('confidenceThreshold', parseFloat(this.value))" style="flex:1">
@@ -3821,7 +3814,6 @@
     chk('pref-tokenBudget-enabled', prefs['tokenBudget.enabled'] !== false)
     chk('pref-geminiContextCache-enabled', !!prefs['geminiContextCache.enabled'])
     seg('pref-contextWindow', prefs.contextWindow ?? 'default')
-    seg('pref-codexEngine', prefs.codexEngine ?? 'native')
     seg('pref-language', prefs.language ?? 'auto')
     const cthr = prefs.confidenceThreshold ?? 0.92
     const slider = document.getElementById('pref-confidenceThreshold')

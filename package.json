@@ -113,7 +113,7 @@
       },
       {
         "command": "orchestrai.loginCodex",
-        "title": "OrchestrAI: Login with Codex (ChatGPT)"
+        "title": "OrchestrAI: Connect Codex (ChatGPT)"
       },
       {
         "command": "orchestrai.showLogs",
@@ -395,19 +395,6 @@
           "type": "boolean",
           "default": false,
           "description": "Gemini API Context Cache 활성화 (directive Phase 3). true + geminiApiKey 등록 시 큰 static system prompt 를 한 번만 Gemini API 에 올려두고 매 요청은 dynamic 부분만 전송. 캐시된 input 은 약 25% 단가, 같은 토큰 재전송 X. 무료 OAuth tier 와 별개 — API 키 사용 (이미지 키 동일). 캐시 못 만들거나 호출 실패 시 OAuth 경로로 자동 fallback."
-        },
-        "orchestrai.codexEngine": {
-          "type": "string",
-          "default": "native",
-          "enum": [
-            "native",
-            "legacy"
-          ],
-          "enumDescriptions": [
-            "Native: spawn Codex CLI binary as MCP stdio server (recommended). Uses OpenAI-official tool handling, no path/hallucination issues. Requires Codex VSCode extension installed.",
-            "Legacy: direct fetch to chatgpt.com backend (older path). Use as fallback if native engine has issues."
-          ],
-          "description": "Codex 호출 엔진 선택. native = OpenAI 공식 codex.exe (권장), legacy = 우리 자체 fetch 구현."
         },
         "orchestrai.customProviders": {
           "type": "array",

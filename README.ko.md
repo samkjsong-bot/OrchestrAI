@@ -307,7 +307,7 @@ OrchestrAI 자체엔 API 키 0개 필요. 각 모델별 인증만:
 ## 🙏 영감
 
 - Claude Code for VSCode — UI/UX 일부 참고
-- Codex CLI — fingerprint 우회 경로
+- Codex (ChatGPT) — 공식 Codex(ChatGPT) VSCode 확장을 통해 실행
 - Roo Code — boomerang task 패턴
 - Cursor — RAG/checkpoint 아이디어
 - Geoffrey Huntley — Ralph Wiggum loop 명명

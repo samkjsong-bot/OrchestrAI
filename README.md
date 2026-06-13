@@ -311,7 +311,7 @@ Architecture details: [CODEMAP.md](./CODEMAP.md)
 ## 🙏 Inspiration
 
 - Claude Code for VSCode — partial UI/UX reference
-- Codex CLI — fingerprint bypass path
+- Codex (ChatGPT) — runs via the official Codex (ChatGPT) VSCode extension
 - Roo Code — boomerang task pattern
 - Cursor — RAG / checkpoint ideas
 - Geoffrey Huntley — Ralph Wiggum loop naming

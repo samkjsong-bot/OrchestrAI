@@ -7,7 +7,7 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js'
 import { Orchestrator, inferEffort, parseAllMentions } from './router/orchestrator'
 import { callClaude, setClaudeFallbackNotifier } from './providers/claudeProvider'
-import { callCodex, setCodexFallbackNotifier } from './providers/codexProvider'
+import { callCodexNative } from './providers/codexMcpProvider'
 import { getCodexMcpClient, disposeCodexMcpClient } from './providers/codexMcpClient'
 import { OrchestrAICompletionProvider } from './providers/inlineCompletion'
 import { callGemini, setGeminiFallbackNotifier, setGeminiApiKey } from './providers/geminiProvider'
@@ -20,7 +20,6 @@ import { getCaptain, getActiveProviders, captainAvailable } from './util/captain
 import { ChatMessage, RouterMode, RoutingDecision, Model, Effort, ChangeSummary } from './router/types'
 import { AuthStorage } from './auth/storage'
 import { ClaudeAuth } from './auth/claudeAuth'
-import { CodexAuth } from './auth/codexAuth'
 import { GeminiAuth } from './auth/geminiAuth'
 import { UsageTracker, PLAN_INFO } from './util/usage'
 import { judgeTurn } from './router/judge'
@@ -1137,7 +1136,6 @@ class OrchestrAIViewProvider implements vscode.WebviewViewProvider, vscode.Dispo
   private _bundleEnabled = false
   private _authStorage: AuthStorage
   private _claudeAuth: ClaudeAuth
-  private _codexAuth: CodexAuth
   private _geminiAuth: GeminiAuth
   private _usage: UsageTracker
   private _mcp: McpManager
@@ -1178,7 +1176,6 @@ class OrchestrAIViewProvider implements vscode.WebviewViewProvider, vscode.Dispo
   ) {
     this._authStorage = new AuthStorage(_context.secrets)
     this._claudeAuth = new ClaudeAuth(this._authStorage)
-    this._codexAuth = new CodexAuth(this._authStorage)
     this._geminiAuth = new GeminiAuth(this._authStorage)
     this._usage = new UsageTracker()
     // v0.1.39: reload 해도 세션 토큰 사용량 유지. record() 시 자동 영속화 (debounce 200ms).
@@ -1209,9 +1206,6 @@ class OrchestrAIViewProvider implements vscode.WebviewViewProvider, vscode.Dispo
     })
     setClaudeFallbackNotifier((from, to, reason) => {
       this._post({ type: 'modelFallback', from, to, reason, model: 'claude' })
-    })
-    setCodexFallbackNotifier((from, to, reason) => {
-      this._post({ type: 'modelFallback', from, to, reason, model: 'codex' })
     })
 
     // 사용자가 입력한 Gemini API key 가 있으면 텍스트 호출 시 그쪽 사용 (Code Assist OAuth tier 보다 한도 큼).
@@ -1641,6 +1635,21 @@ ${hit.kind === 'cmd' ? 'When done, the AI! comment line itself can stay — user
     this._updateUsageStatusBar()
   }
 
+  // Codex 연결 안내 — 자체 OAuth 없이 공식 Codex(ChatGPT) 확장에 위임.
+  private async _connectCodex(): Promise<void> {
+    if (getCodexMcpClient().isAvailable()) {
+      vscode.window.showInformationMessage('Codex (ChatGPT) is connected via the official Codex extension.')
+      return
+    }
+    const pick = await vscode.window.showInformationMessage(
+      'Install the official Codex (ChatGPT) VSCode extension and sign in there, then OrchestrAI will use it automatically.',
+      'Open Extensions',
+    )
+    if (pick === 'Open Extensions') {
+      await vscode.commands.executeCommand('workbench.extensions.search', 'openai.chatgpt')
+    }
+  }
+
   // 현재 로그인된 LLM 계정 정보 표시 — 이메일·플랜 등 토큰에서 디코드 가능한 정보
   async showAccounts() {
     const decodeJwt = (token: string): any => {
@@ -1675,27 +1684,13 @@ ${hit.kind === 'cmd' ? 'When done, the AI! comment line itself can stay — user
       lines.push(`⚠ Claude 정보 조회 실패: ${err instanceof Error ? err.message : err}`)
     }
 
-    // Codex — ChatGPT OAuth (OpenAI JWT 에 profile namespace claim)
-    try {
-      const tok = await this._codexAuth.getAccessToken()
-      const accountId = await this._codexAuth.getAccountId()
-      if (tok) {
-        const claims = decodeJwt(tok)
-        const profile = claims?.['https://api.openai.com/profile'] ?? {}
-        const auth = claims?.['https://api.openai.com/auth'] ?? {}
-        const email = profile.email ?? claims?.email ?? '(이메일 정보 없음)'
-        const plan = auth.chatgpt_plan_type ?? auth.plan_type ?? auth.plan ?? '(플랜 정보 없음)'
-        lines.push(``)
-        lines.push(`✅ **Codex** (ChatGPT OAuth)`)
-        lines.push(`   이메일: ${email}`)
-        lines.push(`   플랜: ${plan}`)
-        if (accountId) lines.push(`   계정 ID: ${accountId.slice(0, 12)}...`)
-      } else {
-        lines.push(``)
-        lines.push(`❌ **Codex** — 로그인 안 됨`)
-      }
-    } catch (err) {
-      lines.push(`⚠ Codex 정보 조회 실패: ${err instanceof Error ? err.message : err}`)
+    // Codex — 공식 Codex(ChatGPT) VSCode 확장의 codex 바이너리를 MCP 로 사용
+    if (getCodexMcpClient().isAvailable()) {
+      lines.push(``)
+      lines.push(`✅ **Codex (ChatGPT): 공식 확장 연결됨**`)
+    } else {
+      lines.push(``)
+      lines.push(`❌ **Codex (ChatGPT): 미설치** — 공식 Codex(ChatGPT) VSCode 확장 설치/로그인 필요`)
     }
 
     // Gemini — gemini-cli 가 ~/.gemini/oauth_creds.json 에 저장. id_token JWT 에 email
@@ -2127,7 +2122,7 @@ ${hit.kind === 'cmd' ? 'When done, the AI! comment line itself can stay — user
             await this._sendAuthStatus()
             break
           case 'loginCodex':
-            await this._codexAuth.login()
+            await this._connectCodex()
             await this._sendAuthStatus()
             break
           case 'logoutClaude':
@@ -2135,7 +2130,7 @@ ${hit.kind === 'cmd' ? 'When done, the AI! comment line itself can stay — user
             await this._sendAuthStatus()
             break
           case 'logoutCodex':
-            await this._codexAuth.logout()
+            vscode.window.showInformationMessage('Sign out from the official Codex (ChatGPT) extension to disconnect.')
             await this._sendAuthStatus()
             break
           case 'loginGemini':
@@ -2261,8 +2256,8 @@ ${hit.kind === 'cmd' ? 'When done, the AI! comment line itself can stay — user
             switch (msg.action) {
               case 'loginClaude':  await this._claudeAuth.login();  break
               case 'logoutClaude': await this._claudeAuth.logout(); break
-              case 'loginCodex':   await this._codexAuth.login();   break
-              case 'logoutCodex':  await this._codexAuth.logout();  break
+              case 'loginCodex':   await this._connectCodex();      break
+              case 'logoutCodex':  vscode.window.showInformationMessage('Sign out from the official Codex (ChatGPT) extension to disconnect.'); break
               case 'loginGemini':  await this._geminiAuth.login();  break
               case 'logoutGemini': await this._geminiAuth.logout(); break
             }
@@ -2492,6 +2487,8 @@ ${hit.kind === 'cmd' ? 'When done, the AI! comment line itself can stay — user
 
   private async _sendAuthStatus() {
     const status = await this._authStorage.getStatus()
+    // Codex 는 자체 토큰 저장 없이 공식 Codex(ChatGPT) 확장 감지로 판단.
+    status.codex = getCodexMcpClient().isAvailable()
     this._post({ type: 'authStatus', ...status })
   }
 
@@ -2504,7 +2501,7 @@ ${hit.kind === 'cmd' ? 'When done, the AI! comment line itself can stay — user
       'claudeModel', 'codexModel', 'geminiModel', 'thinkingMode',
       'autoGitCommit', 'autoPreview', 'autoOpenDiff', 'aiMagicComments', 'inlineCompletion',
       'codebaseRag.enabled', 'codebaseRag.autoIndex',
-      'contextWindow', 'codexEngine', 'confidenceThreshold',
+      'contextWindow', 'confidenceThreshold',
       'tokenBudget.enabled', 'geminiContextCache.enabled',
       'language',
     ]
@@ -2889,8 +2886,8 @@ ${hit.kind === 'cmd' ? 'When done, the AI! comment line itself can stay — user
       case 'viewInfo':     await this.showAccounts();        break
       case 'loginClaude':  await this._claudeAuth.login();  break
       case 'logoutClaude': await this._claudeAuth.logout(); break
-      case 'loginCodex':   await this._codexAuth.login();   break
-      case 'logoutCodex':  await this._codexAuth.logout();  break
+      case 'loginCodex':   await this._connectCodex();      break
+      case 'logoutCodex':  vscode.window.showInformationMessage('Sign out from the official Codex (ChatGPT) extension to disconnect.'); break
       case 'loginGemini':  await this._geminiAuth.login();  break
       case 'logoutGemini': await this._geminiAuth.logout(); break
       case 'geminiApiKey': await this._configureGeminiApiKey(); break
@@ -4284,10 +4281,8 @@ ${result.failureSummary || result.output.slice(-3000)}
               if (!tok) throw new Error('Claude not logged in')
               result = await callClaude([{ role: 'user', content: fullPrompt }], task.effort, tok, onChunk, sysPrompt, this._permissionMode, undefined, this._currentAbort?.signal)
             } else if (task.model === 'codex') {
-              const tok = await this._codexAuth.getAccessToken()
-              const accountId = await this._codexAuth.getAccountId()
-              if (!tok) throw new Error('Codex not logged in')
-              result = await this._runCodexAgent([{ role: 'user', content: fullPrompt }], task.effort, tok, accountId ?? undefined, sysPrompt, onChunk, subMsgId, userMsg.id)
+              if (!getCodexMcpClient().isAvailable()) throw new Error('Codex not available')
+              result = await this._runCodexAgent([{ role: 'user', content: fullPrompt }], task.effort, sysPrompt, onChunk, subMsgId, userMsg.id)
             } else {
               result = await this._runGeminiAgent([{ role: 'user', content: fullPrompt }], task.effort, sysPrompt, onChunk, subMsgId, userMsg.id)
             }
@@ -4534,8 +4529,6 @@ ${result.failureSummary || result.output.slice(-3000)}
   private async _runCodexAgent(
     history: Array<{ role: 'user' | 'assistant'; content: string }>,
     effort: Effort,
-    accessToken: string,
-    accountId: string | undefined,
     systemPrompt: string,
     onChunk: (text: string) => void,
     streamId: string,
@@ -4546,119 +4539,35 @@ ${result.failureSummary || result.output.slice(-3000)}
     // v0.1.41: OpenAI Responses API 의 prompt_cache_key — backend routing 안정 (cache hit 율 ↑).
     promptCacheKey?: string,
   ): Promise<{ content: string; inputTokens: number; outputTokens: number; usedModel?: string; cacheReadInputTokens?: number; cacheCreationInputTokens?: number }> {
-    // native engine: codex.exe mcp-server 통해 호출. tool/path/auth 다 codex가 처리.
-    const engine = this._cfg<string>('codexEngine') ?? 'native'
-    if (engine === 'native') {
-      const client = getCodexMcpClient()
-      if (client.isAvailable()) {
-        const wsRoot = getWorkspaceRoot() ?? process.cwd()
-        const last = history[history.length - 1]
-        const prior = history.slice(0, -1)
-        // Static/Dynamic split: baseInstructions = staticPrompt 만 (stable hash).
-        // v0.1.39 fix: dynamicContext 는 마지막 user 직전 (= prior 끝, last 앞) 에 끼움.
-        //   이전엔 prompt 맨 앞 prepend 였는데, OpenAI cache prefix 가 prompt 첫 부분부터 hash 라
-        //   collabHint 등 라운드별 변동분이 prefix 깨뜨려서 cache 0%.
-        const baseInstructions = staticPrompt ?? systemPrompt
-        const dynamicBlock = dynamicContext ? `<context>\n${dynamicContext}\n</context>\n\n` : ''
-        // history 의 prior 부분 다음에 dynamicBlock + last user message 순서로.
-        const prompt = (prior.length
-          ? prior.map(m => `${m.role === 'user' ? 'User' : 'Assistant'}: ${m.content}`).join('\n\n') + '\n\n---\n\n'
-          : ''
-        ) + dynamicBlock + (last?.content ?? '')
-        try {
-          const result = await client.run({
-            prompt,
-            cwd: wsRoot,
-            baseInstructions,
-            approvalPolicy: this._permissionMode === 'ask' ? 'on-request' : 'never',
-            onProgress: onChunk,
-            abortSignal: this._currentAbort?.signal,
-          })
-          return result
-        } catch (err) {
-          log.warn('codex', `native engine failed, falling back to legacy: ${err instanceof Error ? err.message : String(err)}`)
-          // legacy로 폴백
-        }
-      } else {
-        log.info('codex', 'native engine unavailable (Codex extension not installed?), using legacy')
-      }
+    // native-only: 공식 Codex(ChatGPT) 확장의 codex 바이너리를 mcp-server 로 호출. tool/path/auth/network 다 codex가 처리.
+    void streamId; void turnId; void promptCacheKey
+    const client = getCodexMcpClient()
+    if (!client.isAvailable()) {
+      throw new Error('Codex 사용 불가 — 공식 Codex(ChatGPT) VSCode 확장을 설치하고 로그인해주세요.')
     }
-
-    const agentHistory = [...history]
-    let inputTokens = 0
-    let outputTokens = 0
-    let cacheReadAccum = 0
-    let cacheCreationAccum = 0
-
-    for (let turn = 0; turn < MAX_CODEX_TOOL_TURNS; turn++) {
-      if (this._currentAbort?.signal.aborted) throw new Error('aborted')
-      // chunk를 buffer에 누적하면서 forward. tool call 패턴(`{"to":...,"code":...`) 감지되면 그 시점부터 멈춰서 사용자에게 raw json 노출 안 함.
-      let bufferedRaw = ''
-      let toolCallSeen = false
-      const onCodexChunk = (text: string) => {
-        bufferedRaw += text
-        // tool call JSON 시작 패턴 — `{"to":` 또는 `<orchestrai-tool>` 또는 ```json {"tool":
-        if (!toolCallSeen && /\{\s*"(?:to|tool)"\s*:/i.test(bufferedRaw)) {
-          toolCallSeen = true
-          return  // 그 시점부터 stream 끊음
-        }
-        if (!toolCallSeen) onChunk(text)
-      }
-      const result = await callCodex(
-        agentHistory,
-        effort,
-        accessToken,
-        onCodexChunk,
-        systemPrompt,
-        accountId,
-        this._currentAbort?.signal,
-        staticPrompt,
-        dynamicContext,
-        promptCacheKey,
-      )
-      inputTokens += result.inputTokens
-      outputTokens += result.outputTokens
-      // v0.1.39 fix: cacheRead/Creation 누적해야 _usage.record() 에 정확히 들어감. 이전엔 누락돼서 argue 패널 codex 캐시 항상 0.
-      cacheReadAccum += (result as any).cacheReadInputTokens ?? 0
-      cacheCreationAccum += (result as any).cacheCreationInputTokens ?? 0
-
-      const toolCall = parseCodexToolCall(result.content)
-      if (!toolCall) {
-        // tool 호출 없음. 이미 chunk forward 끝남.
-        return {
-          content: result.content, inputTokens, outputTokens,
-          usedModel: (result as any).usedModel,
-          cacheReadInputTokens: cacheReadAccum,
-          cacheCreationInputTokens: cacheCreationAccum,
-        }
-      }
-
-      const label = formatCodexToolCall(toolCall)
-      this._post({ type: 'streamChunk', id: streamId, text: `\n\n  ⏺ ${label}\n` })
-
-      let toolResult: string
-      try {
-        const approved = await this._requestToolApproval(toolCall, 'codex')
-        toolResult = approved
-          ? await executeCodexTool(
-              toolCall,
-              (relPath, before) => this._recordSnapshot(turnId, relPath, before),
-              (server, name, args) => this._mcp.callTool(server, name, args),
-            )
-          : '[tool rejected] user rejected the approval request'
-      } catch (err) {
-        const errMsg = err instanceof Error ? err.message : String(err)
-        toolResult = `[tool error] ${errMsg}`
-      }
-
-      agentHistory.push({ role: 'assistant', content: result.content })
-      agentHistory.push({
-        role: 'user',
-        content: `<tool_result tool="${toolCall.tool}" path="${toolCall.path ?? ''}">\n${toolResult}\n</tool_result>`,
-      })
-    }
-
-          throw new Error(`Codex 도구 호출이 ${MAX_CODEX_TOOL_TURNS}턴을 넘었습니다.`)
+    const wsRoot = getWorkspaceRoot() ?? process.cwd()
+    const last = history[history.length - 1]
+    const prior = history.slice(0, -1)
+    // Static/Dynamic split: baseInstructions = staticPrompt 만 (stable hash).
+    // v0.1.39 fix: dynamicContext 는 마지막 user 직전 (= prior 끝, last 앞) 에 끼움.
+    //   이전엔 prompt 맨 앞 prepend 였는데, OpenAI cache prefix 가 prompt 첫 부분부터 hash 라
+    //   collabHint 등 라운드별 변동분이 prefix 깨뜨려서 cache 0%.
+    const baseInstructions = staticPrompt ?? systemPrompt
+    const dynamicBlock = dynamicContext ? `<context>\n${dynamicContext}\n</context>\n\n` : ''
+    // history 의 prior 부분 다음에 dynamicBlock + last user message 순서로.
+    const prompt = (prior.length
+      ? prior.map(m => `${m.role === 'user' ? 'User' : 'Assistant'}: ${m.content}`).join('\n\n') + '\n\n---\n\n'
+      : ''
+    ) + dynamicBlock + (last?.content ?? '')
+    const result = await client.run({
+      prompt,
+      cwd: wsRoot,
+      baseInstructions,
+      approvalPolicy: this._permissionMode === 'ask' ? 'on-request' : 'never',
+      onProgress: onChunk,
+      abortSignal: this._currentAbort?.signal,
+    })
+    return result
   }
 
   // Gemini API Context Cache 경로 — _runGeminiAgent 가 호출. 성공 시 결과 반환, null 이면 caller 가 OAuth fallback.
@@ -4964,21 +4873,17 @@ ${result.failureSummary || result.output.slice(-3000)}
           if (teamRole === 'architect') {
             // 사용자가 환경설정에서 비활성한 모델은 team consult tool 에서도 제외 (active=의도).
             const activeForTeam = getActiveProviders()
-            const codexActive = activeForTeam.includes('codex')
+            const codexActive = activeForTeam.includes('codex') && getCodexMcpClient().isAvailable()
             const geminiActive = activeForTeam.includes('gemini')
-            const codexToken = codexActive ? await this._codexAuth.getAccessToken() : null
-            const codexAccountId = codexActive ? await this._codexAuth.getAccountId() : null
             const geminiAvailable = geminiActive ? await this._geminiAuth.isLoggedIn() : false
             const geminiApiKey = await this._authStorage.getGeminiApiKey()
             const teamServer = buildTeamMcpServer({
-              codexToken: codexToken ?? undefined,
-              codexAccountId: codexAccountId ?? undefined,
               geminiAvailable,
               geminiApiKey: geminiApiKey ?? undefined,
               workspacePath: getWorkspaceRoot() ?? process.cwd(),
               onActivity: (text) => this._post({ type: 'streamChunk', id: assistantMsgId, text: `\n  ⏺ ${text}\n` }),
               // 핵심: 동료 호출 시 별도 말풍선 생성 → 사용자가 Codex/Gemini 응답을 직접 보게
-              runCodexAgent: codexToken ? async (task: string) => {
+              runCodexAgent: codexActive ? async (task: string) => {
                 const consultId = `consult-${Date.now()}-codex`
                 const consultDecision: RoutingDecision = {
                   model: 'codex', effort: 'medium', confidence: 1.0, reason: 'team-consult',
@@ -5003,8 +4908,6 @@ After files are written, reply with concise summary (file paths + what changed).
                   const r = await this._runCodexAgent(
                     [{ role: 'user', content: task }],
                     'medium',
-                    codexToken,
-                    codexAccountId ?? undefined,
                     sysPrompt,
                     (text) => this._post({ type: 'streamChunk', id: consultId, text }),
                     consultId,
@@ -5145,18 +5048,15 @@ PATH RULES: paths are relative to workspace root. Don't prefix with "${gWsBase}/
           // 안전망 OFF — '✅ 완료' 로 강제 교체하니 Claude 가 진짜 답한 내용까지 다 사라지는 부작용.
           // ventriloquize 자체는 거슬리지만 빈 답보단 차라리 raw 가 낫다 (사용자: '하네스 풀어').
         } else if (currentModel === 'codex') {
-          const codexToken = await this._codexAuth.getAccessToken()
-          if (!codexToken) {
-            const wasLoggedIn = await this._codexAuth.isLoggedIn()
-            this._post({ type: 'authRequired', model: 'codex', reason: wasLoggedIn ? 'expired' : 'not_logged_in' })
+          if (!getCodexMcpClient().isAvailable()) {
+            this._post({ type: 'authRequired', model: 'codex', reason: 'not_logged_in' })
             return false
           }
-          const accountId = await this._codexAuth.getAccountId()
           // v0.1.41: chat tab 별 stable promptCacheKey — 같은 대화에서 backend 머신 routing 안정 → cache hit ↑.
           //   tab id 자체가 충분히 unique + 영속적이라 그대로 사용. 너무 많은 chat 동시 사용 시 rate limit 우려 있지만 일반 사용엔 안전.
           const promptCacheKey = `orchestrai-${this._activeChatId}`
           result = await this._runCodexAgent(
-            history, effectiveDecision.effort, codexToken, accountId ?? undefined,
+            history, effectiveDecision.effort,
             systemPrompt, onChunk, assistantMsgId, turnId,
             staticPrompt, fullDynamic, promptCacheKey,
           )
@@ -5458,10 +5358,8 @@ N — one line summary`
           if (!tok) throw new Error('Claude not logged in')
           result = await callClaude(reviewMessages, 'high', tok, onChunk, sysPrompt, 'auto-edit', undefined, this._currentAbort?.signal)
         } else if (m === 'codex') {
-          const tok = await this._codexAuth.getAccessToken()
-          const accountId = await this._codexAuth.getAccountId()
-          if (!tok) throw new Error('Codex not logged in')
-          result = await callCodex(reviewMessages, 'high', tok, onChunk, sysPrompt, accountId ?? undefined, this._currentAbort?.signal)
+          if (!getCodexMcpClient().isAvailable()) throw new Error('Codex not available')
+          result = await callCodexNative(reviewMessages, 'high', getWorkspaceRoot() ?? process.cwd(), onChunk, sysPrompt, this._currentAbort?.signal)
         } else {
           result = await callGemini(reviewMessages, 'high', onChunk, sysPrompt, this._currentAbort?.signal)
         }
@@ -5880,13 +5778,11 @@ Be concise. Korean if reviews are Korean.`
         }
         await callClaude(history, decision.effort, claudeToken, onChunk, systemPrompt, this._permissionMode)
       } else if (decision.model === 'codex') {
-        const codexToken = await this._codexAuth.getAccessToken()
-        if (!codexToken) {
-          response.markdown('Codex login is required.')
+        if (!getCodexMcpClient().isAvailable()) {
+          response.markdown('Codex is unavailable — install the official Codex (ChatGPT) extension.')
           return
         }
-        const accountId = await this._codexAuth.getAccountId()
-        await callCodex(history, decision.effort, codexToken, onChunk, systemPrompt, accountId ?? undefined)
+        await callCodexNative(history, decision.effort, getWorkspaceRoot() ?? process.cwd(), onChunk, systemPrompt, undefined)
       } else {
         if (!(await this._geminiAuth.isLoggedIn())) {
           response.markdown('Gemini login is required.')

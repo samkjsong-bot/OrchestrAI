@@ -1,6 +1,6 @@
 // src/providers/codexMcpProvider.ts
-// callCodex 드롭인 교체 — codex CLI mcp-server 통한 호출.
-// 기존 codexProvider와 동일 시그니처. _runCodexAgent에서 setting에 따라 어느 쪽 부를지 분기.
+// Codex 호출 — 공식 Codex(ChatGPT) 확장의 codex CLI 를 mcp-server 로 띄워 호출.
+// auth / network / tool 처리는 모두 공식 바이너리가 담당.
 
 import { Effort } from '../router/types'
 import { getCodexMcpClient } from './codexMcpClient'

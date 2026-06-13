@@ -40,7 +40,6 @@ export type StringsDict = {
 
   prefs_section_router: string
   prefs_label_contextWindow: string
-  prefs_label_codexEngine: string
   prefs_label_confidence: string
   prefs_confidence_hint: string
 
@@ -259,10 +258,6 @@ export type StringsDict = {
   contextWindow_wide_tooltip: string
   contextWindow_full_tooltip: string
 
-  // codexEngine segment tooltips
-  codexEngine_native_tooltip: string
-  codexEngine_legacy_tooltip: string
-
   // changed-files panel
   change_panel_toggle: string               // "펼치기/접기"
   change_file_open: string                  // "파일 열기"
@@ -339,7 +334,6 @@ const ko: StringsDict = {
 
   prefs_section_router: '⚡ 라우터·엔진',
   prefs_label_contextWindow: '컨텍스트 윈도우',
-  prefs_label_codexEngine: 'Codex 엔진',
   prefs_label_confidence: '라우터 신뢰도',
   prefs_confidence_hint: '↓ 낮을수록 LLM 라우터(Haiku) 더 자주 호출 → 정확도 ↑ 비용 ↑',
 
@@ -540,9 +534,6 @@ const ko: StringsDict = {
   contextWindow_wide_tooltip: 'Deep: 활성 파일+관련 파일+심볼 그래프+RAG+diff. 복잡한 작업.',
   contextWindow_full_tooltip: '⚠ Full: 전 워크스페이스. 매 요청 확인 모달. OAuth/API 쿼터 폭주 위험.',
 
-  codexEngine_native_tooltip: 'OpenAI 공식 codex.exe MCP (권장)',
-  codexEngine_legacy_tooltip: '자체 fetch chatgpt.com 백엔드',
-
   change_panel_toggle: '펼치기/접기',
   change_file_open: '파일 열기',
   change_file_diff: 'diff 보기',
@@ -615,7 +606,6 @@ const en: StringsDict = {
 
   prefs_section_router: '⚡ Router · Engine',
   prefs_label_contextWindow: 'Context window',
-  prefs_label_codexEngine: 'Codex engine',
   prefs_label_confidence: 'Router confidence',
   prefs_confidence_hint: '↓ Lower → LLM router (Haiku) called more often → higher accuracy, higher cost',
 
@@ -815,9 +805,6 @@ const en: StringsDict = {
   contextWindow_default_tooltip: 'Balanced: selection · active symbol · related snippets · diff. Recommended.',
   contextWindow_wide_tooltip: 'Deep: active file + related files + symbol graph + RAG + diff. Complex work.',
   contextWindow_full_tooltip: '⚠ Full: entire workspace. Per-request confirmation. OAuth/API quota risk.',
-
-  codexEngine_native_tooltip: 'OpenAI official codex.exe MCP (recommended)',
-  codexEngine_legacy_tooltip: 'Self-fetch chatgpt.com backend',
 
   change_panel_toggle: 'Expand/collapse',
   change_file_open: 'Open file',

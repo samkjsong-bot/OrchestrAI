@@ -1,5 +1,9 @@
 # Changelog
 
+## v0.1.48
+
+- Codex: removed legacy chatgpt.com backend path + self OAuth; now native-only via official Codex (ChatGPT) extension (marketplace policy compliance).
+
 ## v0.1.44 — 2026-05-24 (탭 hotfix + drag-and-drop + user msg sticky 다듬기)
 
 **🐛 결정적 fix — 새 탭이 기존 탭 내용 그대로 보이던 버그**
