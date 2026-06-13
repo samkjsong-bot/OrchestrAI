@@ -4,9 +4,9 @@
 
 ### **Claude · Codex · Gemini** — auto-routing, debate, and collaboration in one VSCode sidebar
 
-`auto-route` · `argue ⚡` · `team 👥` · `loop 🔁` · `boomerang 🪃` · `RAG 🧭` · `Telegram 📱` · `zero billing 💰`
+`auto-route` · `argue ⚡` · `team 👥` · `loop 🔁` · `boomerang 🪃` · `RAG 🧭` · `Telegram 📱`
 
-**Zero extra API billing** — uses your existing subscriptions and free tiers
+**No extra API keys** — works with the AI CLI tools you already have installed
 
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](./LICENSE)
 [![VSCode](https://img.shields.io/badge/VSCode-1.98%2B-blue?logo=visualstudiocode)](https://marketplace.visualstudio.com/items?itemName=samkj.orchestrai)
@@ -44,40 +44,40 @@ See [CHANGELOG.md](./CHANGELOG.md) for full history.
 
 ## ✨ At a glance
 
-| | OrchestrAI | Cursor | Continue | Cline/Roo | Copilot |
-|---|---|---|---|---|---|
-| Multi-model auto routing | ✅ pattern + LLM | ❌ manual | ❌ manual | ❌ manual | ❌ manual |
-| **Model debate** (argue) | ✅ scored 0–10 | ❌ | ❌ | ❌ | ❌ |
-| **Team mode** Claude → Codex/Gemini delegation | ✅ | ❌ | ❌ | Roo only | ❌ |
-| **Boomerang task** auto-split + parallel | ✅ | ❌ | ❌ | Roo only | ❌ |
-| **Ralph Wiggum loop** until-it-works | ✅ | ❌ | ❌ | ❌ | ❌ |
-| Codebase RAG | ✅ | ✅ | ✅ | ❌ | △ |
-| **Multi-model code review** | ✅ | ❌ | ❌ | ❌ | ❌ |
-| **Telegram phone bridge** Hub/Worker | ✅ | ❌ | ❌ | ❌ | ❌ |
-| Background agent + push notification | ✅ + Telegram | ✅ | ❌ | ❌ | ❌ |
-| Multi-IDE sync (OneDrive/Dropbox) | ✅ | △ | ❌ | ❌ | △ |
-| **Agent marketplace** (Gist-based) | ✅ | ❌ | ❌ | ❌ | ❌ |
-| Inline ghost text completion | ✅ | ✅ | ✅ | ❌ | ✅ |
-| Auto git commit checkpoints | ✅ | ✅ | ❌ | ❌ | ❌ |
-| Auto IDE diff (engine-agnostic) | ✅ | ✅ | △ | ❌ | △ |
-| Auto preview HTML → Browser | ✅ | ❌ | ❌ | ❌ | ❌ |
-| Auto quota fallback (cross-model) | ✅ | N/A | N/A | N/A | N/A |
-| **Rich @ commands** | ✅ 9 | △ | ✅ | ✅ | △ |
-| `/pr` automation (gh + AI title/body) | ✅ | ❌ | ❌ | ❌ | △ |
-| **Custom provider** (Ollama/LM Studio/OpenRouter) | ✅ | ❌ | ✅ | △ | ❌ |
-| **Plan → Act flow split** | ✅ | ❌ | ❌ | ✅ | ❌ |
-| **Composer multi-file review** (collapse + revert) | ✅ | ✅ | △ | △ | ❌ |
-| **Voice input** (multilingual, Korean default) | ✅ | △ | ❌ | ❌ | ❌ |
-| **Browser tool** (Playwright + system Chrome) | ✅ | ❌ | △ | ✅ | ❌ |
-| **Locale-aware responses** (auto-detect VSCode lang) | ✅ 9 langs | ❌ | ❌ | ❌ | ❌ |
-| **ORCHESTRAI.md** project rules | ✅ | △ | ✅ | ✅ | ❌ |
-| Estimated savings display | ✅ | ❌ | ❌ | ❌ | ❌ |
-| Built-in performance metrics (`/perf`) | ✅ | ❌ | ❌ | ❌ | ❌ |
-| **`AI!` magic comments** (Aider-style watch) | ✅ | ❌ | ❌ | ❌ | ❌ |
-| **Test-driven loop** (run tests, parse failures, retry) | ✅ | ❌ | ❌ | ❌ | ❌ |
-| **Repo map** (symbol-graph augmented RAG) | ✅ | ❌ | △ | ❌ | ❌ |
-| Smart commit messages (AI-written from diff) | ✅ | △ | ❌ | ❌ | ❌ |
-| **Zero API billing** (subscription bypass) | ✅ | ❌ | ❌ | ❌ | △ subscription |
+| Feature | OrchestrAI |
+|---|---|
+| Multi-model auto routing | ✅ pattern + LLM |
+| **Model debate** (argue) | ✅ scored 0–10 |
+| **Team mode** Claude → Codex/Gemini delegation | ✅ |
+| **Boomerang task** auto-split + parallel | ✅ |
+| **Ralph Wiggum loop** until-it-works | ✅ |
+| Codebase RAG | ✅ |
+| **Multi-model code review** | ✅ |
+| **Telegram phone bridge** Hub/Worker | ✅ |
+| Background agent + push notification | ✅ + Telegram |
+| Multi-IDE sync (OneDrive/Dropbox) | ✅ |
+| **Agent marketplace** (Gist-based) | ✅ |
+| Inline ghost text completion | ✅ |
+| Auto git commit checkpoints | ✅ |
+| Auto IDE diff (engine-agnostic) | ✅ |
+| Auto preview HTML → Browser | ✅ |
+| Auto quota fallback (cross-model) | ✅ |
+| **Rich @ commands** | ✅ 9 |
+| `/pr` automation (gh + AI title/body) | ✅ |
+| **Custom provider** (Ollama/LM Studio/OpenRouter) | ✅ |
+| **Plan → Act flow split** | ✅ |
+| **Composer multi-file review** (collapse + revert) | ✅ |
+| **Voice input** (multilingual, Korean default) | ✅ |
+| **Browser tool** (Playwright + system Chrome) | ✅ |
+| **Locale-aware responses** (auto-detect VSCode lang) | ✅ 9 langs |
+| **ORCHESTRAI.md** project rules | ✅ |
+| Estimated savings display | ✅ |
+| Built-in performance metrics (`/perf`) | ✅ |
+| **`AI!` magic comments** (Aider-style watch) | ✅ |
+| **Test-driven loop** (run tests, parse failures, retry) | ✅ |
+| **Repo map** (symbol-graph augmented RAG) | ✅ |
+| Smart commit messages (AI-written from diff) | ✅ |
+| **No extra API keys** (uses your installed AI CLI tools) | ✅ |
 
 ---
 
@@ -108,7 +108,7 @@ By default OrchestrAI auto-picks the model variant for each provider based on ef
 ## 🧰 Permission modes (4)
 
 `ask` / `auto-edit` / `plan` / `smart-auto` — mapped to Claude SDK `permissionMode`.
-**Plan mode**: when a turn ends, a purple "▶ Run in Act mode" button appears → clicking it auto-switches to auto-edit and executes the plan (Cline-style flow).
+**Plan mode**: when a turn ends, a purple "▶ Run in Act mode" button appears → clicking it auto-switches to auto-edit and executes the plan (plan → act flow).
 
 ## 💬 @ commands (type `@` in input for autocomplete)
 
@@ -191,7 +191,7 @@ OrchestrAI auto-detects your VSCode language and tells the AI to respond in that
 ## 🚀 Highlights
 
 ### Auto indexing + RAG
-Asks come with auto-attached relevant chunks from your codebase. Cursor/Continue parity.
+Asks come with auto-attached relevant chunks from your codebase — on par with leading AI coding assistants.
 ```
 /index   ← first-time index
 afterwards: automatic
@@ -278,9 +278,9 @@ OrchestrAI itself requires zero API keys. Authentication is per model:
 
 | Model | Requirement | Free? |
 |---|---|---|
-| Claude | Local `claude` CLI login | Requires Claude Pro/Max |
-| Codex | ChatGPT OAuth (inside OrchestrAI) | Requires ChatGPT Pro |
-| Gemini | Local `gemini` CLI login | ✅ Google free tier |
+| Claude | Local `claude` CLI login | Claude Pro/Max |
+| Codex | Official Codex (ChatGPT) VSCode extension, signed in | ChatGPT plan |
+| Gemini | Local `gemini` CLI login | Google free tier |
 | Image generation (optional) | Gemini API key | △ |
 
 After install: sidebar → ⚙ Settings → connect accounts.
@@ -319,5 +319,5 @@ Architecture details: [CODEMAP.md](./CODEMAP.md)
 ---
 
 <div align="center">
-<sub>made for vibe coders · zero billing · open source</sub>
+<sub>made for vibe coders · no extra API keys · open source</sub>
 </div>

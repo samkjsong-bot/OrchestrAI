@@ -1,7 +1,7 @@
 {
   "name": "orchestrai",
   "displayName": "OrchestrAI",
-  "description": "Multi-model AI in one VSCode sidebar — Claude + Codex + Gemini. Auto-routing, model debate, team delegation, until-it-works loop, codebase RAG, multi-model code review, Telegram phone bridge. Zero API billing (uses your existing subscriptions).",
+  "description": "Multi-model AI in one VSCode sidebar — Claude + Codex + Gemini. Auto-routing, model debate, team delegation, until-it-works loop, codebase RAG, multi-model code review, Telegram phone bridge. No extra API keys — works with the AI CLI tools you already have installed.",
   "version": "0.1.47",
   "publisher": "samkj",
   "license": "MIT",
@@ -18,7 +18,6 @@
     "ai",
     "claude",
     "gpt",
-    "gpt-5",
     "gemini",
     "anthropic",
     "openai",
@@ -31,10 +30,6 @@
     "code-review",
     "autocomplete",
     "ghost-text",
-    "copilot",
-    "cursor",
-    "cline",
-    "continue",
     "telegram",
     "mcp",
     "model-context-protocol",
@@ -44,8 +39,6 @@
     "playwright",
     "voice-input",
     "speech-recognition",
-    "zero-billing",
-    "subscription",
     "code-completion",
     "ai-chat",
     "korean"
@@ -56,9 +49,6 @@
   "categories": [
     "AI",
     "Chat",
-    "Programming Languages",
-    "Notebooks",
-    "Visualization",
     "Other"
   ],
   "activationEvents": [

@@ -4,9 +4,9 @@
 
 ### **Claude · Codex · Gemini** — 한 사이드바에서 자동 라우팅·협업·토론
 
-`auto-route` · `argue ⚡` · `team 👥` · `loop 🔁` · `boomerang 🪃` · `RAG 🧭` · `Telegram 📱` · `zero billing 💰`
+`auto-route` · `argue ⚡` · `team 👥` · `loop 🔁` · `boomerang 🪃` · `RAG 🧭` · `Telegram 📱`
 
-추가 API 과금 없음 — 모두 사용자 자체 구독·무료 티어로 우회
+추가 API 키 불필요 — 이미 설치된 AI CLI 도구를 그대로 사용
 
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](./LICENSE)
 [![VSCode](https://img.shields.io/badge/VSCode-1.98%2B-blue?logo=visualstudiocode)](https://marketplace.visualstudio.com/items?itemName=samkj.orchestrai)
@@ -44,38 +44,38 @@ https://github.com/user-attachments/assets/359f9cc2-cc80-4ea6-a6d6-377fbf594fd3
 
 ## ✨ 한눈에
 
-| | OrchestrAI | Cursor | Continue | Cline/Roo | Copilot |
-|---|---|---|---|---|---|
-| 멀티모델 자동 라우팅 | ✅ pattern + LLM | ❌ 수동 | ❌ 수동 | ❌ 수동 | ❌ 수동 |
-| **모델 토론** (argue) | ✅ 0~10 채점 | ❌ | ❌ | ❌ | ❌ |
-| **Team mode** Claude→Codex/Gemini 위임 | ✅ | ❌ | ❌ | Roo만 | ❌ |
-| **Boomerang task** 자동 분할·병렬 | ✅ | ❌ | ❌ | Roo만 | ❌ |
-| **Ralph Wiggum loop** 될 때까지 | ✅ | ❌ | ❌ | ❌ | ❌ |
-| 코드베이스 RAG | ✅ | ✅ | ✅ | ❌ | △ |
-| **멀티모델 코드 리뷰** | ✅ | ❌ | ❌ | ❌ | ❌ |
-| **Telegram 폰 통합** Hub/Worker | ✅ | ❌ | ❌ | ❌ | ❌ |
-| Background agent + push 알림 | ✅ + Telegram | ✅ | ❌ | ❌ | ❌ |
-| Multi-IDE sync (OneDrive/Dropbox) | ✅ | △ | ❌ | ❌ | △ |
-| **Agent marketplace** (Gist 기반) | ✅ | ❌ | ❌ | ❌ | ❌ |
-| Inline ghost text 자동완성 | ✅ | ✅ | ✅ | ❌ | ✅ |
-| 자동 git commit 체크포인트 | ✅ | ✅ | ❌ | ❌ | ❌ |
-| 자동 IDE diff (engine 무관) | ✅ | ✅ | △ | ❌ | △ |
-| 자동 미리보기 HTML→Browser | ✅ | ❌ | ❌ | ❌ | ❌ |
-| 자동 quota 폴백 (모델 간) | ✅ | N/A | N/A | N/A | N/A |
-| **@ commands 풍부** | ✅ 7종 | △ | ✅ | ✅ | △ |
-| `/pr` 자동 (gh + AI title/body) | ✅ | ❌ | ❌ | ❌ | △ |
-| **Custom provider** (Ollama/LM Studio/OpenRouter) | ✅ | ❌ | ✅ | △ | ❌ |
-| **Plan→Act 분리 흐름** | ✅ | ❌ | ❌ | ✅ | ❌ |
-| **Composer 다중 파일 review** (collapse + revert) | ✅ | ✅ | △ | △ | ❌ |
-| **Voice input** (한국어) | ✅ | △ | ❌ | ❌ | ❌ |
-| **Browser tool** (Playwright + system Chrome) | ✅ | ❌ | △ | ✅ | ❌ |
-| **ORCHESTRAI.md** 프로젝트 룰 | ✅ | △ | ✅ | ✅ | ❌ |
-| 절약 추정 비용 표시 | ✅ | ❌ | ❌ | ❌ | ❌ |
-| **`AI!` 매직 코멘트** (Aider 풍) | ✅ | ❌ | ❌ | ❌ | ❌ |
-| **Test-driven loop** (테스트 실패 → 자동 fix) | ✅ | ❌ | ❌ | ❌ | ❌ |
-| **Repo map** (symbol 그래프 RAG 보강) | ✅ | ❌ | △ | ❌ | ❌ |
-| Smart commit 메시지 (diff 보고 AI 생성) | ✅ | △ | ❌ | ❌ | ❌ |
-| **API 과금 0원** (자체 구독 우회) | ✅ | ❌ | ❌ | ❌ | △ 구독 |
+| 기능 | OrchestrAI |
+|---|---|
+| 멀티모델 자동 라우팅 | ✅ pattern + LLM |
+| **모델 토론** (argue) | ✅ 0~10 채점 |
+| **Team mode** Claude→Codex/Gemini 위임 | ✅ |
+| **Boomerang task** 자동 분할·병렬 | ✅ |
+| **Ralph Wiggum loop** 될 때까지 | ✅ |
+| 코드베이스 RAG | ✅ |
+| **멀티모델 코드 리뷰** | ✅ |
+| **Telegram 폰 통합** Hub/Worker | ✅ |
+| Background agent + push 알림 | ✅ + Telegram |
+| Multi-IDE sync (OneDrive/Dropbox) | ✅ |
+| **Agent marketplace** (Gist 기반) | ✅ |
+| Inline ghost text 자동완성 | ✅ |
+| 자동 git commit 체크포인트 | ✅ |
+| 자동 IDE diff (engine 무관) | ✅ |
+| 자동 미리보기 HTML→Browser | ✅ |
+| 자동 quota 폴백 (모델 간) | ✅ |
+| **@ commands 풍부** | ✅ 7종 |
+| `/pr` 자동 (gh + AI title/body) | ✅ |
+| **Custom provider** (Ollama/LM Studio/OpenRouter) | ✅ |
+| **Plan→Act 분리 흐름** | ✅ |
+| **Composer 다중 파일 review** (collapse + revert) | ✅ |
+| **Voice input** (한국어) | ✅ |
+| **Browser tool** (Playwright + system Chrome) | ✅ |
+| **ORCHESTRAI.md** 프로젝트 룰 | ✅ |
+| 절약 추정 비용 표시 | ✅ |
+| **`AI!` 매직 코멘트** (Aider 풍) | ✅ |
+| **Test-driven loop** (테스트 실패 → 자동 fix) | ✅ |
+| **Repo map** (symbol 그래프 RAG 보강) | ✅ |
+| Smart commit 메시지 (diff 보고 AI 생성) | ✅ |
+| **추가 API 키 불필요** (이미 설치된 AI CLI 도구 사용) | ✅ |
 
 ---
 
@@ -106,7 +106,7 @@ https://github.com/user-attachments/assets/359f9cc2-cc80-4ea6-a6d6-377fbf594fd3
 ## 🧰 권한 모드 4종
 
 `ask` / `auto-edit` / `plan` / `smart-auto` — Claude SDK의 `permissionMode`로 매핑.
-**Plan 모드** turn 끝나면 보라색 "▶ Act 모드로 실행" 버튼 → 클릭 시 자동 auto-edit 전환 + plan 따라 실행 (Cline 식 흐름).
+**Plan 모드** turn 끝나면 보라색 "▶ Act 모드로 실행" 버튼 → 클릭 시 자동 auto-edit 전환 + plan 따라 실행 (plan → act 흐름).
 
 ## 💬 @ commands (입력창에 `@` 치면 자동완성)
 
@@ -190,7 +190,7 @@ VSCode 언어 설정 자동 감지 → 모델한테 "이 사용자 언어로 답
 ## 🚀 핵심 기능
 
 ### 자동 인덱싱 + RAG
-질문하면 코드베이스에서 관련 chunk를 자동 검색해 컨텍스트로 첨부. Cursor/Continue 수준.
+질문하면 코드베이스에서 관련 chunk를 자동 검색해 컨텍스트로 첨부. 주요 AI 코딩 어시스턴트 수준.
 ```
 /index   ← 첫 번째 인덱싱
 이후 자동
@@ -274,9 +274,9 @@ OrchestrAI 자체엔 API 키 0개 필요. 각 모델별 인증만:
 
 | 모델 | 필요한 것 | 무료? |
 |---|---|---|
-| Claude | 로컬 `claude` CLI 로그인 | Claude Pro/Max 필요 |
-| Codex | OrchestrAI 안에서 ChatGPT OAuth | ChatGPT Pro 구독 필요 |
-| Gemini | 로컬 `gemini` CLI 로그인 | ✅ Google 무료 |
+| Claude | 로컬 `claude` CLI 로그인 | Claude Pro/Max |
+| Codex | 공식 Codex(ChatGPT) VSCode 확장 로그인 | ChatGPT 구독 |
+| Gemini | 로컬 `gemini` CLI 로그인 | Google 무료 |
 | 이미지 생성 (옵션) | Gemini API 키 | △ |
 
 설치 후: 사이드바 → ⚙ 설정 → 계정 연결.
@@ -315,5 +315,5 @@ OrchestrAI 자체엔 API 키 0개 필요. 각 모델별 인증만:
 ---
 
 <div align="center">
-<sub>made for vibe coders · zero billing · open source</sub>
+<sub>made for vibe coders · 추가 API 키 불필요 · open source</sub>
 </div>
