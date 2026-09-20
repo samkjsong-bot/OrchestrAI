@@ -3,8 +3,19 @@ name: CI
 on:
   push:
     branches: [main]
+    paths-ignore:
+      - "docs/**"
+      - "**/*.md"
   pull_request:
     branches: [main]
+    paths-ignore:
+      - "docs/**"
+      - "**/*.md"
+  workflow_dispatch:
+
+concurrency:
+  group: orchestrai-ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 # 모든 javascript actions 를 Node 24 로 강제 (Node 20 deprecation 우회)
 env:
@@ -48,9 +59,9 @@ jobs:
           ls -la orchestrai-ci.vsix
 
       - name: Upload vsix artifact
-        if: matrix.os == 'ubuntu-latest'
+        if: matrix.os == 'ubuntu-latest' && github.event_name != 'push'
         uses: actions/upload-artifact@v5
         with:
           name: orchestrai-vsix-${{ github.sha }}
           path: orchestrai-ci.vsix
-          retention-days: 14
+          retention-days: 3
