@@ -27,10 +27,10 @@ jobs:
         node: ['20.x']
 
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
       - name: Setup Node ${{ matrix.node }}
-        uses: actions/setup-node@v5
+        uses: actions/setup-node@v7
         with:
           node-version: ${{ matrix.node }}
           cache: 'npm'
@@ -56,7 +56,7 @@ jobs:
 
       - name: Upload vsix artifact
         if: matrix.os == 'ubuntu-latest' && github.event_name != 'push'
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v7
         with:
           name: orchestrai-vsix-${{ github.sha }}
           path: orchestrai-ci.vsix
