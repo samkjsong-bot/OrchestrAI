@@ -23,7 +23,9 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest]
+        # Validate the incoming ubuntu-latest image before its rollout.
+        # https://github.com/actions/runner-images/issues/14748
+        os: [ubuntu-latest, windows-latest, ubuntu-26.04]
         node: ['20.x']
 
     steps:
@@ -48,16 +50,52 @@ jobs:
         run: npm test
 
       - name: Package vsix (no publish, sanity check)
-        if: matrix.os == 'ubuntu-latest'
+        if: startsWith(matrix.os, 'ubuntu-')
         run: |
           npm prune --omit=dev
           npx vsce package --allow-missing-repository -o orchestrai-ci.vsix
           ls -la orchestrai-ci.vsix
 
       - name: Upload vsix artifact
-        if: matrix.os == 'ubuntu-latest' && github.event_name != 'push'
+        if: startsWith(matrix.os, 'ubuntu-') && github.event_name != 'push'
         uses: actions/upload-artifact@v5
         with:
-          name: orchestrai-vsix-${{ github.sha }}
+          # Keep the existing artifact contract; isolate the 26.04 comparison.
+          name: orchestrai-vsix-${{ github.sha }}${{ matrix.os == 'ubuntu-26.04' && '-ubuntu-26.04' || '' }}
           path: orchestrai-ci.vsix
           retention-days: 3
+
+  ubuntu-native-compatibility:
+    needs: build
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '20.x'
+
+      - uses: actions/download-artifact@v5
+        with:
+          name: orchestrai-vsix-${{ github.sha }}-ubuntu-26.04
+          path: ${{ runner.temp }}/ubuntu-26.04
+
+      - name: Reproduce Ubuntu 26.04 native ABI regression on Ubuntu 24.04
+        run: |
+          unzip -p "$RUNNER_TEMP/ubuntu-26.04/orchestrai-ci.vsix" \
+            extension/node_modules/node-pty/build/Release/pty.node > "$RUNNER_TEMP/ubuntu26-pty.node"
+          node <<'JS'
+          const assert = require('node:assert/strict');
+          const fs = require('node:fs');
+          let loadError;
+          try {
+            require(`${process.env.RUNNER_TEMP}/ubuntu26-pty.node`);
+          } catch (error) {
+            loadError = error;
+          }
+          assert.equal(loadError?.code, 'ERR_DLOPEN_FAILED');
+          assert.match(loadError.message, /GLIBC_2\.42.*not found/);
+          assert.match(fs.readFileSync('.github/workflows/publish.yml', 'utf8'), /runs-on: ubuntu-24\.04/);
+          console.log(`Known regression reproduced: ${loadError.message}`);
+          console.log('Publish remains pinned to Ubuntu 24.04 until this regression is resolved.');
+          JS
