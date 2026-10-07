@@ -21,7 +21,9 @@ env:
 
 jobs:
   publish:
-    runs-on: ubuntu-latest
+    # Temporary: Ubuntu 26.04's node-pty build requires GLIBC_2.42.
+    # Keep release binaries compatible while CI reproduces the regression.
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v5
         with:
