@@ -23,7 +23,9 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest]
+        # Validate the incoming ubuntu-latest image before its rollout.
+        # https://github.com/actions/runner-images/issues/14748
+        os: [ubuntu-latest, windows-latest, ubuntu-26.04]
         node: ['20.x']
 
     steps:
@@ -48,16 +50,17 @@ jobs:
         run: npm test
 
       - name: Package vsix (no publish, sanity check)
-        if: matrix.os == 'ubuntu-latest'
+        if: startsWith(matrix.os, 'ubuntu-')
         run: |
           npm prune --omit=dev
           npx vsce package --allow-missing-repository -o orchestrai-ci.vsix
           ls -la orchestrai-ci.vsix
 
       - name: Upload vsix artifact
-        if: matrix.os == 'ubuntu-latest' && github.event_name != 'push'
+        if: startsWith(matrix.os, 'ubuntu-') && github.event_name != 'push'
         uses: actions/upload-artifact@v5
         with:
-          name: orchestrai-vsix-${{ github.sha }}
+          # Keep the existing artifact contract; isolate the 26.04 comparison.
+          name: orchestrai-vsix-${{ github.sha }}${{ matrix.os == 'ubuntu-26.04' && '-ubuntu-26.04' || '' }}
           path: orchestrai-ci.vsix
           retention-days: 3
