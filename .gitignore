@@ -29,3 +29,8 @@ npm-debug.log*
 .idea/
 *.swp
 *.swo
+
+# Local environment files (secrets)
+.env
+.env.*
+!.env.example
